@@ -1,0 +1,5 @@
+{
+  "name": "StoryTeller SwarmUI Prompt Architect",
+  "description": "An application to generate optimized SwarmUI prompts from story narratives, character, and location data using AI.",
+  "requestFramePermissions": []
+}
