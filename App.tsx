@@ -3,21 +3,29 @@ import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
 import { HistoryPanel } from './components/HistoryPanel';
 import { analyzeScript } from './services/geminiService';
+import { getEpisodeContext } from './services/contextService';
+import { parseEpisodeNumber } from './utils';
 import type { AnalyzedEpisode, HistoryEntry } from './types';
 import { DEFAULT_SCRIPT, DEFAULT_EPISODE_CONTEXT } from './constants';
 import { GithubIcon } from './components/icons';
 
 const HISTORY_STORAGE_KEY = 'storyboard_analysis_history';
 
+type RetrievalMode = 'manual' | 'database';
+
 function App() {
   const [scriptText, setScriptText] = useState<string>(DEFAULT_SCRIPT);
   const [episodeContext, setEpisodeContext] = useState<string>(DEFAULT_EPISODE_CONTEXT);
   const [analyzedEpisode, setAnalyzedEpisode] = useState<AnalyzedEpisode | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+
+  const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>('manual');
+  const [storyUuid, setStoryUuid] = useState<string>('59f64b1e-726a-439d-a6bc-0dfefcababdb');
 
   const initialLoad = useRef(true);
 
@@ -38,27 +46,51 @@ function App() {
         return;
     }
     const currentEntry = history.find(h => h.id === selectedHistoryId);
-    if (currentEntry && (currentEntry.inputs.scriptText !== scriptText || currentEntry.inputs.episodeContext !== episodeContext)) {
-        setSelectedHistoryId(null);
+    if (currentEntry) {
+        const inputs = currentEntry.inputs;
+        if (inputs.scriptText !== scriptText ||
+            (inputs.retrievalMode === 'manual' && inputs.episodeContext !== episodeContext) ||
+            (inputs.retrievalMode === 'database' && inputs.storyUuid !== storyUuid)) {
+            setSelectedHistoryId(null);
+        }
     }
   };
 
-  useEffect(deselectOnManualChange, [scriptText, episodeContext, selectedHistoryId, history]);
-
+  useEffect(deselectOnManualChange, [scriptText, episodeContext, storyUuid, selectedHistoryId, history]);
 
   const handleAnalyze = async () => {
     setIsLoading(true);
     setError(null);
     setAnalyzedEpisode(null);
-    
+    let finalEpisodeContext = episodeContext;
+
     try {
-      const result = await analyzeScript(scriptText, episodeContext);
+        if (retrievalMode === 'database') {
+            setLoadingMessage('Parsing episode number...');
+            const episodeNumber = parseEpisodeNumber(scriptText);
+            if (episodeNumber === null) {
+                throw new Error("Analysis failed: Could not find 'EPISODE: X' at the start of the script.");
+            }
+
+            setLoadingMessage('Fetching episode context from API...');
+            const contextData = await getEpisodeContext(storyUuid, episodeNumber);
+            finalEpisodeContext = JSON.stringify(contextData, null, 2);
+            setEpisodeContext(finalEpisodeContext);
+        }
+
+      setLoadingMessage('Analyzing script with Gemini...');
+      const result = await analyzeScript(scriptText, finalEpisodeContext);
       setAnalyzedEpisode(result);
 
       const newEntry: HistoryEntry = {
         id: `hist-${Date.now()}`,
         timestamp: Date.now(),
-        inputs: { scriptText, episodeContext },
+        inputs: { 
+            scriptText, 
+            episodeContext: finalEpisodeContext,
+            retrievalMode,
+            storyUuid,
+        },
         output: result,
       };
 
@@ -72,16 +104,19 @@ function App() {
       setError(e.message || 'An unexpected error occurred.');
     } finally {
       setIsLoading(false);
+      setLoadingMessage('');
     }
   };
 
   const handleLoadHistory = useCallback((id: string) => {
     const entry = history.find(h => h.id === id);
     if (entry) {
-        initialLoad.current = true; // Prevent useEffect from deselecting on load
+        initialLoad.current = true;
         setScriptText(entry.inputs.scriptText);
         setEpisodeContext(entry.inputs.episodeContext);
         setAnalyzedEpisode(entry.output);
+        setRetrievalMode(entry.inputs.retrievalMode);
+        setStoryUuid(entry.inputs.storyUuid || '59f64b1e-726a-439d-a6bc-0dfefcababdb');
         setSelectedHistoryId(id);
         setError(null);
     }
@@ -135,12 +170,18 @@ function App() {
               setEpisodeContext={setEpisodeContext}
               onAnalyze={handleAnalyze}
               isLoading={isLoading}
+              loadingMessage={loadingMessage}
+              retrievalMode={retrievalMode}
+              setRetrievalMode={setRetrievalMode}
+              storyUuid={storyUuid}
+              setStoryUuid={setStoryUuid}
             />
           </div>
           <div className="xl:col-span-5">
             <OutputPanel
               analysis={analyzedEpisode}
               isLoading={isLoading}
+              loadingMessage={loadingMessage}
               error={error}
             />
           </div>

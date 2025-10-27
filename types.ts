@@ -35,6 +35,8 @@ export interface HistoryEntry {
   inputs: {
     scriptText: string;
     episodeContext: string;
+    retrievalMode: 'manual' | 'database';
+    storyUuid?: string;
   };
   output: AnalyzedEpisode;
 }

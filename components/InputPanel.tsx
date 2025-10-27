@@ -1,6 +1,8 @@
 import React from 'react';
 import { GenerateIcon } from './icons';
 
+type RetrievalMode = 'manual' | 'database';
+
 interface InputPanelProps {
   script: string;
   setScript: (value: string) => void;
@@ -8,16 +10,63 @@ interface InputPanelProps {
   setEpisodeContext: (value: string) => void;
   onAnalyze: () => void;
   isLoading: boolean;
+  loadingMessage: string;
+  retrievalMode: RetrievalMode;
+  setRetrievalMode: (mode: RetrievalMode) => void;
+  storyUuid: string;
+  setStoryUuid: (uuid: string) => void;
 }
 
-export const InputPanel: React.FC<InputPanelProps> = ({ script, setScript, episodeContext, setEpisodeContext, onAnalyze, isLoading }) => {
+const RetrievalModeSwitch: React.FC<{
+  mode: RetrievalMode;
+  setMode: (mode: RetrievalMode) => void;
+}> = ({ mode, setMode }) => (
+  <div className="flex bg-gray-900 border border-gray-700 rounded-lg p-1 max-w-sm mx-auto">
+    <button
+      onClick={() => setMode('manual')}
+      className={`w-1/2 py-2 text-sm font-semibold rounded-md transition-colors ${
+        mode === 'manual' ? 'bg-brand-blue text-white shadow' : 'text-gray-400 hover:bg-gray-800'
+      }`}
+    >
+      Manual Input
+    </button>
+    <button
+      onClick={() => setMode('database')}
+      className={`w-1/2 py-2 text-sm font-semibold rounded-md transition-colors ${
+        mode === 'database' ? 'bg-brand-blue text-white shadow' : 'text-gray-400 hover:bg-gray-800'
+      }`}
+    >
+      Database
+    </button>
+  </div>
+);
+
+export const InputPanel: React.FC<InputPanelProps> = ({
+  script,
+  setScript,
+  episodeContext,
+  setEpisodeContext,
+  onAnalyze,
+  isLoading,
+  loadingMessage,
+  retrievalMode,
+  setRetrievalMode,
+  storyUuid,
+  setStoryUuid,
+}) => {
+  const isAnalyzeDisabled =
+    isLoading ||
+    !script.trim() ||
+    (retrievalMode === 'manual' && !episodeContext.trim()) ||
+    (retrievalMode === 'database' && !storyUuid.trim());
+    
   return (
     <div className="bg-gray-800/50 p-6 rounded-lg shadow-lg h-full flex flex-col">
-      <h2 className="text-2xl font-semibold mb-4 text-brand-purple">Inputs</h2>
+      <h2 className="text-2xl font-semibold mb-4 text-brand-purple text-center">Inputs</h2>
       <div className="flex-grow flex flex-col space-y-4">
         
         {/* Script Input */}
-        <div className='flex flex-col flex-grow h-1/2'>
+        <div className='flex flex-col flex-grow' style={{ minHeight: '200px' }}>
             <label htmlFor="script-input" className="block text-sm font-medium text-gray-300 mb-2">
                 Script
             </label>
@@ -31,35 +80,54 @@ export const InputPanel: React.FC<InputPanelProps> = ({ script, setScript, episo
             />
         </div>
 
-        {/* Episode Context Input */}
-        <div className='flex flex-col flex-grow h-1/2'>
-            <label htmlFor="episode-context-input" className="block text-sm font-medium text-gray-300 mb-2">
-                Episode Context (JSON)
-            </label>
-            <textarea
-                id="episode-context-input"
-                value={episodeContext}
-                onChange={(e) => setEpisodeContext(e.target.value)}
-                placeholder="Enter episode context JSON data here..."
-                className="w-full flex-grow bg-gray-900 border border-gray-700 rounded-md p-3 font-mono text-sm text-gray-200 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition duration-200"
-                aria-label="Episode Context Input"
-            />
+        {/* Retrieval Mode Switch and Context Input */}
+        <div className='flex flex-col flex-grow' style={{ minHeight: '200px' }}>
+            <div className="text-sm font-medium text-gray-300 mb-2 text-center">Episode Context Source</div>
+            <RetrievalModeSwitch mode={retrievalMode} setMode={setRetrievalMode} />
+            
+            <div className="mt-4 flex-grow flex flex-col">
+                {retrievalMode === 'manual' ? (
+                     <textarea
+                        id="episode-context-input"
+                        value={episodeContext}
+                        onChange={(e) => setEpisodeContext(e.target.value)}
+                        placeholder="Enter episode context JSON data here..."
+                        className="w-full flex-grow bg-gray-900 border border-gray-700 rounded-md p-3 font-mono text-sm text-gray-200 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition duration-200"
+                        aria-label="Episode Context Input"
+                    />
+                ) : (
+                    <div className="flex-grow flex flex-col">
+                        <label htmlFor="story-uuid-input" className="block text-sm font-medium text-gray-300 mb-2">
+                            Story UUID
+                        </label>
+                        <input
+                            type="text"
+                            id="story-uuid-input"
+                            value={storyUuid}
+                            onChange={(e) => setStoryUuid(e.target.value)}
+                            placeholder="Enter Story UUID to fetch context..."
+                            className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-gray-200 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition duration-200"
+                            aria-label="Story UUID Input"
+                        />
+                    </div>
+                )}
+            </div>
         </div>
 
       </div>
       <div className="mt-6">
         <button
           onClick={onAnalyze}
-          disabled={isLoading || !script.trim()}
+          disabled={isAnalyzeDisabled}
           className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-brand-blue to-brand-purple text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
         >
           {isLoading ? (
             <>
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              Analyzing Script...
+              {loadingMessage || 'Analyzing...'}
             </>
           ) : (
             <>
