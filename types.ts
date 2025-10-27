@@ -24,15 +24,38 @@ export type NoImageDecision = {
 
 export type ImageDecision = NewImageDecision | ReuseImageDecision | NoImageDecision;
 
+export interface SwarmUIPrompt {
+  prompt: string;
+  model: string;
+  width: number;
+  height: number;
+  steps: number;
+  cfgscale: number;
+  seed: number;
+  // Add other SwarmUI specific parameters as needed
+}
+
+export interface BeatPrompts {
+  beatId: string;
+  cinematic: SwarmUIPrompt;
+  vertical: SwarmUIPrompt;
+}
+
 export interface BeatAnalysis {
   beatId: string;
   beatText: string;
   beatType: 'Character Introduction' | 'Action' | 'Emotional' | 'Dialogue' | 'Environmental' | 'Revelation' | 'Other';
   visualSignificance: 'High' | 'Medium' | 'Low';
   imageDecision: ImageDecision;
+  estimatedDurationSeconds?: number;
   cameraAngleSuggestion?: string;
   characterPositioning?: string;
   locationAttributes?: string[];
+  prompts?: {
+    cinematic: SwarmUIPrompt;
+    vertical: SwarmUIPrompt;
+  };
+  hookNarrative?: string; // For Phase 1.4
 }
 
 export interface AnalyzedScene {
@@ -46,4 +69,11 @@ export interface AnalyzedEpisode {
   episodeNumber: number;
   title: string;
   scenes: AnalyzedScene[];
+}
+
+export interface EpisodeStyleConfig {
+  stylePrefix: string;
+  model: string;
+  cinematicAspectRatio: string;
+  verticalAspectRatio: string;
 }

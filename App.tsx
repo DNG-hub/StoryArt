@@ -1,34 +1,30 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
 import { analyzeScript } from './services/geminiService';
 import { getEpisodeContext } from './services/contextService';
 import { parseEpisodeNumber, postProcessAnalysis } from './utils';
-import type { AnalyzedEpisode } from './types';
+import type { AnalyzedEpisode, EpisodeStyleConfig } from './types';
 import { DEFAULT_SCRIPT, DEFAULT_EPISODE_CONTEXT } from './constants';
-import { GithubIcon } from './components/icons';
+import { GithubIcon, PanelExpandIcon } from './components/icons';
+import { generateSwarmUiPrompts } from './services/promptGenerationService';
 
 type RetrievalMode = 'manual' | 'database';
 
-// FUTURE: PHASE 2 - INTER-EPISODE CONTINUITY & ASSET MANAGEMENT
-// The current implementation provides "intra-episode" continuity by analyzing a single script in its entirety.
-// The next major evolution ("Phase 2") is to create a "long-term memory" for the AI, allowing it to make
-// image reuse decisions across multiple episodes.
+// IMPLEMENTATION PLAN & PROJECT VISION
+// This application is being developed in phases. For a detailed breakdown of current
+// and future features, please refer to the PLAN.md file in the root directory.
 //
-// PROPOSED ARCHITECTURE:
-// 1.  VISUAL ASSET DATABASE: A dedicated backend/database to store metadata for every generated image.
-//     - Each entry would include: `imageId`, `episodeNumber`, `sceneNumber`, `beatId`, key visual elements (characters, location, props),
-//       a text description, and a link to the image file.
-// 2.  CONTEXT ENRICHMENT: Before calling the Gemini API, the app would query this database for existing assets
-//     relevant to the current script's locations and characters.
-// 3.  ENHANCED AI PROMPT: This "visual history" (a list of available, previously generated assets) would be passed
-//     to the Gemini API as part of the context.
-// 4.  AI AS ASSET MANAGER: The AI's instructions would be upgraded to: "Before recommending a NEW_IMAGE,
-//     first check the provided Visual History. If a suitable image already exists, recommend REUSE_IMAGE and
-//     provide the existing `imageId`."
+// - PHASE 1 (In Progress): Content Generation & UI Expansion.
+//   - Dual prompt generation (16:9 Cinematic + 9:16 Vertical).
+//   - Episode-wide style configuration.
+//   - UI overhaul to support new content types.
+//   - Future: AI-generated narrative hooks for social media.
 //
-// This will transform the tool from a script analyzer into a full-fledged production assistant, drastically
-// reducing redundant asset creation and enforcing visual consistency across the entire series.
+// - PHASE 2 (Planned): SwarmUI Automation & Workflow Integration.
+//   - Direct API calls to SwarmUI for automated image generation.
+//   - Conditional UI for automation vs. manual workflows.
+//   - Batch processing and export tools.
 
 function App() {
   const [scriptText, setScriptText] = useState<string>(DEFAULT_SCRIPT);
@@ -44,6 +40,16 @@ function App() {
   
   const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>('manual');
   const [storyUuid, setStoryUuid] = useState<string>('59f64b1e-726a-439d-a6bc-0dfefcababdb');
+  
+  const [isInputCollapsed, setIsInputCollapsed] = useState(true);
+  
+  const [styleConfig, setStyleConfig] = useState<EpisodeStyleConfig>({
+    stylePrefix: 'cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece',
+    model: 'epicrealism_naturalSinRC1VAE',
+    cinematicAspectRatio: '16:9',
+    verticalAspectRatio: '9:16',
+  });
+
 
   const handleFetchContext = async () => {
     setIsContextFetching(true);
@@ -67,11 +73,17 @@ function App() {
     }
   };
 
+  useEffect(() => {
+    if (retrievalMode === 'database') {
+        handleFetchContext();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retrievalMode, scriptText, storyUuid]);
+
+
   const handleRetrievalModeChange = (mode: RetrievalMode) => {
     setRetrievalMode(mode);
-    if (mode === 'database') {
-        handleFetchContext();
-    } else {
+    if (mode === 'manual') {
         setEpisodeContext(DEFAULT_EPISODE_CONTEXT);
         setContextError(null);
     }
@@ -81,14 +93,37 @@ function App() {
     setIsLoading(true);
     setError(null);
     setAnalyzedEpisode(null);
-    setLoadingMessage('Analyzing script with Gemini...');
-
+    setLoadingMessage('Initializing analysis...');
+    
     try {
-      const result = await analyzeScript(scriptText, episodeContext);
-      const processedResult = postProcessAnalysis(result);
-      setAnalyzedEpisode(processedResult);
+      // STAGE 1: Storyboard Analysis (relies on onProgress for messages)
+      const analysisResult = await analyzeScript(scriptText, episodeContext, setLoadingMessage);
+      
+      setLoadingMessage('Post-processing analysis...');
+      let processedResult = postProcessAnalysis(analysisResult);
+      setAnalyzedEpisode(processedResult); // Show storyboard first
+
+      // STAGE 2: Prompt Generation
+      setLoadingMessage('Generating SwarmUI prompts...');
+      const promptsResult = await generateSwarmUiPrompts(processedResult, episodeContext, styleConfig);
+      
+      // Integrate prompts back into the analysis object
+      processedResult.scenes.forEach(scene => {
+        scene.beats.forEach(beat => {
+          const matchingPrompts = promptsResult.find(p => p.beatId === beat.beatId);
+          if (matchingPrompts) {
+            beat.prompts = {
+              cinematic: matchingPrompts.cinematic,
+              vertical: matchingPrompts.vertical,
+            };
+          }
+        });
+      });
+      
+      setAnalyzedEpisode({ ...processedResult });
+
+    // FIX: Corrected syntax for the try-catch block.
     } catch (e: any) {
-      console.error(e);
       setError(e.message || 'An unexpected error occurred.');
     } finally {
       setIsLoading(false);
@@ -102,32 +137,37 @@ function App() {
       <div className="max-w-screen-2xl mx-auto flex flex-col min-h-screen">
         <header className="text-center mb-8">
           <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-brand-blue to-brand-purple">
-            StoryTeller AI Beat Analysis
+            StoryTeller AI Beat Analysis & Prompt Architect
           </h1>
           <p className="text-gray-400 mt-2 text-lg">
-            From script to storyboard: AI-powered narrative analysis.
+            From script to SwarmUI prompt: An AI-powered production pipeline.
           </p>
         </header>
 
-        <main className="grid grid-cols-1 xl:grid-cols-9 gap-8 flex-grow">
-          <div className="xl:col-span-4">
-            <InputPanel
-              script={scriptText}
-              setScript={setScriptText}
-              episodeContext={episodeContext}
-              setEpisodeContext={setEpisodeContext}
-              onAnalyze={handleAnalyze}
-              isLoading={isLoading}
-              loadingMessage={loadingMessage}
-              isContextFetching={isContextFetching}
-              contextError={contextError}
-              retrievalMode={retrievalMode}
-              onRetrievalModeChange={handleRetrievalModeChange}
-              storyUuid={storyUuid}
-              setStoryUuid={setStoryUuid}
-            />
-          </div>
-          <div className="xl:col-span-5">
+        <main className="grid grid-cols-1 xl:grid-cols-9 gap-8 flex-grow relative">
+          {!isInputCollapsed && (
+            <div className="xl:col-span-4">
+              <InputPanel
+                script={scriptText}
+                setScript={setScriptText}
+                episodeContext={episodeContext}
+                setEpisodeContext={setEpisodeContext}
+                onAnalyze={handleAnalyze}
+                isLoading={isLoading}
+                loadingMessage={loadingMessage}
+                isContextFetching={isContextFetching}
+                contextError={contextError}
+                retrievalMode={retrievalMode}
+                onRetrievalModeChange={handleRetrievalModeChange}
+                storyUuid={storyUuid}
+                setStoryUuid={setStoryUuid}
+                onToggleCollapse={() => setIsInputCollapsed(true)}
+                styleConfig={styleConfig}
+                setStyleConfig={setStyleConfig}
+              />
+            </div>
+          )}
+          <div className={isInputCollapsed ? "xl:col-span-9" : "xl:col-span-5"}>
             <OutputPanel
               analysis={analyzedEpisode}
               isLoading={isLoading}
@@ -135,6 +175,15 @@ function App() {
               error={error}
             />
           </div>
+           {isInputCollapsed && (
+            <button
+              onClick={() => setIsInputCollapsed(false)}
+              className="fixed top-1/2 left-4 -translate-y-1/2 z-10 p-2 bg-gray-800 rounded-full text-white hover:bg-brand-blue transition-colors shadow-lg"
+              aria-label="Expand Input Panel"
+            >
+              <PanelExpandIcon />
+            </button>
+          )}
         </main>
         
         <footer className="text-center mt-12 py-4 border-t border-gray-800">

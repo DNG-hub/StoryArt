@@ -52,6 +52,7 @@ export function compactEpisodeContext(fullContextJson: string): string {
 /**
  * Post-processes the AI analysis to fix and populate human-readable labels.
  * This ensures that the `reuseSourceBeatLabel` is always correct and present.
+ * It now trims whitespace from IDs to handle minor AI formatting inconsistencies.
  * @param analysis The raw analysis object from the Gemini API.
  * @returns The processed analysis object with corrected labels.
  */
@@ -62,7 +63,9 @@ export function postProcessAnalysis(analysis: AnalyzedEpisode): AnalyzedEpisode 
     analysis.scenes.forEach(scene => {
       scene.beats.forEach((beat, index) => {
         const beatLabel = `Scene ${scene.sceneNumber}, Beat #${index + 1}`;
-        beatMap.set(beat.beatId, beatLabel);
+        if (beat.beatId) {
+            beatMap.set(beat.beatId.trim(), beatLabel);
+        }
       });
     });
   
@@ -71,8 +74,13 @@ export function postProcessAnalysis(analysis: AnalyzedEpisode): AnalyzedEpisode 
       scene.beats.forEach(beat => {
         if (beat.imageDecision.type === 'REUSE_IMAGE') {
           const decision = beat.imageDecision as ReuseImageDecision;
-          const sourceLabel = beatMap.get(decision.reuseSourceBeatId);
-          decision.reuseSourceBeatLabel = sourceLabel || 'Unknown Source'; // Fallback
+          if (decision.reuseSourceBeatId) {
+              const sourceLabel = beatMap.get(decision.reuseSourceBeatId.trim());
+              // If the lookup fails, include the original ID for debugging purposes.
+              decision.reuseSourceBeatLabel = sourceLabel || `Unknown Source (ID: ${decision.reuseSourceBeatId})`;
+          } else {
+              decision.reuseSourceBeatLabel = 'Unknown Source (ID missing)';
+          }
         }
       });
     });
