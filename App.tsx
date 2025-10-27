@@ -1,47 +1,72 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
-import { generateSwarmUIPrompt } from './services/geminiService';
-import type { SwarmUIPromptOutput, CharacterTrigger, Lora } from './types';
-import { AVAILABLE_LORAS, INITIAL_CHARACTER_TRIGGERS, DEFAULT_NARRATIVE, DEFAULT_LOCATION_DATA, DEFAULT_CHARACTER_DATA } from './constants';
+import { HistoryPanel } from './components/HistoryPanel';
+import { analyzeScript } from './services/geminiService';
+import type { AnalyzedEpisode, HistoryEntry } from './types';
+import { DEFAULT_SCRIPT, DEFAULT_EPISODE_CONTEXT } from './constants';
 import { GithubIcon } from './components/icons';
 
-function App() {
-  const [narrative, setNarrative] = useState<string>(DEFAULT_NARRATIVE);
-  const [locationData, setLocationData] = useState<string>(DEFAULT_LOCATION_DATA);
-  const [characterData, setCharacterData] = useState<string>(DEFAULT_CHARACTER_DATA);
-  const [characterTriggers, setCharacterTriggers] = useState<CharacterTrigger[]>(INITIAL_CHARACTER_TRIGGERS);
-  const [selectedLoras, setSelectedLoras] = useState<string[]>(['JRUMLV_character', 'HSCEIA_character', 'victorian_street']);
+const HISTORY_STORAGE_KEY = 'storyboard_analysis_history';
 
-  const [output, setOutput] = useState<SwarmUIPromptOutput | null>(null);
+function App() {
+  const [scriptText, setScriptText] = useState<string>(DEFAULT_SCRIPT);
+  const [episodeContext, setEpisodeContext] = useState<string>(DEFAULT_EPISODE_CONTEXT);
+  const [analyzedEpisode, setAnalyzedEpisode] = useState<AnalyzedEpisode | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
 
-  const handleGenerate = async () => {
+  const initialLoad = useRef(true);
+
+  useEffect(() => {
+    try {
+      const savedHistory = localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (savedHistory) {
+        setHistory(JSON.parse(savedHistory));
+      }
+    } catch (e) {
+      console.error("Failed to load history from localStorage", e);
+    }
+  }, []);
+
+  const deselectOnManualChange = () => {
+    if (initialLoad.current) {
+        initialLoad.current = false;
+        return;
+    }
+    const currentEntry = history.find(h => h.id === selectedHistoryId);
+    if (currentEntry && (currentEntry.inputs.scriptText !== scriptText || currentEntry.inputs.episodeContext !== episodeContext)) {
+        setSelectedHistoryId(null);
+    }
+  };
+
+  useEffect(deselectOnManualChange, [scriptText, episodeContext, selectedHistoryId, history]);
+
+
+  const handleAnalyze = async () => {
     setIsLoading(true);
     setError(null);
-    setOutput(null);
-
-    try {
-      // Validate JSON inputs before sending to API
-      JSON.parse(locationData);
-      JSON.parse(characterData);
-    } catch (e) {
-      setError('Invalid JSON in Location or Character data. Please check the syntax.');
-      setIsLoading(false);
-      return;
-    }
+    setAnalyzedEpisode(null);
     
     try {
-      const result = await generateSwarmUIPrompt({
-        narrative,
-        locationData,
-        characterData,
-        characterTriggers,
-        availableLoras: AVAILABLE_LORAS.filter(lora => selectedLoras.includes(lora.id)),
-      });
-      setOutput(result);
+      const result = await analyzeScript(scriptText, episodeContext);
+      setAnalyzedEpisode(result);
+
+      const newEntry: HistoryEntry = {
+        id: `hist-${Date.now()}`,
+        timestamp: Date.now(),
+        inputs: { scriptText, episodeContext },
+        output: result,
+      };
+
+      const updatedHistory = [newEntry, ...history];
+      setHistory(updatedHistory);
+      setSelectedHistoryId(newEntry.id);
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
+
     } catch (e: any) {
       console.error(e);
       setError(e.message || 'An unexpected error occurred.');
@@ -50,39 +75,75 @@ function App() {
     }
   };
 
+  const handleLoadHistory = useCallback((id: string) => {
+    const entry = history.find(h => h.id === id);
+    if (entry) {
+        initialLoad.current = true; // Prevent useEffect from deselecting on load
+        setScriptText(entry.inputs.scriptText);
+        setEpisodeContext(entry.inputs.episodeContext);
+        setAnalyzedEpisode(entry.output);
+        setSelectedHistoryId(id);
+        setError(null);
+    }
+  }, [history]);
+
+  const handleDeleteHistory = useCallback((id: string) => {
+    const updatedHistory = history.filter(h => h.id !== id);
+    setHistory(updatedHistory);
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
+    if (selectedHistoryId === id) {
+        setSelectedHistoryId(null);
+    }
+  }, [history, selectedHistoryId]);
+
+  const handleClearHistory = useCallback(() => {
+    if (window.confirm('Are you sure you want to clear all history? This cannot be undone.')) {
+        setHistory([]);
+        localStorage.removeItem(HISTORY_STORAGE_KEY);
+        setSelectedHistoryId(null);
+    }
+  }, []);
+
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-4 sm:p-6 lg:p-8">
       <div className="max-w-screen-2xl mx-auto flex flex-col min-h-screen">
         <header className="text-center mb-8">
           <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-brand-blue to-brand-purple">
-            StoryTeller SwarmUI Prompt Architect
+            StoryTeller AI Beat Analysis
           </h1>
           <p className="text-gray-400 mt-2 text-lg">
-            Transform narratives into powerful, optimized image generation prompts.
+            From script to storyboard: AI-powered narrative analysis.
           </p>
         </header>
 
-        <main className="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-grow">
-          <InputPanel
-            narrative={narrative}
-            setNarrative={setNarrative}
-            locationData={locationData}
-            setLocationData={setLocationData}
-            characterData={characterData}
-            setCharacterData={setCharacterData}
-            characterTriggers={characterTriggers}
-            setCharacterTriggers={setCharacterTriggers}
-            availableLoras={AVAILABLE_LORAS}
-            selectedLoras={selectedLoras}
-            setSelectedLoras={setSelectedLoras}
-            onGenerate={handleGenerate}
-            isLoading={isLoading}
-          />
-          <OutputPanel
-            output={output}
-            isLoading={isLoading}
-            error={error}
-          />
+        <main className="grid grid-cols-1 xl:grid-cols-12 gap-8 flex-grow">
+          <div className="xl:col-span-3">
+             <HistoryPanel
+                history={history}
+                selectedId={selectedHistoryId}
+                onLoad={handleLoadHistory}
+                onDelete={handleDeleteHistory}
+                onClear={handleClearHistory}
+             />
+          </div>
+          <div className="xl:col-span-4">
+            <InputPanel
+              script={scriptText}
+              setScript={setScriptText}
+              episodeContext={episodeContext}
+              setEpisodeContext={setEpisodeContext}
+              onAnalyze={handleAnalyze}
+              isLoading={isLoading}
+            />
+          </div>
+          <div className="xl:col-span-5">
+            <OutputPanel
+              analysis={analyzedEpisode}
+              isLoading={isLoading}
+              error={error}
+            />
+          </div>
         </main>
         
         <footer className="text-center mt-12 py-4 border-t border-gray-800">

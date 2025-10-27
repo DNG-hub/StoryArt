@@ -1,124 +1,119 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import type { SwarmUIPromptOutput, CharacterTrigger, Lora } from '../types';
+import type { AnalyzedEpisode } from '../types';
 
 if (!process.env.API_KEY) {
-    // In a real application, this would be a more robust check.
-    // Here, we're assuming the environment is set up correctly.
-    console.warn("API_KEY environment variable not set. Using a placeholder.");
+  console.warn("API_KEY environment variable not set. Using a placeholder.");
 }
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
-interface GeneratePromptParams {
-  narrative: string;
-  locationData: string;
-  characterData: string;
-  characterTriggers: CharacterTrigger[];
-  availableLoras: Lora[];
-}
-
 const responseSchema = {
   type: Type.OBJECT,
   properties: {
-    swarmUIPrompt: { 
-      type: Type.STRING,
-      description: 'The final, complete prompt for SwarmUI, including character triggers, LoRAs, style markers, and segmentation tags.'
-    },
-    loraTriggersUsed: {
+    episodeNumber: { type: Type.NUMBER, description: "The episode number parsed from the script." },
+    title: { type: Type.STRING, description: "The episode title parsed from the script." },
+    scenes: {
       type: Type.ARRAY,
-      description: 'A list of LoRA triggers that were incorporated into the prompt.',
       items: {
         type: Type.OBJECT,
         properties: {
-          type: { type: Type.STRING, description: 'Either "Character" or "Style".' },
-          value: { type: Type.STRING, description: 'The LoRA trigger string, e.g., "<lora:filename:weight>".' },
+          sceneNumber: { type: Type.NUMBER },
+          title: { type: Type.STRING },
+          metadata: {
+            type: Type.OBJECT,
+            properties: {
+              targetDuration: { type: Type.STRING },
+              sceneRole: { type: Type.STRING },
+              timing: { type: Type.STRING },
+              adBreak: { type: Type.BOOLEAN },
+            },
+            required: ['targetDuration', 'sceneRole', 'timing', 'adBreak']
+          },
+          beats: {
+            type: Type.ARRAY,
+            description: "A list of distinct visual moments or 'beats' within the scene.",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                beatText: { type: Type.STRING, description: "The verbatim text content of the beat." },
+                beatType: { type: Type.STRING, description: "The primary classification of the beat." },
+                visualSignificance: { type: Type.STRING, description: "How important this beat is to visualize." },
+                imageRequirement: { type: Type.STRING, description: "Recommendation for image generation." },
+                justification: { type: Type.STRING, description: "Reasoning for the image requirement recommendation." },
+                cameraAngleSuggestion: { type: Type.STRING, description: "Optional suggestion for camera framing or perspective." },
+                characterPositioning: { type: Type.STRING, description: "Optional description of character positions and interactions." },
+                locationAttributes: { 
+                    type: Type.ARRAY, 
+                    description: "An array of `prompt_fragment` strings extracted from the most relevant `artifacts` in the Episode Context JSON that apply to this specific beat.",
+                    items: { type: Type.STRING }
+                },
+              },
+              required: ['beatText', 'beatType', 'visualSignificance', 'imageRequirement', 'justification']
+            }
+          }
         },
-        required: ['type', 'value']
-      },
-    },
-    swarmUIParameters: {
-      type: Type.OBJECT,
-      description: 'The standard SwarmUI parameters.',
-      properties: {
-        model: { type: Type.STRING },
-        aspectratio: { type: Type.STRING },
-        steps: { type: Type.NUMBER },
-        cfgscale: { type: Type.NUMBER },
-        sampler: { type: Type.STRING },
-        scheduler: { type: Type.STRING },
-        seed: { type: Type.NUMBER },
-      },
-      required: ['model', 'aspectratio', 'steps', 'cfgscale', 'sampler', 'scheduler', 'seed']
-    },
-    refinementSuggestions: {
-      type: Type.ARRAY,
-      description: '3-5 specific, actionable suggestions for iteratively improving the prompt.',
-      items: { type: Type.STRING }
+        required: ['sceneNumber', 'title', 'metadata', 'beats']
+      }
     }
   },
-  required: ['swarmUIPrompt', 'loraTriggersUsed', 'swarmUIParameters', 'refinementSuggestions']
+  required: ['episodeNumber', 'title', 'scenes']
 };
 
-export const generateSwarmUIPrompt = async (params: GeneratePromptParams): Promise<SwarmUIPromptOutput> => {
-  const { narrative, locationData, characterData, characterTriggers, availableLoras } = params;
 
-  const systemInstruction = `You are a creative AI prompt engineer for story-to-image workflows in SwarmUI. Your task is to transform a story narrative, location data, and character appearances into a highly detailed, optimized prompt for an image generation model called Flux.1-dev.
+export const analyzeScript = async (scriptText: string, episodeContextJson: string): Promise<AnalyzedEpisode> => {
+  const systemInstruction = `You are an expert AI script analyst and virtual set decorator for film and animation. Your task is to perform a detailed analysis of a script by cross-referencing it with a comprehensive Episode Context JSON file, which acts as the "Director's Bible."
 
-**Rules:**
-- Analyze the narrative for key scenes, emotions, actions, lighting, and composition.
-- Incorporate location details: Weather, architecture, time of day, atmosphere.
-- Precisely describe character appearances: pose, expression, clothing, interactions.
-- Use the specific character triggers provided. Substitute character names/descriptions with their corresponding trigger phrases.
-- Apply LoRAs in the format <lora:filename:weight>. Select relevant LoRAs from the provided list. Use a weight of 1.0 for subtle effects and up to 1.5 for strong effects.
-- Always append the face refinement tag at the very end of the prompt: <segment:yolo-face_yolov9c.pt,0.7,0.5>
-- Structure the prompt: Start with subject/action → Add detailed descriptors → Include style markers (e.g., cinematic, ultra-detailed, hdr) → Append segmentation tags.
-- Keep the prompt vivid and concise (under 200 words).
-- Use natural language weighting for emphasis where appropriate, e.g., (emphasized:1.2).
-- Your output MUST be a JSON object that strictly adheres to the provided schema. Do not output markdown or any other format.
-`;
+**Inputs:**
+1.  **Script Text:** A screenplay with scene markers ('===SCENE X: Title===') and metadata.
+2.  **Episode Context JSON:** A structured JSON object that provides high-level context, summaries, and, most importantly, a scene-by-scene breakdown of locations and their specific 'artifacts'. Each artifact has a 'prompt_fragment' which is essential for visual descriptions.
 
-  const userPrompt = `
-**INPUT DATA:**
+**Your Detailed Workflow:**
+1.  **Parse the Script:** Identify the episode number, title, and all scenes with their metadata directly from the Script Text.
+2.  **Segment into Beats:** For each scene in the script, segment the text into distinct visual moments or "beats." A beat is a continuous block of action or a significant character moment.
+3.  **Analyze Each Beat (CORE TASK):** For every beat you identify within a scene from the script:
+    a. **Identify Scene Context:** Determine which scene number the beat belongs to.
+    b. **Reference the "Director's Bible":** Find the corresponding scene object in the Episode Context JSON (e.g., for a beat in Scene 2 of the script, you will use the scene object where 'scene_number' is 2 in the JSON).
+    c. **Perform Standard Analysis:**
+        - **beatText:** Extract the verbatim text of the beat from the script.
+        - **beatType:** Classify the beat: 'Character Introduction', 'Action', 'Emotional', 'Dialogue', 'Environmental', 'Revelation', 'Other'.
+        - **visualSignificance:** Rate its visual importance: 'High', 'Medium', or 'Low'.
+        - **imageRequirement:** Decide the image need: 'New Image Recommended', 'Reuse Possible', or 'No Image Needed'.
+        - **justification:** Provide a concise reason for your decision.
+    d. **Populate Location Attributes (Crucial "Set Decorator" Task):**
+        i.  Read the beat's text and understand its specific sub-location and action (e.g., 'reception area', 'server vault', 'character opens a door').
+        ii. Look at the 'artifacts' array within the relevant scene from the Episode Context JSON. This is your ONLY source for artifacts.
+        iii. **Intelligently select** 2-4 of the most relevant artifacts from this list that fit the beat's specific context. Use your reasoning. For example, if the beat text describes a server room, select artifacts like "server_racks". Do NOT select artifacts that don't fit the context (e.g., do not place "The Original SledBed" in a server vault unless the script explicitly mentions it there; it belongs in a lab).
+        iv. For each artifact you select, you MUST extract its 'prompt_fragment' string.
+        v. Populate the 'locationAttributes' field with an array containing ONLY these extracted 'prompt_fragment' strings.
+    e. **Suggest Framing (Optional):**
+        - **cameraAngleSuggestion:** If relevant, suggest a camera angle.
+        - **characterPositioning:** If relevant, describe character placement.
 
-**Narrative:**
-${narrative}
-
-**Location JSON:**
-${locationData}
-
-**Character JSON:**
-${characterData}
-
-**Character Triggers:**
-${JSON.stringify(characterTriggers.map(t => ({name: t.name, trigger: t.trigger})))}
-
-**Available LoRAs:**
-${JSON.stringify(availableLoras.map(l => l.name))}
-
-**Your Task:**
-Generate the JSON object based on all the provided context and rules.
+**Output:**
+- Your entire response MUST be a single JSON object that strictly adheres to the provided schema. Do not output markdown or any other text.
 `;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: userPrompt,
+      contents: `Analyze the following script using the provided Episode Context as your guide.\n\n---SCRIPT---\n${scriptText}\n\n---EPISODE CONTEXT JSON---\n${episodeContextJson}`,
       config: {
-        systemInstruction: systemInstruction,
+        systemInstruction,
         responseMimeType: 'application/json',
         responseSchema: responseSchema,
-        temperature: 0.7,
+        temperature: 0.2,
       },
     });
 
     const jsonString = response.text.trim();
-    // Although Gemini should return valid JSON, parsing adds a layer of validation.
     const result = JSON.parse(jsonString);
-    return result as SwarmUIPromptOutput;
+    return result as AnalyzedEpisode;
 
   } catch (error) {
     console.error("Error calling Gemini API:", error);
-    throw new Error("Failed to generate prompt. The AI model may be temporarily unavailable or the request was invalid.");
+    if (error instanceof Error && error.message.includes('JSON')) {
+        throw new Error("Failed to analyze script. The AI model returned an invalid JSON structure. This can happen with complex scripts. Try simplifying the script or checking the episode context data format.");
+    }
+    throw new Error("Failed to analyze script. The AI model may be temporarily unavailable or the request was invalid.");
   }
 };
