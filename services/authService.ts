@@ -1,22 +1,15 @@
 // services/authService.ts
 
 const BASE_URL = "http://localhost:8000";
-// Securely get credentials from environment variables
-const USERNAME = process.env.CONTEXT_API_USERNAME;
-const PASSWORD = process.env.CONTEXT_API_PASSWORD;
+// Use credentials as specified in the prompt.
+const USERNAME = "dngargan@avantihealthcare.org";
+const PASSWORD = "PW+dave7071";
 
 
 let cachedToken: string | null = null;
 let tokenPromise: Promise<string> | null = null;
 
 async function login(): Promise<string> {
-  if (!USERNAME || !PASSWORD) {
-    const errorMessage = "Authentication credentials are not configured. Please set the CONTEXT_API_USERNAME and CONTEXT_API_PASSWORD environment variables.";
-    console.error(errorMessage);
-    // Throw an error that will be displayed to the user in the UI
-    throw new Error(errorMessage);
-  }
-
   const url = `${BASE_URL}/api/v1/auth/login`;
   
   const formData = new URLSearchParams();

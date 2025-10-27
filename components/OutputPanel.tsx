@@ -1,6 +1,6 @@
 import React from 'react';
-import type { AnalyzedEpisode, BeatAnalysis } from '../types';
-import { LightbulbIcon } from './icons';
+import type { AnalyzedEpisode, BeatAnalysis, ImageDecision } from '../types';
+import { LightbulbIcon, LinkIcon } from './icons';
 
 interface OutputPanelProps {
   analysis: AnalyzedEpisode | null;
@@ -9,35 +9,39 @@ interface OutputPanelProps {
   error: string | null;
 }
 
-const RequirementBadge: React.FC<{ requirement: BeatAnalysis['imageRequirement'] }> = ({ requirement }) => {
-  const baseClasses = "px-2 py-1 text-xs font-semibold rounded-full";
-  let colorClasses = "";
-  switch (requirement) {
-    case 'New Image Recommended':
-      colorClasses = 'bg-green-800 text-green-200';
+const ImageDecisionDisplay: React.FC<{ decision: ImageDecision }> = ({ decision }) => {
+  const baseClasses = "px-2 py-1 text-xs font-semibold rounded-full flex items-center gap-1.5";
+  let content: React.ReactNode;
+
+  switch (decision.type) {
+    case 'NEW_IMAGE':
+      content = <span className={`${baseClasses} bg-green-800 text-green-200`}>New Image</span>;
       break;
-    case 'Reuse Possible':
-      colorClasses = 'bg-yellow-800 text-yellow-200';
+    case 'REUSE_IMAGE':
+      content = <span className={`${baseClasses} bg-yellow-800 text-yellow-200`}><LinkIcon /> Reuse</span>;
       break;
-    case 'No Image Needed':
-      colorClasses = 'bg-gray-700 text-gray-300';
+    case 'NO_IMAGE':
+      content = <span className={`${baseClasses} bg-gray-700 text-gray-300`}>No Image</span>;
       break;
+    default:
+        content = null;
   }
-  return <span className={`${baseClasses} ${colorClasses}`}>{requirement}</span>;
+  return <div>{content}</div>;
 }
 
 const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, beatNumber: number }> = ({ beat, beatNumber }) => (
     <div className="bg-gray-900/70 p-4 rounded-lg border border-gray-700">
-        <h4 className="font-bold text-gray-300 mb-2">Beat #{beatNumber}</h4>
+        <div className="flex justify-between items-start mb-2">
+            <h4 className="font-bold text-gray-300">Beat #{beatNumber}</h4>
+            <ImageDecisionDisplay decision={beat.imageDecision} />
+        </div>
+
         <blockquote className="border-l-4 border-gray-600 pl-4 text-gray-300 italic mb-4">
             {beat.beatText}
         </blockquote>
+
         <div className="space-y-2 text-sm">
             <div className="flex justify-between items-center">
-                <span className="text-gray-400">Image Need:</span>
-                <RequirementBadge requirement={beat.imageRequirement} />
-            </div>
-             <div className="flex justify-between items-center">
                 <span className="text-gray-400">Beat Type:</span>
                 <span className="text-gray-200 font-medium">{beat.beatType}</span>
             </div>
@@ -45,6 +49,7 @@ const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, beatNumber: number }> = (
                 <span className="text-gray-400">Visual Significance:</span>
                 <span className="text-gray-200 font-medium">{beat.visualSignificance}</span>
             </div>
+            
             {beat.locationAttributes && beat.locationAttributes.length > 0 && (
                 <div className="pt-2">
                     <p className="text-gray-400 font-semibold mb-2">Location Attributes:</p>
@@ -55,12 +60,20 @@ const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, beatNumber: number }> = (
                     </div>
                 </div>
             )}
-             <div className="pt-2 mt-2 border-t border-gray-700">
+
+            <div className="pt-2 mt-2 border-t border-gray-700">
+                {beat.imageDecision.type === 'REUSE_IMAGE' && (
+                    <div className="flex items-start gap-2 text-yellow-300 mb-2 p-2 bg-yellow-900/30 rounded-md">
+                         <span className="text-yellow-400 mt-0.5 flex-shrink-0"><LinkIcon /></span>
+                         <p><span className="font-semibold">Reuse instruction:</span> Reuse image from <span className="font-bold">{beat.imageDecision.reuseSourceBeatLabel}</span>.</p>
+                    </div>
+                )}
                 <div className="flex items-start gap-2">
                     <span className="text-brand-purple mt-0.5 flex-shrink-0"><LightbulbIcon /></span>
-                    <p className="text-gray-300"><span className="font-semibold text-gray-400">Justification:</span> {beat.justification}</p>
+                    <p className="text-gray-300"><span className="font-semibold text-gray-400">Reasoning:</span> {beat.imageDecision.reason}</p>
                 </div>
             </div>
+
             {beat.cameraAngleSuggestion && (
                  <div className="pt-2">
                     <p className="text-gray-300"><span className="font-semibold text-gray-400">Camera Suggestion:</span> {beat.cameraAngleSuggestion}</p>
@@ -80,7 +93,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
     return (
       <div className="flex items-center justify-center h-full bg-gray-800/50 rounded-lg p-6 min-h-[500px]">
         <div className="text-center">
-          <svg className="animate-spin mx-auto h-12 w-12 text-brand-purple" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <svg className="animate-spin mx-auto h-12 w-12 text-brand-purple" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="http://www.w3.org/2000/svg">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
@@ -131,7 +144,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
                 <h3 className="text-xl font-semibold text-gray-300 mb-4">Visual Beats</h3>
                 <div className="space-y-4">
                     {scene.beats.map((beat, index) => (
-                        <BeatAnalysisCard key={index} beat={beat} beatNumber={index + 1} />
+                        <BeatAnalysisCard key={beat.beatId} beat={beat} beatNumber={index + 1} />
                     ))}
                 </div>
             </div>

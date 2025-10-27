@@ -5,12 +5,31 @@ export interface SceneMetadata {
   adBreak: boolean;
 }
 
+export type NewImageDecision = {
+  type: 'NEW_IMAGE';
+  reason: string;
+};
+
+export type ReuseImageDecision = {
+  type: 'REUSE_IMAGE';
+  reason: string;
+  reuseSourceBeatId: string;
+  reuseSourceBeatLabel: string;
+};
+
+export type NoImageDecision = {
+  type: 'NO_IMAGE';
+  reason: string;
+};
+
+export type ImageDecision = NewImageDecision | ReuseImageDecision | NoImageDecision;
+
 export interface BeatAnalysis {
+  beatId: string;
   beatText: string;
   beatType: 'Character Introduction' | 'Action' | 'Emotional' | 'Dialogue' | 'Environmental' | 'Revelation' | 'Other';
   visualSignificance: 'High' | 'Medium' | 'Low';
-  imageRequirement: 'New Image Recommended' | 'Reuse Possible' | 'No Image Needed';
-  justification: string;
+  imageDecision: ImageDecision;
   cameraAngleSuggestion?: string;
   characterPositioning?: string;
   locationAttributes?: string[];
@@ -27,16 +46,4 @@ export interface AnalyzedEpisode {
   episodeNumber: number;
   title: string;
   scenes: AnalyzedScene[];
-}
-
-export interface HistoryEntry {
-  id: string;
-  timestamp: number;
-  inputs: {
-    scriptText: string;
-    episodeContext: string;
-    retrievalMode: 'manual' | 'database';
-    storyUuid?: string;
-  };
-  output: AnalyzedEpisode;
 }

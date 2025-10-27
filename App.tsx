@@ -1,104 +1,92 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
-import { HistoryPanel } from './components/HistoryPanel';
 import { analyzeScript } from './services/geminiService';
 import { getEpisodeContext } from './services/contextService';
-import { parseEpisodeNumber } from './utils';
-import type { AnalyzedEpisode, HistoryEntry } from './types';
+import { parseEpisodeNumber, postProcessAnalysis } from './utils';
+import type { AnalyzedEpisode } from './types';
 import { DEFAULT_SCRIPT, DEFAULT_EPISODE_CONTEXT } from './constants';
 import { GithubIcon } from './components/icons';
 
-const HISTORY_STORAGE_KEY = 'storyboard_analysis_history';
-
 type RetrievalMode = 'manual' | 'database';
+
+// FUTURE: PHASE 2 - INTER-EPISODE CONTINUITY & ASSET MANAGEMENT
+// The current implementation provides "intra-episode" continuity by analyzing a single script in its entirety.
+// The next major evolution ("Phase 2") is to create a "long-term memory" for the AI, allowing it to make
+// image reuse decisions across multiple episodes.
+//
+// PROPOSED ARCHITECTURE:
+// 1.  VISUAL ASSET DATABASE: A dedicated backend/database to store metadata for every generated image.
+//     - Each entry would include: `imageId`, `episodeNumber`, `sceneNumber`, `beatId`, key visual elements (characters, location, props),
+//       a text description, and a link to the image file.
+// 2.  CONTEXT ENRICHMENT: Before calling the Gemini API, the app would query this database for existing assets
+//     relevant to the current script's locations and characters.
+// 3.  ENHANCED AI PROMPT: This "visual history" (a list of available, previously generated assets) would be passed
+//     to the Gemini API as part of the context.
+// 4.  AI AS ASSET MANAGER: The AI's instructions would be upgraded to: "Before recommending a NEW_IMAGE,
+//     first check the provided Visual History. If a suitable image already exists, recommend REUSE_IMAGE and
+//     provide the existing `imageId`."
+//
+// This will transform the tool from a script analyzer into a full-fledged production assistant, drastically
+// reducing redundant asset creation and enforcing visual consistency across the entire series.
 
 function App() {
   const [scriptText, setScriptText] = useState<string>(DEFAULT_SCRIPT);
   const [episodeContext, setEpisodeContext] = useState<string>(DEFAULT_EPISODE_CONTEXT);
   const [analyzedEpisode, setAnalyzedEpisode] = useState<AnalyzedEpisode | null>(null);
+  
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
 
+  const [isContextFetching, setIsContextFetching] = useState<boolean>(false);
+  const [contextError, setContextError] = useState<string | null>(null);
+  
   const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>('manual');
   const [storyUuid, setStoryUuid] = useState<string>('59f64b1e-726a-439d-a6bc-0dfefcababdb');
 
-  const initialLoad = useRef(true);
-
-  useEffect(() => {
+  const handleFetchContext = async () => {
+    setIsContextFetching(true);
+    setContextError(null);
+    setEpisodeContext('');
     try {
-      const savedHistory = localStorage.getItem(HISTORY_STORAGE_KEY);
-      if (savedHistory) {
-        setHistory(JSON.parse(savedHistory));
-      }
-    } catch (e) {
-      console.error("Failed to load history from localStorage", e);
-    }
-  }, []);
-
-  const deselectOnManualChange = () => {
-    if (initialLoad.current) {
-        initialLoad.current = false;
-        return;
-    }
-    const currentEntry = history.find(h => h.id === selectedHistoryId);
-    if (currentEntry) {
-        const inputs = currentEntry.inputs;
-        if (inputs.scriptText !== scriptText ||
-            (inputs.retrievalMode === 'manual' && inputs.episodeContext !== episodeContext) ||
-            (inputs.retrievalMode === 'database' && inputs.storyUuid !== storyUuid)) {
-            setSelectedHistoryId(null);
+        const episodeNumber = parseEpisodeNumber(scriptText);
+        if (episodeNumber === null) {
+            throw new Error("Cannot fetch context: Script must begin with 'EPISODE: X'.");
         }
+        setLoadingMessage('Fetching episode context from API...');
+        const contextData = await getEpisodeContext(storyUuid, episodeNumber);
+        const formattedContext = JSON.stringify(contextData, null, 2);
+        setEpisodeContext(formattedContext);
+    } catch (e: any) {
+        setContextError(e.message || 'An unexpected error occurred while fetching context.');
+        setEpisodeContext('');
+    } finally {
+        setIsContextFetching(false);
+        setLoadingMessage('');
     }
   };
 
-  useEffect(deselectOnManualChange, [scriptText, episodeContext, storyUuid, selectedHistoryId, history]);
+  const handleRetrievalModeChange = (mode: RetrievalMode) => {
+    setRetrievalMode(mode);
+    if (mode === 'database') {
+        handleFetchContext();
+    } else {
+        setEpisodeContext(DEFAULT_EPISODE_CONTEXT);
+        setContextError(null);
+    }
+  };
 
   const handleAnalyze = async () => {
     setIsLoading(true);
     setError(null);
     setAnalyzedEpisode(null);
-    let finalEpisodeContext = episodeContext;
+    setLoadingMessage('Analyzing script with Gemini...');
 
     try {
-        if (retrievalMode === 'database') {
-            setLoadingMessage('Parsing episode number...');
-            const episodeNumber = parseEpisodeNumber(scriptText);
-            if (episodeNumber === null) {
-                throw new Error("Analysis failed: Could not find 'EPISODE: X' at the start of the script.");
-            }
-
-            setLoadingMessage('Fetching episode context from API...');
-            const contextData = await getEpisodeContext(storyUuid, episodeNumber);
-            finalEpisodeContext = JSON.stringify(contextData, null, 2);
-            setEpisodeContext(finalEpisodeContext);
-        }
-
-      setLoadingMessage('Analyzing script with Gemini...');
-      const result = await analyzeScript(scriptText, finalEpisodeContext);
-      setAnalyzedEpisode(result);
-
-      const newEntry: HistoryEntry = {
-        id: `hist-${Date.now()}`,
-        timestamp: Date.now(),
-        inputs: { 
-            scriptText, 
-            episodeContext: finalEpisodeContext,
-            retrievalMode,
-            storyUuid,
-        },
-        output: result,
-      };
-
-      const updatedHistory = [newEntry, ...history];
-      setHistory(updatedHistory);
-      setSelectedHistoryId(newEntry.id);
-      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
-
+      const result = await analyzeScript(scriptText, episodeContext);
+      const processedResult = postProcessAnalysis(result);
+      setAnalyzedEpisode(processedResult);
     } catch (e: any) {
       console.error(e);
       setError(e.message || 'An unexpected error occurred.');
@@ -107,37 +95,6 @@ function App() {
       setLoadingMessage('');
     }
   };
-
-  const handleLoadHistory = useCallback((id: string) => {
-    const entry = history.find(h => h.id === id);
-    if (entry) {
-        initialLoad.current = true;
-        setScriptText(entry.inputs.scriptText);
-        setEpisodeContext(entry.inputs.episodeContext);
-        setAnalyzedEpisode(entry.output);
-        setRetrievalMode(entry.inputs.retrievalMode);
-        setStoryUuid(entry.inputs.storyUuid || '59f64b1e-726a-439d-a6bc-0dfefcababdb');
-        setSelectedHistoryId(id);
-        setError(null);
-    }
-  }, [history]);
-
-  const handleDeleteHistory = useCallback((id: string) => {
-    const updatedHistory = history.filter(h => h.id !== id);
-    setHistory(updatedHistory);
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
-    if (selectedHistoryId === id) {
-        setSelectedHistoryId(null);
-    }
-  }, [history, selectedHistoryId]);
-
-  const handleClearHistory = useCallback(() => {
-    if (window.confirm('Are you sure you want to clear all history? This cannot be undone.')) {
-        setHistory([]);
-        localStorage.removeItem(HISTORY_STORAGE_KEY);
-        setSelectedHistoryId(null);
-    }
-  }, []);
 
 
   return (
@@ -152,16 +109,7 @@ function App() {
           </p>
         </header>
 
-        <main className="grid grid-cols-1 xl:grid-cols-12 gap-8 flex-grow">
-          <div className="xl:col-span-3">
-             <HistoryPanel
-                history={history}
-                selectedId={selectedHistoryId}
-                onLoad={handleLoadHistory}
-                onDelete={handleDeleteHistory}
-                onClear={handleClearHistory}
-             />
-          </div>
+        <main className="grid grid-cols-1 xl:grid-cols-9 gap-8 flex-grow">
           <div className="xl:col-span-4">
             <InputPanel
               script={scriptText}
@@ -171,8 +119,10 @@ function App() {
               onAnalyze={handleAnalyze}
               isLoading={isLoading}
               loadingMessage={loadingMessage}
+              isContextFetching={isContextFetching}
+              contextError={contextError}
               retrievalMode={retrievalMode}
-              setRetrievalMode={setRetrievalMode}
+              onRetrievalModeChange={handleRetrievalModeChange}
               storyUuid={storyUuid}
               setStoryUuid={setStoryUuid}
             />
