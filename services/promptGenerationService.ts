@@ -1,6 +1,8 @@
 // FIX: Corrected import path for Google GenAI SDK.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig } from '../types';
+import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext } from '../types';
+import { generateEnhancedEpisodeContext } from './databaseContextService';
+import { applyLoraTriggerSubstitution } from '../utils';
 
 const swarmUIPromptSchema = {
     type: Type.OBJECT,
@@ -32,20 +34,82 @@ const responseSchema = {
 export const generateSwarmUiPrompts = async (
     analyzedEpisode: AnalyzedEpisode,
     episodeContextJson: string,
-    styleConfig: EpisodeStyleConfig
+    styleConfig: EpisodeStyleConfig,
+    retrievalMode: RetrievalMode = 'manual',
+    storyId?: string
 ): Promise<BeatPrompts[]> => {
     if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable not set. Cannot generate prompts.");
     }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+    const beatsForPrompting = analyzedEpisode.scenes.flatMap(scene =>
+        scene.beats.filter(beat => beat.imageDecision.type === 'NEW_IMAGE')
+    );
+
+    if (beatsForPrompting.length === 0) {
+        return [];
+    }
+
+    // Enhanced context processing for database mode
+    let enhancedContextJson = episodeContextJson;
+    let contextSource = 'manual';
+    
+    if (retrievalMode === 'database' && storyId) {
+        try {
+            console.log('Generating enhanced episode context from database...');
+            const enhancedContext = await generateEnhancedEpisodeContext(
+                storyId,
+                analyzedEpisode.episodeNumber,
+                analyzedEpisode.title,
+                `Episode ${analyzedEpisode.episodeNumber} analysis`, // Basic summary
+                analyzedEpisode.scenes.map(scene => ({
+                    scene_number: scene.sceneNumber,
+                    scene_title: scene.title,
+                    scene_summary: scene.metadata.sceneRole,
+                    location: scene.beats[0]?.locationAttributes ? {
+                        name: scene.beats[0].locationAttributes[0] || 'Unknown Location',
+                        description: 'Location from beat analysis',
+                        visual_description: 'Visual description from database',
+                        artifacts: []
+                    } : null
+                }))
+            );
+            
+            enhancedContextJson = JSON.stringify(enhancedContext, null, 2);
+            contextSource = 'database';
+            console.log('✅ Enhanced context generated from database');
+        } catch (error) {
+            console.warn('Failed to generate enhanced context from database, falling back to manual context:', error);
+            contextSource = 'manual (fallback)';
+        }
+    }
+    
+    // Helper to parse aspect ratio string like "16:9"
+    const parseAspectRatio = (ratioStr: string) => {
+      const [w, h] = ratioStr.split(':').map(Number);
+      return w / h;
+    }
+
+    // A base width to calculate heights from
+    const baseResolution = 1024;
+    const cinematicRatio = parseAspectRatio(styleConfig.cinematicAspectRatio);
+    const verticalRatio = parseAspectRatio(styleConfig.verticalAspectRatio);
+
+    const cinematicWidth = Math.round(Math.sqrt(baseResolution * baseResolution * cinematicRatio) / 8) * 8;
+    const cinematicHeight = Math.round(cinematicWidth / cinematicRatio / 8) * 8;
+    
+    const verticalHeight = Math.round(Math.sqrt(baseResolution * baseResolution / verticalRatio) / 8) * 8;
+    const verticalWidth = Math.round(verticalHeight * verticalRatio / 8) * 8;
+
+    // Create system instruction with context source information
     const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts. You must synthesize information from multiple sources and, most importantly, **translate narrative prose into purely visual descriptions**. For each beat, generate TWO distinct prompts: one cinematic (16:9) and one vertical (9:16).
 
 **Your Mandate: THINK LIKE A CAMERA. If you can't see it, don't describe it. Translate abstract concepts into concrete visuals.**
 
 **Inputs:**
 1.  **Beat Analysis JSON:** This is the primary input. It contains the high-level summary of the action ('core_action'), the original script text ('beat_script_text'), the desired 'emotional_tone', a 'visual_anchor', camera notes, character positions, and pre-selected 'locationAttributes' for the shot.
-2.  **Episode Context JSON:** The "Director's Bible." This is your primary source for character and location details.
+2.  **Episode Context JSON:** The "Director's Bible." This is your primary source for character and location details. **Context Source: ${contextSource}** - When using database context, you have access to rich location-specific character appearances, detailed artifacts with SwarmUI prompt fragments, and atmospheric context. Use this enhanced data to create more accurate and detailed prompts.
 3.  **Episode Style Config:** Contains the global 'stylePrefix' (e.g., "cinematic, gritty"), 'model', and aspect ratios.
 
 **Your Detailed Workflow for EACH Beat:**
@@ -55,7 +119,8 @@ export const generateSwarmUiPrompts = async (
         i.  **Identify Characters using Aliases (CRITICAL):** When you identify a name in the script's 'beat_script_text' (e.g., "Cat", "Daniel", "O'Brien"), you MUST cross-reference it with both the 'character_name' and the 'aliases' array for each character in the Episode Context to find the correct profile. This is mandatory for identifying characters correctly when nicknames or partial names are used.
         ii. **Use Correct Trigger Syntax:** Once a character is identified, you MUST use their 'base_trigger'. You MUST format the prompt with the unadorned trigger word, followed by a parenthetical group of key visual descriptors. Example: \`JRUMLV woman (athletic build, tactical gear, hair in a tight bun)\`. Do NOT use weighted syntax like (trigger:1.2).
         iii. **Contextualize Appearance:** Critically evaluate the character's 'visual_description' against the current scene's location and narrative. Do not just copy the description. You must ensure their clothing, hair, and overall state are appropriate for the environment. For example, if a character's base description is 'wearing a pristine lab coat' but the scene is in a 'bombed-out ruin', you must describe them as 'wearing a torn, dust-covered lab coat'. This contextual adaptation is mandatory.
-    b.  **Environment:** Use 'locationAttributes' as your primary set dressing. Supplement with the overall mood from the location's 'visual_description' in the context. **Crucially, all scenes are interior shots.** To prevent the model from defaulting to outdoor scenes, you MUST explicitly include terms like "interior shot," "inside the facility," or "within a room" in the environment description.
+        iv. **Database Context Enhancement (when available):** When using database context, characters have 'location_contexts' arrays that provide location-specific appearance data. Use the 'swarmui_prompt_override' field when available, as it contains pre-optimized character descriptions for specific locations. This provides 10x more visual detail than generic descriptions.
+    b.  **Environment:** Use 'locationAttributes' as your primary set dressing. Supplement with the overall mood from the location's 'visual_description' in the context. **Crucially, all scenes are interior shots.** To prevent the model from defaulting to outdoor scenes, you MUST explicitly include terms like "interior shot," "inside the facility," or "within a room" in the environment description. **Database Context Enhancement (when available):** When using database context, locations have detailed 'artifacts' arrays with 'swarmui_prompt_fragment' fields that provide ready-to-use visual elements. Integrate these fragments naturally into your environment descriptions for richer, more accurate visuals.
     c.  **Composition & Character Positioning Intelligence (Flux Model Targeting):**
         This is a critical step to ensure characters are positioned believably. You must apply the following rules, which are designed to counteract known quirks in the Flux diffusion model.
         i.  **Default to Facing Camera:** By default, characters should face the viewer. You MUST proactively use explicit phrases like "facing the camera," "looking at the viewer," "portrait of," or "making eye contact with the camera" to ensure this. This is the baseline rule.
@@ -95,36 +160,10 @@ export const generateSwarmUiPrompts = async (
 **Output:**
 - Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId' and BOTH the 'cinematic' and 'vertical' prompt objects, strictly adhering to the provided schema.`;
 
-    const beatsForPrompting = analyzedEpisode.scenes.flatMap(scene =>
-        scene.beats.filter(beat => beat.imageDecision.type === 'NEW_IMAGE')
-    );
-
-    if (beatsForPrompting.length === 0) {
-        return [];
-    }
-    
-    // Helper to parse aspect ratio string like "16:9"
-    const parseAspectRatio = (ratioStr: string) => {
-      const [w, h] = ratioStr.split(':').map(Number);
-      return w / h;
-    }
-
-    // A base width to calculate heights from
-    const baseResolution = 1024;
-    const cinematicRatio = parseAspectRatio(styleConfig.cinematicAspectRatio);
-    const verticalRatio = parseAspectRatio(styleConfig.verticalAspectRatio);
-
-    const cinematicWidth = Math.round(Math.sqrt(baseResolution * baseResolution * cinematicRatio) / 8) * 8;
-    const cinematicHeight = Math.round(cinematicWidth / cinematicRatio / 8) * 8;
-    
-    const verticalHeight = Math.round(Math.sqrt(baseResolution * baseResolution / verticalRatio) / 8) * 8;
-    const verticalWidth = Math.round(verticalHeight * verticalRatio / 8) * 8;
-
-
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Generate SwarmUI prompts for the following beat analyses, using the provided Episode Context for character details and the Style Config for aesthetic guidance.\n\n---BEAT ANALYSES---\n${JSON.stringify(beatsForPrompting, null, 2)}\n\n---EPISODE CONTEXT JSON---\n${episodeContextJson}\n\n---EPISODE STYLE CONFIG---\n${JSON.stringify({ ...styleConfig, cinematicWidth, cinematicHeight, verticalWidth, verticalHeight }, null, 2)}`,
+            contents: `Generate SwarmUI prompts for the following beat analyses, using the provided Episode Context for character details and the Style Config for aesthetic guidance.\n\n---BEAT ANALYSES---\n${JSON.stringify(beatsForPrompting, null, 2)}\n\n---EPISODE CONTEXT JSON (Source: ${contextSource})---\n${enhancedContextJson}\n\n---EPISODE STYLE CONFIG---\n${JSON.stringify({ ...styleConfig, cinematicWidth, cinematicHeight, verticalWidth, verticalHeight }, null, 2)}`,
             config: {
                 systemInstruction,
                 responseMimeType: 'application/json',
@@ -134,8 +173,27 @@ export const generateSwarmUiPrompts = async (
         });
 
         const jsonString = response.text.trim();
-        const result = JSON.parse(jsonString);
-        return result as BeatPrompts[];
+        const result = JSON.parse(jsonString) as BeatPrompts[];
+
+        // Apply LORA trigger substitution based on character contexts
+        try {
+            const contextObj = JSON.parse(episodeContextJson);
+            const characterContexts = contextObj.episode.characters as Array<{ character_name: string; aliases: string[]; base_trigger: string }>;
+            return result.map(bp => ({
+                ...bp,
+                cinematic: {
+                    ...bp.cinematic,
+                    prompt: applyLoraTriggerSubstitution(bp.cinematic.prompt, characterContexts),
+                },
+                vertical: {
+                    ...bp.vertical,
+                    prompt: applyLoraTriggerSubstitution(bp.vertical.prompt, characterContexts),
+                }
+            }));
+        } catch (e) {
+            console.warn('Failed to apply LORA trigger substitution:', e);
+            return result;
+        }
 
     } catch (error) {
         console.error("Error calling Gemini API for prompt generation:", error);

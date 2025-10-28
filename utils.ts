@@ -68,7 +68,7 @@ export function postProcessAnalysis(analysis: AnalyzedEpisode): AnalyzedEpisode 
     // First, create a map of all beat IDs to their human-readable labels
     analysis.scenes.forEach(scene => {
       scene.beats.forEach((beat) => {
-        const beatLabel = `Scene ${scene.sceneNumber}, Beat #${beat.beat_number} (${beat.beat_title})`;
+        const beatLabel = `Scene ${scene.sceneNumber}, Beat ${beat.beatId}`;
         if (beat.beatId) {
             beatMap.set(beat.beatId.trim(), beatLabel);
         }
@@ -92,4 +92,28 @@ export function postProcessAnalysis(analysis: AnalyzedEpisode): AnalyzedEpisode 
     });
   
     return analysis;
+}
+
+/**
+ * Escapes RegExp special characters in a string.
+ */
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Replaces occurrences of character names or aliases with their base trigger within a prompt string.
+ */
+export function applyLoraTriggerSubstitution(
+  prompt: string,
+  characterContexts: Array<{ character_name: string; aliases: string[]; base_trigger: string }>
+): string {
+  let substituted = prompt;
+  characterContexts.forEach(({ character_name, aliases = [], base_trigger }) => {
+    const names = [character_name, ...aliases];
+    const pattern = names.map(name => `\\b${escapeRegExp(name)}\\b`).join('|');
+    const regex = new RegExp(pattern, 'g');
+    substituted = substituted.replace(regex, base_trigger);
+  });
+  return substituted;
 }
