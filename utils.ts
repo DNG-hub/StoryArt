@@ -112,7 +112,7 @@ export function applyLoraTriggerSubstitution(
   characterContexts.forEach(({ character_name, aliases = [], base_trigger }) => {
     const names = [character_name, ...aliases];
     const pattern = names.map(name => `\\b${escapeRegExp(name)}\\b`).join('|');
-    const regex = new RegExp(pattern, 'g');
+    const regex = new RegExp(pattern, 'gi');
     substituted = substituted.replace(regex, base_trigger);
   });
   return substituted;

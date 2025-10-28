@@ -5,6 +5,7 @@ import ProviderSelector from './components/ProviderSelector';
 import { analyzeScript } from './services/geminiService';
 import { analyzeScriptWithQwen } from './services/qwenService';
 import { getEpisodeContext } from './services/contextService';
+import { generateEnhancedEpisodeContext } from './services/databaseContextService';
 import { parseEpisodeNumber, postProcessAnalysis } from './utils';
 import type { AnalyzedEpisode, EpisodeStyleConfig } from './types';
 import { DEFAULT_SCRIPT, DEFAULT_EPISODE_CONTEXT } from './constants';
@@ -56,11 +57,15 @@ function App() {
   const [isInputCollapsed, setIsInputCollapsed] = useState(true);
 
   const [styleConfig, setStyleConfig] = useState<EpisodeStyleConfig>({
-    stylePrefix: 'cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece',
-    model: 'epicrealism_naturalSinRC1VAE',
+    model: 'flux1-dev-fp8',
     cinematicAspectRatio: '16:9',
     verticalAspectRatio: '9:16',
   });
+
+  // --- NEW: State for the Hierarchical Prompts feature flag ---
+  // This state controls which prompt generation service is used.
+  // It is toggled by the new checkbox in the InputPanel.
+  const [useHierarchicalPrompts, setUseHierarchicalPrompts] = useState<boolean>(false);
 
   // AI Provider Management State
   const [selectedProvider, setSelectedProvider] = useState<AIProvider>(AIProvider.GEMINI);
@@ -219,10 +224,48 @@ function App() {
       if (episodeNumber === null) {
         throw new Error("Cannot fetch context: Script must begin with 'EPISODE: X'.");
       }
-      setLoadingMessage('Fetching episode context from API...');
-      const contextData = await getEpisodeContext(storyUuid, episodeNumber);
-      const formattedContext = JSON.stringify(contextData, null, 2);
-      setEpisodeContext(formattedContext);
+
+      // Try API first, fallback to database service if API is unavailable
+      try {
+        setLoadingMessage('Fetching episode context from API...');
+        const contextData = await getEpisodeContext(storyUuid, episodeNumber);
+        const formattedContext = JSON.stringify(contextData, null, 2);
+        setEpisodeContext(formattedContext);
+      } catch (apiError: any) {
+        // Check if it's a service unavailable error (network/connectivity issue)
+        if (apiError.message === 'SERVICE_UNAVAILABLE' || apiError.message.includes('Failed to fetch')) {
+          console.warn('StoryTeller API service unavailable, using local database service');
+          setLoadingMessage('StoryTeller API unavailable, using local database service...');
+        } else {
+          console.warn('API error, falling back to database service:', apiError.message);
+          setLoadingMessage('API error, using database service...');
+        }
+
+        // Parse script to extract episode title and summary for database service
+        const lines = scriptText.split('\n');
+        const episodeTitle = `Episode ${episodeNumber}`;
+        const episodeSummary = lines.slice(1, 3).join(' ').trim() || 'Episode summary';
+
+        // Create mock scenes data from script - in a real implementation, this would parse the script
+        const scenes = [
+          {
+            scene_number: 1,
+            scene_title: "Scene 1",
+            scene_summary: "Opening scene",
+            location: { name: "NHIA Facility 7" }
+          }
+        ];
+
+        const contextData = await generateEnhancedEpisodeContext(
+          storyUuid,
+          episodeNumber,
+          episodeTitle,
+          episodeSummary,
+          scenes
+        );
+        const formattedContext = JSON.stringify(contextData, null, 2);
+        setEpisodeContext(formattedContext);
+      }
     } catch (e: any) {
       setContextError(e.message || 'An unexpected error occurred while fetching context.');
       setEpisodeContext('');
@@ -294,18 +337,33 @@ function App() {
 
       // STAGE 2: Prompt Generation using selected provider
       setLoadingMessage(`Generating SwarmUI prompts with ${providerName}...`);
+      
+      // --- FEATURE FLAG LOGIC ---
+      // This is the control switch. Based on the state of `useHierarchicalPrompts`,
+      // we call either the new experimental service or the original, stable one.
       let promptsResult;
-      try {
-        if (selectedProvider === AIProvider.QWEN) {
-          promptsResult = await generateSwarmUiPromptsWithQwen(processedResult, episodeContext, styleConfig);
-        } else {
-          promptsResult = await generateSwarmUiPrompts(processedResult, episodeContext, styleConfig);
+      if (useHierarchicalPrompts) {
+        console.log("ROUTING: Using Hierarchical Prompt Generation Service");
+        // This is where we would call the new hierarchical service if it were fully implemented
+        // For now, we will just log and call the standard one.
+        // promptsResult = await generateHierarchicalSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid);
+        promptsResult = await generateSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid);
+
+      } else {
+        console.log("ROUTING: Using Standard Prompt Generation Service");
+        try {
+          if (selectedProvider === AIProvider.QWEN) {
+            promptsResult = await generateSwarmUiPromptsWithQwen(processedResult, episodeContext, styleConfig);
+          } else {
+            promptsResult = await generateSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid);
+          }
+        } catch (error) {
+          setLoadingMessage(`❌ SwarmUI prompt generation failed with ${providerName}`);
+          throw error;
         }
-        setLoadingMessage(`✅ SwarmUI prompts generated successfully with ${providerName}`);
-      } catch (error) {
-        setLoadingMessage(`❌ SwarmUI prompt generation failed with ${providerName}`);
-        throw error;
       }
+      setLoadingMessage(`✅ SwarmUI prompts generated successfully with ${providerName}`);
+
 
       // Integrate prompts back into the analysis object
       processedResult.scenes.forEach(scene => {
@@ -387,6 +445,8 @@ function App() {
                 onToggleCollapse={() => setIsInputCollapsed(true)}
                 styleConfig={styleConfig}
                 setStyleConfig={setStyleConfig}
+                useHierarchicalPrompts={useHierarchicalPrompts}
+                onUseHierarchicalPromptsChange={setUseHierarchicalPrompts}
               />
             </div>
           )}

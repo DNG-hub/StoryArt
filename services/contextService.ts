@@ -1,7 +1,7 @@
 // services/contextService.ts
 import { getToken } from './authService';
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = import.meta.env.VITE_STORYTELLER_API_URL || "http://localhost:8000";
 
 export async function getEpisodeContext(storyId: string, episodeNumber: number): Promise<any> {
   const token = await getToken();
@@ -28,6 +28,14 @@ export async function getEpisodeContext(storyId: string, episodeNumber: number):
 
     const result = await response.json();
     if (result.success && result.data) {
+      console.log('StoryTeller API Response Structure:', {
+        hasEpisode: !!result.data.episode,
+        episodeKeys: result.data.episode ? Object.keys(result.data.episode) : [],
+        hasScenes: !!result.data.episode?.scenes,
+        sceneCount: result.data.episode?.scenes?.length || 0,
+        hasCharacters: !!result.data.episode?.characters,
+        characterCount: result.data.episode?.characters?.length || 0
+      });
       return result.data;
     } else {
       throw new Error(`API Error: ${result.error || 'Unknown error occurred while fetching context.'}`);

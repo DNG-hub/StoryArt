@@ -7,6 +7,7 @@ interface OutputPanelProps {
   isLoading: boolean;
   loadingMessage: string;
   error: string | null;
+  onReset: () => void;
 }
 
 const ImageDecisionDisplay: React.FC<{ decision: ImageDecision }> = ({ decision }) => {
@@ -103,7 +104,7 @@ const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beat
         </div>
 
         <blockquote className="border-l-4 border-gray-600 pl-4 text-gray-400 italic mb-4 whitespace-pre-wrap">
-            {beat.beatText}
+            {beat.beat_script_text}
         </blockquote>
 
         <div className="space-y-3 text-sm">
@@ -245,6 +246,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
       <div className="bg-red-900/50 border border-red-700 text-red-200 p-6 rounded-lg">
         <h2 className="text-2xl font-bold mb-2">Error</h2>
         <p>{error}</p>
+        <button onClick={onReset} className="bg-brand-blue hover:bg-brand-purple text-white font-bold py-2 px-4 rounded mt-4">Try Again</button>
       </div>
     );
   }

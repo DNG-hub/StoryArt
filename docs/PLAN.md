@@ -768,3 +768,36 @@ interface ImportMeta {
     -   [ ] Create a new exported function: `refinePrompt(currentPrompt: string, attributesToAdd: string[]): Promise<string>`.
     -   [ ] This function will use a new, specialized system instruction for Gemini, focused on surgical insertion and stylistic preservation.
     -   [ ] The function will return the newly refined prompt string for display in the modal's textarea.
+
+---
+
+## Phase 3.1: Advanced Hierarchical Prompt Generation (Risk-Free Approach)
+
+**Status:** 📋 **PROPOSED**
+**Goal:** Enhance the prompt generator to understand and utilize the hierarchical location data (e.g., specific rooms within a building) to create visually consistent and recognizable backgrounds across different scenes in the same location. This will be implemented as a safe, parallel system that does not interfere with existing Phase 2 or 3 work.
+
+-   [ ] **3.1.1: Non-Disruptive Database Augmentation:**
+    -   [ ] Add two new nullable text fields to the `storyart_location_hierarchy` table:
+        -   `defining_visual_features`: An array of keywords for specific sub-locations (e.g., `['rows of server racks', 'blinking status lights']` for a server room).
+        -   `ambient_prompt_fragment`: A baseline visual description for parent locations to ensure a consistent look and feel (e.g., `"interior of a ruined CDC facility, brutalist concrete architecture, eerie silence"`).
+    -   **Safety:** This is a non-destructive change. The existing application will be unaffected as it will ignore these new columns.
+
+-   [ ] **3.1.2: Isolate New Logic in Parallel Functions:**
+    -   [ ] Create a new function in `databaseContextService.ts`: `getHierarchicalLocationContext()`.
+    -   [ ] Create a new, separate prompt generation function in `promptGenerationService.ts`: `generateHierarchicalSwarmUiPrompts()`.
+    -   **Safety:** The original `generateSwarmUiPrompts()` function will remain completely untouched, isolating all new logic and preventing regressions.
+
+-   [ ] **3.1.3: Implement a "Control Switch" (Feature Flag):**
+    -   [ ] Introduce a new boolean parameter, `useHierarchicalPrompts`, to the main generation service.
+    -   [ ] **Default (`false`):** The system will call the original, proven `generateSwarmUiPrompts()` function.
+    -   [ ] **Activated (`true`):** The system will call the new `generateHierarchicalSwarmUiPrompts()` function.
+    -   **Safety:** This provides complete control to test the new system on a per-run basis without impacting the default workflow.
+
+-   [ ] **3.1.4: Design Graceful Fallbacks:**
+    -   [ ] The new `generateHierarchicalSwarmUiPrompts()` will check if the required hierarchical data exists for a given location.
+    -   [ ] If data is present, it will use the advanced, layered prompt construction.
+    -   [ ] If data is missing, it will automatically fall back to the original method of using `locationAttributes` for that specific beat.
+    -   **Safety:** This allows for incremental data population and testing. The system will remain robust even with incomplete data.
+
+-   [ ] **3.1.5: Update Beat Analysis Process:**
+    -   [ ] Enhance the initial script analysis to resolve beat locations to a specific `id` from the `storyart_location_hierarchy` table, which is required for the new service to fetch the correct context.

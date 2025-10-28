@@ -1,8 +1,109 @@
 import React, { useState, useEffect } from 'react';
 import { GenerateIcon, PanelCollapseIcon } from './icons';
-import type { EpisodeStyleConfig } from '../types';
+import type { EpisodeStyleConfig, RetrievalMode } from '../types';
 
-type RetrievalMode = 'manual' | 'database';
+// Database context quality indicator component
+const DatabaseContextIndicator: React.FC<{
+  retrievalMode: RetrievalMode;
+  episodeContext: string;
+  contextError: string | null;
+  isContextFetching: boolean;
+}> = ({ retrievalMode, episodeContext, contextError, isContextFetching }) => {
+  const [contextQuality, setContextQuality] = useState<'none' | 'basic' | 'rich'>('none');
+  const [contextMetrics, setContextMetrics] = useState({
+    locations: 0,
+    artifacts: 0,
+    characterContexts: 0,
+    tacticalOverrides: 0
+  });
+
+  useEffect(() => {
+    if (retrievalMode === 'database' && episodeContext && !contextError && !isContextFetching) {
+      try {
+        const context = JSON.parse(episodeContext);
+        
+        // Analyze context quality based on structure
+        const locations = context.episode?.scenes?.length || 0;
+        const artifacts = context.episode?.scenes?.reduce((total: number, scene: any) => 
+          total + (scene.location?.artifacts?.length || 0), 0) || 0;
+        const characterContexts = context.episode?.characters?.reduce((total: number, char: any) => 
+          total + (char.location_contexts?.length || 0), 0) || 0;
+        const tacticalOverrides = context.episode?.scenes?.filter((scene: any) => 
+          scene.location?.tactical_override_location).length || 0;
+
+        setContextMetrics({ locations, artifacts, characterContexts, tacticalOverrides });
+
+        // Determine quality level
+        if (locations > 0 && artifacts > 0 && characterContexts > 0) {
+          setContextQuality('rich');
+        } else if (locations > 0 || artifacts > 0) {
+          setContextQuality('basic');
+        } else {
+          setContextQuality('none');
+        }
+      } catch (error) {
+        setContextQuality('none');
+        setContextMetrics({ locations: 0, artifacts: 0, characterContexts: 0, tacticalOverrides: 0 });
+      }
+    } else {
+      setContextQuality('none');
+      setContextMetrics({ locations: 0, artifacts: 0, characterContexts: 0, tacticalOverrides: 0 });
+    }
+  }, [retrievalMode, episodeContext, contextError, isContextFetching]);
+
+  if (retrievalMode !== 'database') {
+    return null;
+  }
+
+  const getQualityColor = () => {
+    switch (contextQuality) {
+      case 'rich': return 'text-green-400 bg-green-900/20 border-green-700';
+      case 'basic': return 'text-yellow-400 bg-yellow-900/20 border-yellow-700';
+      case 'none': return 'text-gray-400 bg-gray-900/20 border-gray-700';
+      default: return 'text-gray-400 bg-gray-900/20 border-gray-700';
+    }
+  };
+
+  const getQualityLabel = () => {
+    switch (contextQuality) {
+      case 'rich': return 'Rich Database Context';
+      case 'basic': return 'Basic Database Context';
+      case 'none': return 'No Database Context';
+      default: return 'Unknown Context';
+    }
+  };
+
+  return (
+    <div className={`border rounded-lg p-3 ${getQualityColor()}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium">{getQualityLabel()}</span>
+        {isContextFetching && (
+          <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        )}
+      </div>
+      
+      {contextError ? (
+        <div className="text-xs text-red-400">
+          Error: {contextError}
+        </div>
+      ) : contextQuality !== 'none' ? (
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div>Locations: {contextMetrics.locations}</div>
+          <div>Artifacts: {contextMetrics.artifacts}</div>
+          <div>Character Contexts: {contextMetrics.characterContexts}</div>
+          <div>Tactical Overrides: {contextMetrics.tacticalOverrides}</div>
+        </div>
+      ) : (
+        <div className="text-xs opacity-75">
+          {isContextFetching ? 'Loading context...' : 'No context data available'}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface InputPanelProps {
   script: string;
@@ -21,6 +122,8 @@ interface InputPanelProps {
   onToggleCollapse: () => void;
   styleConfig: EpisodeStyleConfig;
   setStyleConfig: (config: EpisodeStyleConfig) => void;
+  useHierarchicalPrompts: boolean;
+  onUseHierarchicalPromptsChange: (value: boolean) => void;
 }
 
 const RetrievalModeSwitch: React.FC<{
@@ -50,31 +153,19 @@ const RetrievalModeSwitch: React.FC<{
 const StyleConfigPanel: React.FC<{
   config: EpisodeStyleConfig;
   setConfig: (config: EpisodeStyleConfig) => void;
-}> = ({ config, setConfig }) => {
+  useHierarchicalPrompts: boolean;
+  onUseHierarchicalPromptsChange: (value: boolean) => void;
+}> = ({ config, setConfig, useHierarchicalPrompts, onUseHierarchicalPromptsChange }) => {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         setConfig({ ...config, [e.target.name]: e.target.value });
     }
 
     return (
-        <details className="bg-gray-900/50 border border-gray-700 rounded-lg">
+        <details className="bg-gray-900/50 border border-gray-700 rounded-lg" open>
             <summary className="px-4 py-3 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-800/50">
                 Episode Style Configuration
             </summary>
             <div className="p-4 border-t border-gray-700 space-y-4">
-                <div>
-                    <label htmlFor="stylePrefix" className="block text-xs font-medium text-gray-400 mb-1">
-                        Style Prefix
-                    </label>
-                    <textarea
-                        id="stylePrefix"
-                        name="stylePrefix"
-                        value={config.stylePrefix}
-                        onChange={handleChange}
-                        rows={2}
-                        className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-xs text-gray-200 focus:ring-1 focus:ring-brand-blue focus:border-brand-blue"
-                        placeholder="e.g., cinematic, gritty, photorealistic..."
-                    />
-                </div>
                 <div>
                     <label htmlFor="model" className="block text-xs font-medium text-gray-400 mb-1">
                         SwarmUI Model
@@ -86,8 +177,25 @@ const StyleConfigPanel: React.FC<{
                         value={config.model}
                         onChange={handleChange}
                         className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-xs text-gray-200 focus:ring-1 focus:ring-brand-blue focus:border-brand-blue"
-                        placeholder="e.g., epicrealism_naturalSinRC1VAE"
+                        placeholder="e.g., flux1-dev-fp8"
                     />
+                </div>
+                {/* --- HIERARCHICAL PROMPTS FEATURE FLAG --- */}
+                <div className="pt-4 border-t border-gray-700">
+                    <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={useHierarchicalPrompts}
+                            onChange={(e) => onUseHierarchicalPromptsChange(e.target.checked)}
+                            className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-brand-blue focus:ring-brand-blue"
+                        />
+                        <span className="text-gray-300 font-semibold text-sm">
+                            Enable Hierarchical Prompts
+                            <p className="text-xs text-gray-500 font-normal">
+                                (Experimental) Use advanced, context-aware prompt generation.
+                            </p>
+                        </span>
+                    </label>
                 </div>
             </div>
         </details>
@@ -111,6 +219,8 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   onToggleCollapse,
   styleConfig,
   setStyleConfig,
+  useHierarchicalPrompts,
+  onUseHierarchicalPromptsChange
 }) => {
   const [isContextJsonValid, setIsContextJsonValid] = useState(true);
 
@@ -130,6 +240,55 @@ export const InputPanel: React.FC<InputPanelProps> = ({
       setIsContextJsonValid(true); // Not in manual mode, so no validation needed here
     }
   }, [episodeContext, retrievalMode]);
+
+  const getGenerateButtonText = () => {
+    if (isLoading) {
+      return loadingMessage || 'Analyzing...';
+    }
+    
+    if (retrievalMode === 'database' && episodeContext && !contextError) {
+      try {
+        const context = JSON.parse(episodeContext);
+        const scenes = context.episode?.scenes || [];
+        const tacticalScenes = scenes.filter((scene: any) => scene.location?.tactical_override_location);
+        
+        if (tacticalScenes.length > 0) {
+          return `Generate with ${tacticalScenes.length} tactical location${tacticalScenes.length > 1 ? 's' : ''}`;
+        } else if (scenes.length > 0) {
+          return `Generate with ${scenes.length} database location${scenes.length > 1 ? 's' : ''}`;
+        }
+      } catch (error) {
+        // Fall back to default text if parsing fails
+      }
+    }
+    
+    return 'Analyze Script';
+  };
+
+  const getGenerateButtonSubtext = () => {
+    if (isLoading || retrievalMode === 'manual') {
+      return null;
+    }
+    
+    if (retrievalMode === 'database' && episodeContext && !contextError) {
+      try {
+        const context = JSON.parse(episodeContext);
+        const scenes = context.episode?.scenes || [];
+        const tacticalScenes = scenes.filter((scene: any) => scene.location?.tactical_override_location);
+        
+        if (tacticalScenes.length > 0) {
+          const overrideLocations = [...new Set(tacticalScenes.map((scene: any) => scene.location.tactical_override_location))];
+          return `Using ${overrideLocations.join(', ')} overrides`;
+        } else if (scenes.length > 0) {
+          return 'Using database context';
+        }
+      } catch (error) {
+        // Fall back to default text if parsing fails
+      }
+    }
+    
+    return null;
+  };
 
   const isAnalyzeDisabled =
     isLoading ||
@@ -166,12 +325,27 @@ export const InputPanel: React.FC<InputPanelProps> = ({
         </div>
 
         {/* Style Config */}
-        <StyleConfigPanel config={styleConfig} setConfig={setStyleConfig} />
+        <StyleConfigPanel 
+          config={styleConfig} 
+          setConfig={setStyleConfig} 
+          useHierarchicalPrompts={useHierarchicalPrompts}
+          onUseHierarchicalPromptsChange={onUseHierarchicalPromptsChange}
+        />
 
         {/* Retrieval Mode Switch and Context Input */}
         <div className='flex flex-col flex-grow' style={{ minHeight: '150px' }}>
             <div className="text-sm font-medium text-gray-300 my-2 text-center">Episode Context Source</div>
             <RetrievalModeSwitch mode={retrievalMode} setMode={onRetrievalModeChange} />
+            
+            {/* Database Context Indicator */}
+            <div className="mt-3">
+              <DatabaseContextIndicator 
+                retrievalMode={retrievalMode}
+                episodeContext={episodeContext}
+                contextError={contextError}
+                isContextFetching={isContextFetching}
+              />
+            </div>
             
             <div className="mt-4 flex-grow flex flex-col">
                 {retrievalMode === 'manual' ? (
@@ -244,21 +418,28 @@ export const InputPanel: React.FC<InputPanelProps> = ({
         <button
           onClick={onAnalyze}
           disabled={isAnalyzeDisabled}
-          className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-brand-blue to-brand-purple text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
+          className="w-full flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-brand-blue to-brand-purple text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
         >
           {isLoading ? (
-            <>
+            <div className="flex items-center gap-3">
               <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="http://www.w3.org/2000/svg">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              {loadingMessage || 'Analyzing...'}
-            </>
+              <span>{loadingMessage || 'Analyzing...'}</span>
+            </div>
           ) : (
-            <>
-              <GenerateIcon />
-              Analyze Script
-            </>
+            <div className="flex flex-col items-center gap-1">
+              <div className="flex items-center gap-3">
+                <GenerateIcon />
+                <span>{getGenerateButtonText()}</span>
+              </div>
+              {getGenerateButtonSubtext() && (
+                <div className="text-xs opacity-75 font-normal">
+                  {getGenerateButtonSubtext()}
+                </div>
+              )}
+            </div>
           )}
         </button>
       </div>

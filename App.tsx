@@ -7,7 +7,7 @@ import { parseEpisodeNumber, postProcessAnalysis } from './utils';
 import type { AnalyzedEpisode, EpisodeStyleConfig } from './types';
 import { DEFAULT_SCRIPT, DEFAULT_EPISODE_CONTEXT } from './constants';
 import { GithubIcon, PanelExpandIcon } from './components/icons';
-import { generateSwarmUiPrompts } from './services/promptGenerationService';
+import { generateSwarmUiPrompts, generateHierarchicalSwarmUiPrompts } from './services/promptGenerationService';
 
 type RetrievalMode = 'manual' | 'database';
 
@@ -35,6 +35,12 @@ function App() {
   const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
+  const handleReset = () => {
+    setError(null);
+    setAnalyzedEpisode(null);
+  };
+
+
   const [isContextFetching, setIsContextFetching] = useState<boolean>(false);
   const [contextError, setContextError] = useState<string | null>(null);
   
@@ -44,11 +50,12 @@ function App() {
   const [isInputCollapsed, setIsInputCollapsed] = useState(true);
   
   const [styleConfig, setStyleConfig] = useState<EpisodeStyleConfig>({
-    stylePrefix: 'cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece',
-    model: 'epicrealism_naturalSinRC1VAE',
+    model: 'flux1-dev-fp8',
     cinematicAspectRatio: '16:9',
     verticalAspectRatio: '9:16',
   });
+
+  const [useHierarchicalPrompts, setUseHierarchicalPrompts] = useState<boolean>(false);
 
 
   const handleFetchContext = async () => {
@@ -74,7 +81,8 @@ function App() {
   };
 
   useEffect(() => {
-    if (retrievalMode === 'database') {
+    if (retrievalMode === 'database' && storyUuid) {
+        setLoadingMessage('Fetching context...');
         handleFetchContext();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -107,8 +115,12 @@ function App() {
       setAnalyzedEpisode(processedResult); // Show storyboard first
 
       // STAGE 2: Prompt Generation
+      // This is the control switch. Based on the state of `useHierarchicalPrompts`,
+      // we delegate to the appropriate prompt generation service.
       setLoadingMessage('Generating SwarmUI prompts...');
-      const promptsResult = await generateSwarmUiPrompts(processedResult, episodeContext, styleConfig);
+      const promptsResult = useHierarchicalPrompts
+        ? await generateHierarchicalSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid)
+        : await generateSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid);
       
       // Integrate prompts back into the analysis object
       processedResult.scenes.forEach(scene => {
@@ -167,6 +179,8 @@ function App() {
                 onToggleCollapse={() => setIsInputCollapsed(true)}
                 styleConfig={styleConfig}
                 setStyleConfig={setStyleConfig}
+                useHierarchicalPrompts={useHierarchicalPrompts}
+                onUseHierarchicalPromptsChange={setUseHierarchicalPrompts}
               />
             </div>
           )}
@@ -176,6 +190,7 @@ function App() {
               isLoading={isLoading}
               loadingMessage={loadingMessage}
               error={error}
+              onReset={handleReset}
             />
           </div>
            {isInputCollapsed && (
