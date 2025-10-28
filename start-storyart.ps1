@@ -34,13 +34,13 @@ if ($Help) {
 # =========================
 $Frontend = @{
   Name      = 'StoryArt Dev Server'
-  Port      = 5173
+  Port      = 3000
   WorkDir   = 'E:\REPOS\StoryArt'                    # <-- StoryArt project path
   StartCmd  = 'npm run dev'
-  HealthUrl = 'http://localhost:5173'                   # vite responds at /
+  HealthUrl = 'http://localhost:3000'                   # vite responds at /
 }
 
-$OpenUrl = 'http://localhost:5173'
+$OpenUrl = 'http://localhost:3000'
 
 # =========================
 # Helpers
