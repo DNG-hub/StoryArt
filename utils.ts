@@ -61,8 +61,8 @@ export function postProcessAnalysis(analysis: AnalyzedEpisode): AnalyzedEpisode 
   
     // First, create a map of all beat IDs to their human-readable labels
     analysis.scenes.forEach(scene => {
-      scene.beats.forEach((beat, index) => {
-        const beatLabel = `Scene ${scene.sceneNumber}, Beat #${index + 1}`;
+      scene.beats.forEach((beat) => {
+        const beatLabel = `Scene ${scene.sceneNumber}, Beat #${beat.beat_number} (${beat.beat_title})`;
         if (beat.beatId) {
             beatMap.set(beat.beatId.trim(), beatLabel);
         }

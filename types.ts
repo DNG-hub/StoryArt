@@ -42,12 +42,10 @@ export interface BeatPrompts {
 }
 
 export interface BeatAnalysis {
-  beatId: string;
-  beatText: string;
-  beatType: 'Character Introduction' | 'Action' | 'Emotional' | 'Dialogue' | 'Environmental' | 'Revelation' | 'Other';
+  beatId: string; // e.g., s1-b1
+  beatText: string; // The verbatim text content of the beat.
   visualSignificance: 'High' | 'Medium' | 'Low';
   imageDecision: ImageDecision;
-  estimatedDurationSeconds?: number;
   cameraAngleSuggestion?: string;
   characterPositioning?: string;
   locationAttributes?: string[];
@@ -57,6 +55,7 @@ export interface BeatAnalysis {
   };
   hookNarrative?: string; // For Phase 1.4
 }
+
 
 export interface AnalyzedScene {
   sceneNumber: number;

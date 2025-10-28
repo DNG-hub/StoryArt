@@ -44,7 +44,7 @@ export const generateSwarmUiPrompts = async (
 **Your Mandate: THINK LIKE A CAMERA. If you can't see it, don't describe it. Translate abstract concepts into concrete visuals.**
 
 **Inputs:**
-1.  **Beat Analysis JSON:** Contains the immediate action ('beatText'), camera notes, character positions, and pre-selected 'locationAttributes' for the shot.
+1.  **Beat Analysis JSON:** This is the primary input. It contains the high-level summary of the action ('core_action'), the original script text ('beat_script_text'), the desired 'emotional_tone', a 'visual_anchor', camera notes, character positions, and pre-selected 'locationAttributes' for the shot.
 2.  **Episode Context JSON:** The "Director's Bible." This is your primary source for character and location details.
 3.  **Episode Style Config:** Contains the global 'stylePrefix' (e.g., "cinematic, gritty"), 'model', and aspect ratios.
 
@@ -52,21 +52,21 @@ export const generateSwarmUiPrompts = async (
 
 1.  **Synthesize Core Visual Elements:**
     a.  **Characters:**
-        i.  **Identify Characters using Aliases (CRITICAL):** When you identify a name in the script's 'beatText' (e.g., "Cat", "Daniel", "O'Brien"), you MUST cross-reference it with both the 'character_name' and the 'aliases' array for each character in the Episode Context to find the correct profile. This is mandatory for identifying characters correctly when nicknames or partial names are used.
+        i.  **Identify Characters using Aliases (CRITICAL):** When you identify a name in the script's 'beat_script_text' (e.g., "Cat", "Daniel", "O'Brien"), you MUST cross-reference it with both the 'character_name' and the 'aliases' array for each character in the Episode Context to find the correct profile. This is mandatory for identifying characters correctly when nicknames or partial names are used.
         ii. **Use Correct Trigger Syntax:** Once a character is identified, you MUST use their 'base_trigger'. You MUST format the prompt with the unadorned trigger word, followed by a parenthetical group of key visual descriptors. Example: \`JRUMLV woman (athletic build, tactical gear, hair in a tight bun)\`. Do NOT use weighted syntax like (trigger:1.2).
         iii. **Contextualize Appearance:** Critically evaluate the character's 'visual_description' against the current scene's location and narrative. Do not just copy the description. You must ensure their clothing, hair, and overall state are appropriate for the environment. For example, if a character's base description is 'wearing a pristine lab coat' but the scene is in a 'bombed-out ruin', you must describe them as 'wearing a torn, dust-covered lab coat'. This contextual adaptation is mandatory.
     b.  **Environment:** Use 'locationAttributes' as your primary set dressing. Supplement with the overall mood from the location's 'visual_description' in the context. **Crucially, all scenes are interior shots.** To prevent the model from defaulting to outdoor scenes, you MUST explicitly include terms like "interior shot," "inside the facility," or "within a room" in the environment description.
     c.  **Composition & Character Positioning Intelligence (Flux Model Targeting):**
         This is a critical step to ensure characters are positioned believably. You must apply the following rules, which are designed to counteract known quirks in the Flux diffusion model.
         i.  **Default to Facing Camera:** By default, characters should face the viewer. You MUST proactively use explicit phrases like "facing the camera," "looking at the viewer," "portrait of," or "making eye contact with the camera" to ensure this. This is the baseline rule.
-        ii. **Narrative Override (CRITICAL):** You MUST override the default rule if the narrative context demands it. Analyze the 'beatText' for these cues:
+        ii. **Narrative Override (CRITICAL):** You MUST override the default rule if the narrative context demands it. Analyze the 'core_action' and 'beat_script_text' for these cues:
             - **Interaction/Observation:** If a character is examining an object ("kneeling by a crater"), interacting with a console, or surveying a scene, their pose should prioritize that action. This may mean they are in profile or their back is partially to the camera to establish their point-of-view.
-            - **Emotional Context:** If the mood is introspective, mysterious, or somber, you can compositionally choose to have the character looking away from the camera to enhance that feeling.
+            - **Emotional Context:** If the 'emotional_tone' is introspective, mysterious, or somber, you can compositionally choose to have the character looking away from the camera to enhance that feeling.
         iii. **Multi-Character Spacing & Gaze Control:** When two or more characters are present, you MUST prevent unnatural clustering. Use explicit spatial language like "Person A on the left," "Person B on the right," "standing apart with distance between them." Crucially, you must also control each character's gaze individually (e.g., "Person A looks at the console, Person B looks toward the doorway") to avoid unintended, intimate eye contact unless the script specifically calls for it.
         iv. **Integrate Existing Notes:** Always incorporate any specific \`cameraAngleSuggestion\` or \`characterPositioning\` provided in the beat analysis, using them to inform your final composition.
 
 2.  **Visually Translate the Action (CRITICAL STEP):**
-    This is where you apply the **Visual Filter Rule**. Do NOT simply copy the 'beatText'. Instead, read it, understand the *intent*, and describe only what a camera would see.
+    This is where you apply the **Visual Filter Rule**. Do NOT simply copy the 'beat_script_text'. Instead, read the 'core_action' and 'beat_script_text' to understand the *intent*, and describe only what a camera would see. Use the 'visual_anchor' as a primary guide for the shot's focus.
 
     **A. OMIT Non-Visual Information:** Actively discard prose related to:
     -   **Sounds:** \`boots crunching\`, \`wind whistling\`, \`a metallic scraping sound\`.
@@ -74,9 +74,9 @@ export const generateSwarmUiPrompts = async (
     -   **Internal Monologue/Feelings:** \`she felt a surge of adrenaline\`, \`the silence was unnerving\`.
     -   **Abstract Verbs:** \`navigating\`, \`understanding\`, \`realizing\`.
 
-    **B. TRANSLATE Abstract Concepts into Visuals:** Answer the question, "What does this *look* like?"
+    **B. TRANSLATE Abstract Concepts into Visuals:** Answer the question, "What does this *look* like?" Use the 'emotional_tone' to guide your choice of descriptive words.
     -   INSTEAD OF \`moving with a practiced economy\`, USE \`with a precise, focused posture\` or \`body language of a trained professional\`.
-    -   INSTEAD OF \`the silence was unnerving\`, USE \`an atmosphere of eerie stillness\` or \`a tense and quiet mood\`.
+    -   INSTEAD OF \`the silence was unnerving\` ('unnerving' is an internal feeling), USE \`an atmosphere of eerie stillness\` or \`a tense and quiet mood\` ('tense' is a visual atmosphere).
     -   INSTEAD OF \`navigating the treacherous landscape\`, USE \`carefully stepping over twisted rebar and concrete chunks\`.
 
 3.  **Construct TWO Prompts from Your Synthesis:**

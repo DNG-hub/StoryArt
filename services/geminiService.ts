@@ -1,6 +1,3 @@
-
-
-
 import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalyzedEpisode } from '../types';
 import { compactEpisodeContext } from '../utils';
@@ -35,14 +32,24 @@ const responseSchema = {
           },
           beats: {
             type: Type.ARRAY,
-            description: "A list of distinct visual moments or 'beats' within the scene.",
+            description: "A list of 4-6 distinct narrative macro-beats that structure the scene.",
             items: {
               type: Type.OBJECT,
               properties: {
                 beatId: { type: Type.STRING, description: "A unique identifier for this beat, in the format 'sX-bY' where X is scene number and Y is beat number (e.g., 's1-b2')." },
-                beatText: { type: Type.STRING, description: "The verbatim text content of the beat." },
-                beatType: { type: Type.STRING, description: "The primary classification of the beat." },
-                visualSignificance: { type: Type.STRING, description: "How important this beat is to visualize." },
+                beat_number: { type: Type.NUMBER, description: "The sequential number of the beat within the scene, starting from 1." },
+                beat_title: { type: Type.STRING, description: "A short, descriptive title for the beat (e.g., 'The Ruins')." },
+                beat_type: { type: Type.STRING, description: "Classification of the beat's primary narrative purpose. Must be one of: 'Revelation', 'Action', 'Escalation', 'Pivot', 'Resolution', or 'Other'." },
+                narrative_function: { type: Type.STRING, description: "The beat's role in the story structure (e.g., 'Inciting Incident', 'Rising Action')." },
+                setting: { type: Type.STRING, description: "The setting of the beat, including location and time of day." },
+                characters: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of characters present in the beat." },
+                core_action: { type: Type.STRING, description: "A concise, one-sentence summary of the beat's main action or event." },
+                beat_script_text: { type: Type.STRING, description: "The full, verbatim script text (including action lines and dialogue) that constitutes this entire beat." },
+                emotional_tone: { type: Type.STRING, description: "The dominant emotion or mood of the beat (e.g., 'Tense', 'Hopeful')." },
+                visual_anchor: { type: Type.STRING, description: "A description of the single, most powerful image that could represent this beat." },
+                transition_trigger: { type: Type.STRING, description: "The event or discovery that leads into the next beat." },
+                beat_duration_estimate_sec: { type: Type.NUMBER, description: "An estimated duration for this beat in seconds, typically between 45 and 90." },
+                visualSignificance: { type: Type.STRING, description: "How important this beat is to visualize: 'High', 'Medium', or 'Low'." },
                 imageDecision: {
                   type: Type.OBJECT,
                   description: "The final decision on image creation for this beat, including reuse logic.",
@@ -62,7 +69,11 @@ const responseSchema = {
                     items: { type: Type.STRING }
                 },
               },
-              required: ['beatId', 'beatText', 'beatType', 'visualSignificance', 'imageDecision']
+              required: [
+                'beatId', 'beat_number', 'beat_title', 'beat_type', 'narrative_function', 'setting',
+                'characters', 'core_action', 'beat_script_text', 'emotional_tone', 'visual_anchor',
+                'transition_trigger', 'beat_duration_estimate_sec', 'visualSignificance', 'imageDecision'
+              ]
             }
           }
         },
@@ -79,43 +90,49 @@ export const analyzeScript = async (
   episodeContextJson: string,
   onProgress?: (message: string) => void
 ): Promise<AnalyzedEpisode> => {
-  const systemInstruction = `You are an expert AI script analyst and a frugal, efficient **Continuity Supervisor** for film production. Your primary goal is to maximize visual storytelling impact while **aggressively minimizing redundant image creation**. You achieve this by analyzing an entire script holistically, maintaining a "short-term memory" of your visual decisions to identify and explicitly link opportunities for image reuse.
+  const systemInstruction = `You are an expert AI **Narrative Pacing Architect** and **Continuity Supervisor** for episodic visual storytelling, optimized for platforms like YouTube. Your primary goal is to structure a script into a rhythm of engaging narrative beats to maintain viewer attention, while also minimizing redundant image creation.
 
-**Your Mandate: BE EFFICIENT. Do not waste budget on unnecessary new shots.**
+**Your Mandate: Create a structured, paced narrative flow. Every scene must have 4-6 major beats. Be efficient with image decisions.**
 
 **Inputs:**
-1.  **Script Text:** A full screenplay.
-2.  **Visually-Focused Episode Context JSON:** A "Director's Bible" containing visual data.
+1.  **Script Text:** A full screenplay, typically divided into 4 scenes.
+2.  **Visually-Focused Episode Context JSON:** A "Director's Bible" containing visual data for characters and locations.
 
 **Your Detailed Workflow:**
-1.  **Holistic Analysis:** Read and understand the entire script first. Your decisions for a beat in Scene 3 must be informed by the decisions you made for Scene 1.
 
-2.  **Parse & Segment (CRITICAL TASK - FOLLOW THESE RULES EXACTLY):**
-    *   **Primary Goal: Maximum Granularity.** It is better to create too many small, specific beats than too few large, summarized ones. Each beat represents a potential camera shot, and every distinct action deserves its own beat.
-    *   **Definition of a "Beat":** A beat is a single, distinct visual action, event, or moment described in the script's action lines (the non-dialogue text).
-    *   **Beat Segmentation Rules (Apply Strictly):**
-        *   A new paragraph in the script's action lines almost always signifies a new beat.
-        *   A single sentence containing a specific character action is a beat.
-        *   A sentence describing a critical piece of the environment can be a beat.
-        *   **Example Rule:** If the script says: 'Cat enters the room. She scans the wreckage.' This MUST be treated as TWO separate beats. The first beat's text is 'Cat enters the room.' and the second is 'She scans the wreckage.'
-    *   **Verbatim Extraction for \`beatText\` (Non-Negotiable):**
-        *   For the \`beatText\` field, you MUST extract the text verbatim from the source script. Do NOT summarize, paraphrase, or alter the original text in any way. The \`beatText\` must be a direct copy-paste of the script segment that corresponds to that single action.
+1.  **Holistic Scene Analysis & Beat Segmentation (CRITICAL TASK):**
+    *   **Objective:** Your main task is to analyze each scene and segment it into **4 to 6 macro-beats**. A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development.
+    *   **Beat Definition:** A **Beat** has a beginning, middle, and end. It advances plot, character, or theme, and can be represented by a single key image. It is a significant narrative or emotional inflection point.
+    *   **Pacing Rule:** Each beat you define should correspond to approximately **45-90 seconds** of narrative time. You must estimate this and populate \`beat_duration_estimate_sec\`.
+    *   **Segmentation Process:** Read an entire scene. Identify the 4-6 most significant turning points, revelations, or actions. Group the script text (action lines AND dialogue) that constitutes each of these narrative units.
 
-3.  **Analyze Each Beat (CORE TASK):** For every beat you have segmented:
-    a. **Assign a Unique ID:** Generate a unique 'beatId' in the format 'sX-bY' (e.g., 's1-b1'). This is critical for linking.
-    b. **Perform Standard Analysis:** Classify 'beatType', 'visualSignificance', etc.
-    c. **Decorate the Set (Mandatory):** For every single beat, you MUST visually ground it in its correct environment. First, identify the correct location for the current scene by cross-referencing the scene number with the provided Episode Context. Then, from that specific location's list of 'artifacts', you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's specific action. Populate the 'locationAttributes' array with these selected strings. This step is not optional and ensures that scenes in different locations have distinct visual details.
-    d. **Make the Image Decision (Crucial Continuity Task):**
-        i.  **Look Back:** Before making a decision, review all *previous* beats in the script.
+2.  **Populate Beat Metadata (CORE TASK):** For every single macro-beat you have identified:
+    a.  **Identifiers:** Assign a unique \`beatId\` ('sX-bY') and a sequential \`beat_number\`.
+    b.  **Narrative Content (CRITICAL):**
+        *   \`beat_title\`: Create a short, descriptive title (e.g., "The Reinforced Door").
+        *   \`core_action\`: Write a **one-sentence summary** of what happens in the beat. This is your summary of the narrative unit.
+        *   \`beat_script_text\`: Copy the **full, verbatim block of script text** (action lines and dialogue) that you have grouped together for this beat.
+    c.  **Narrative Analysis:**
+        *   \`beat_type\`: Classify the beat's primary purpose ('Revelation', 'Action', 'Escalation', 'Pivot', 'Resolution', 'Other').
+        *   \`narrative_function\`: Describe its role in the story (e.g., "Inciting Incident," "Rising Action").
+        *   \`emotional_tone\`: Define the dominant mood (e.g., "Tense," "Suspicious").
+    d.  **Visual & Contextual Details:**
+        *   \`setting\`: State the location and time of day.
+        *   \`characters\`: List the characters present.
+        *   \`visual_anchor\`: Describe the single most powerful image that represents this beat.
+        *   \`transition_trigger\`: What event in this beat leads to the next one?
+        *   \`locationAttributes\`: From the Episode Context's 'artifacts' for the current scene's location, you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's action and populate the array. This is mandatory for visual consistency.
+    e.  **Image Decision (Continuity Task):**
+        i.  **Look Back:** Review all *previous* beats in the script.
         ii. **Decide the Type (Apply these rules strictly):**
-            - **'NEW_IMAGE':** ONLY choose this for a truly distinct and essential visual moment. You must justify why an existing image cannot be used. Valid reasons include: a character's first appearance, a significant change in location, a critical physical action, or a dramatic change in camera angle that is vital for storytelling.
-            - **'REUSE_IMAGE':** This should be your default choice if the visual context is similar to a previous beat. **Be aggressive in reusing.** If characters are in the same location having a conversation without significant movement, you MUST reuse the previous image. If a beat describes an emotional reaction without a change in setting, REUSE the previous shot.
-            - **'NO_IMAGE':** Choose this for beats with no significant visual information (e.g., internal thoughts, redundant dialogue, minor non-visual actions).
-        iii. **Provide Justification:** Write a concise 'reason' for your decision. For 'NEW_IMAGE', you must explain why it's necessary.
-        iv. **Create the Link (CRITICAL):** If, and only if, your 'type' is 'REUSE_IMAGE', you MUST populate the 'reuseSourceBeatId' field with the exact 'beatId' from the earlier beat you are reusing. This is not optional. **A 'REUSE_IMAGE' decision without a valid 'reuseSourceBeatId' is an error.** For 'NEW_IMAGE' or 'NO_IMAGE', this field should be omitted or left null.
+            - **'NEW_IMAGE':** ONLY for a truly distinct visual moment. Valid reasons: a character's first appearance, a significant change in location, a critical action, or a vital change in camera angle.
+            - **'REUSE_IMAGE':** Your default choice if the visual context is similar to a previous beat. Be aggressive. If characters are in the same location without significant movement or change, you MUST reuse.
+            - **'NO_IMAGE':** For beats with no significant visual information (e.g., internal thoughts, pure dialogue without new action).
+        iii. **Provide Justification:** Write a concise 'reason' for your decision.
+        iv. **Create the Link (CRITICAL):** If your 'type' is 'REUSE_IMAGE', you MUST populate 'reuseSourceBeatId' with the 'beatId' from the earlier beat. This is not optional.
 
 **Output:**
-- Your entire response MUST be a single JSON object that strictly adheres to the provided schema. The integrity of the 'beatId' and the 'reuseSourceBeatId' link is paramount.`;
+- Your entire response MUST be a single JSON object that strictly adheres to the provided schema. The integrity of the beat segmentation and linking is paramount.`;
 
   try {
     onProgress?.('Connecting to Gemini API...');
