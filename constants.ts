@@ -5,7 +5,7 @@ TITLE: The Signal
 SCENE 1
 INT. NHIA FACILITY 7 - DAY
 
-The air hangs thick with dust. Emergency lights flicker, casting long, dancing shadows across the rubble of what was once a high-tech biomedical facility.
+The air hangs thick with dust. Emergency lights flicker, casting long, dancing shadows across the rubble of what was once a CDC archive and data center.
 
 CATHERINE "CAT" MITCHELL (30s), athletic, focused, moves with a practiced economy. Her tactical gear is scuffed, her expression grim. She scans the wreckage with a diagnostic tool.
 
@@ -86,16 +86,16 @@ export const DEFAULT_EPISODE_CONTEXT = `{
         "location": {
           "id": "6fb2e29b-5b6e-4a91-990b-b6ce489afdea",
           "name": "NHIA Facility 7",
-          "visual_description": "A sprawling, high-tech biomedical facility, now a ghost town of sterile labs and containment units. Emergency lights cast long shadows down silent corridors, with abandoned research notes and equipment hinting at the chaos of its evacuation.",
+          "visual_description": "A sprawling CDC archive and data center, now a ghost town of sterile server rooms and data storage units. Emergency lights cast long shadows down silent corridors, with abandoned computer terminals and data drives hinting at the chaos of its evacuation.",
           "artifacts": [
             { "name": "concrete_rubble", "type": "STRUCTURAL", "prompt_fragment": "pulverized concrete debris, scattered construction materials" },
             { "name": "Emergency Biohazard Warnings", "type": "LIGHTING", "prompt_fragment": "flickering red emergency lights and glowing biohazard symbols on the walls." },
             { "name": "emergency_lighting", "type": "LIGHTING", "prompt_fragment": "flickering emergency lights, harsh fluorescent glow" },
-            { "name": "medical_equipment", "type": "PROP", "prompt_fragment": "scattered medical equipment, diagnostic tools" },
+            { "name": "data_terminals", "type": "PROP", "prompt_fragment": "scattered computer terminals, data input stations" },
             { "name": "server_racks", "type": "PROP", "prompt_fragment": "rows of server racks, blinking status lights" },
-            { "name": "Shattered Containment Pods", "type": "STRUCTURAL", "prompt_fragment": "rows of shattered, empty glass containment pods, with alarms frozen on a red flashing state." },
+            { "name": "Shattered Data Storage Pods", "type": "STRUCTURAL", "prompt_fragment": "rows of shattered, empty data storage pods, with alarms frozen on a red flashing state." },
             { "name": "shattered_windows", "type": "STRUCTURAL", "prompt_fragment": "shattered glass windows, broken frames" },
-            { "name": "The Original SledBed", "type": "PROP", "prompt_fragment": "the original SledBed prototype, resembling a damaged MRI machine, with a complex medical bed covered in wires, sensors, and a large, articulated neural interface headset." }
+            { "name": "The Original Data Interface", "type": "PROP", "prompt_fragment": "the original data interface prototype, resembling a damaged neural scanning station, with a complex data bed covered in wires, sensors, and a large, articulated neural interface headset." }
           ]
         }
       },
@@ -106,16 +106,16 @@ export const DEFAULT_EPISODE_CONTEXT = `{
         "location": {
           "id": "6fb2e29b-5b6e-4a91-990b-b6ce489afdea",
           "name": "NHIA Facility 7",
-           "visual_description": "A sprawling, high-tech biomedical facility, now a ghost town of sterile labs and containment units. Emergency lights cast long shadows down silent corridors, with abandoned research notes and equipment hinting at the chaos of its evacuation.",
+           "visual_description": "A sprawling CDC archive and data center, now a ghost town of sterile server rooms and data storage units. Emergency lights cast long shadows down silent corridors, with abandoned computer terminals and data drives hinting at the chaos of its evacuation.",
           "artifacts": [
             { "name": "concrete_rubble", "type": "STRUCTURAL", "prompt_fragment": "pulverized concrete debris, scattered construction materials" },
             { "name": "Emergency Biohazard Warnings", "type": "LIGHTING", "prompt_fragment": "flickering red emergency lights and glowing biohazard symbols on the walls." },
             { "name": "emergency_lighting", "type": "LIGHTING", "prompt_fragment": "flickering emergency lights, harsh fluorescent glow" },
-            { "name": "medical_equipment", "type": "PROP", "prompt_fragment": "scattered medical equipment, diagnostic tools" },
+            { "name": "data_terminals", "type": "PROP", "prompt_fragment": "scattered computer terminals, data input stations" },
             { "name": "server_racks", "type": "PROP", "prompt_fragment": "rows of server racks, blinking status lights" },
-            { "name": "Shattered Containment Pods", "type": "STRUCTURAL", "prompt_fragment": "rows of shattered, empty glass containment pods, with alarms frozen on a red flashing state." },
+            { "name": "Shattered Data Storage Pods", "type": "STRUCTURAL", "prompt_fragment": "rows of shattered, empty data storage pods, with alarms frozen on a red flashing state." },
             { "name": "shattered_windows", "type": "STRUCTURAL", "prompt_fragment": "shattered glass windows, broken frames" },
-            { "name": "The Original SledBed", "type": "PROP", "prompt_fragment": "the original SledBed prototype, resembling a damaged MRI machine, with a complex medical bed covered in wires, sensors, and a large, articulated neural interface headset." }
+            { "name": "The Original Data Interface", "type": "PROP", "prompt_fragment": "the original data interface prototype, resembling a damaged neural scanning station, with a complex data bed covered in wires, sensors, and a large, articulated neural interface headset." }
           ]
         }
       },

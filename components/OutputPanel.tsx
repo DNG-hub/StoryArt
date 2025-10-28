@@ -149,22 +149,47 @@ const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beat
 
 const analysisSteps = [
     { id: 1, text: "Initializing...", trigger: "Initializing analysis" },
-    { id: 2, text: "Connecting to Gemini API...", trigger: "Connecting to Gemini" },
+    { id: 2, text: "Connecting to AI API...", trigger: "Connecting to" },
     { id: 3, text: "Compacting Context...", trigger: "Compacting episode context" },
-    { id: 4, text: "Sending Script to Gemini...", trigger: "Sending script to Gemini" },
-    { id: 5, text: "Processing Gemini Response...", trigger: "Processing Gemini response" },
+    { id: 4, text: "Sending Script to AI...", trigger: "Sending script to" },
+    { id: 5, text: "Processing AI Response...", trigger: "Processing" },
     { id: 6, text: "Post-processing Analysis...", trigger: "Post-processing analysis" },
     { id: 7, text: "Generating SwarmUI Prompts...", trigger: "Generating SwarmUI prompts" },
 ];
 
 const LoadingStateDisplay = ({ loadingMessage }: { loadingMessage: string }) => {
+    // Extract provider name from loading message
+    const getProviderFromMessage = (message: string): string => {
+        if (message.includes('QWEN')) return 'Qwen';
+        if (message.includes('GEMINI')) return 'Gemini';
+        if (message.includes('CLAUDE')) return 'Claude';
+        if (message.includes('OPENAI')) return 'OpenAI';
+        if (message.includes('XAI')) return 'XAI';
+        if (message.includes('DEEPSEEK')) return 'DeepSeek';
+        if (message.includes('GLM')) return 'GLM';
+        return 'AI';
+    };
+
+    const provider = getProviderFromMessage(loadingMessage);
+    
+    // Create dynamic steps based on provider
+    const dynamicSteps = [
+        { id: 1, text: "Initializing...", trigger: "Initializing analysis" },
+        { id: 2, text: `Connecting to ${provider} API...`, trigger: "Connecting to" },
+        { id: 3, text: "Compacting Context...", trigger: "Compacting episode context" },
+        { id: 4, text: `Sending Script to ${provider}...`, trigger: "Sending script to" },
+        { id: 5, text: `Processing ${provider} Response...`, trigger: "Processing" },
+        { id: 6, text: "Post-processing Analysis...", trigger: "Post-processing analysis" },
+        { id: 7, text: `Generating SwarmUI Prompts with ${provider}...`, trigger: "Generating SwarmUI prompts" },
+    ];
+
     let currentStepIndex = -1;
-    for (let i = 0; i < analysisSteps.length; i++) {
-        if (loadingMessage.startsWith(analysisSteps[i].trigger)) {
+    for (let i = 0; i < dynamicSteps.length; i++) {
+        if (loadingMessage.startsWith(dynamicSteps[i].trigger)) {
             currentStepIndex = i;
         }
     }
-    if (loadingMessage.startsWith("Analysis complete!")) {
+    if (loadingMessage.startsWith("✅") || loadingMessage.includes("completed")) {
         currentStepIndex = 4;
     }
 
@@ -172,7 +197,7 @@ const LoadingStateDisplay = ({ loadingMessage }: { loadingMessage: string }) => 
         <div className="text-center w-full max-w-md">
             <h3 className="text-2xl font-semibold text-brand-purple mb-8">Analysis in Progress</h3>
             <div className="space-y-4">
-                {analysisSteps.map((step, index) => {
+                {dynamicSteps.map((step, index) => {
                     const isCompleted = currentStepIndex > index;
                     const isCurrent = currentStepIndex === index;
                     
@@ -246,4 +271,19 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
             <summary className="text-2xl font-semibold text-brand-purple cursor-pointer">
               Scene {scene.sceneNumber}: {scene.title}
             </summary>
-            
+            <div className="mt-4 space-y-4">
+              {scene.beats.map((beat, beatIndex) => (
+                <BeatAnalysisCard 
+                  key={beat.beatId} 
+                  beat={beat} 
+                  sceneNumber={scene.sceneNumber} 
+                  beatIndex={beatIndex} 
+                />
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
+    </div>
+  );
+};

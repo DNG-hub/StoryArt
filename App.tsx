@@ -84,7 +84,10 @@ function App() {
   const handleRetrievalModeChange = (mode: RetrievalMode) => {
     setRetrievalMode(mode);
     if (mode === 'manual') {
-        setEpisodeContext(DEFAULT_EPISODE_CONTEXT);
+        // Only set default context if the current context is empty
+        if (!episodeContext.trim()) {
+            setEpisodeContext(DEFAULT_EPISODE_CONTEXT);
+        }
         setContextError(null);
     }
   };

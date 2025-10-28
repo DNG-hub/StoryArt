@@ -1,0 +1,219 @@
+# StoryArt Project - Cursor Rules
+
+## Database Access Rules
+
+### PostgreSQL Database Access Process
+
+When the user asks to "access postgres database" or "connect to database" or similar database-related requests, follow this process:
+
+#### 1. Environment Setup Check
+- Check if `.env` file exists in the project root
+- Verify PostgreSQL environment variables are configured:
+  ```env
+  DATABASE_URL=postgresql+asyncpg://<username>:<password>@<host>:<port>/<database>
+  POSTGRES_SERVER=<hostname>
+  POSTGRES_PORT=<port>
+  POSTGRES_USER=<username>
+  POSTGRES_PASSWORD=<password>
+  POSTGRES_DB=<database_name>
+  ```
+
+**Critical Environment Variables:**
+- `DATABASE_URL` - Complete PostgreSQL connection string
+- `CAT_DANIEL_STORY_ID` - Story ID for development work (always use this for queries)
+
+#### 2. Database Connection Methods
+Use these approaches in order of preference:
+
+**Method A: Direct psql Connection**
+```bash
+# Connect using environment variables
+psql -h $POSTGRES_SERVER -p $POSTGRES_PORT -U $POSTGRES_USER -d $POSTGRES_DB
+
+# Or using DATABASE_URL
+psql $DATABASE_URL
+```
+
+**Method B: Python Script (if needed)**
+```python
+import psycopg2
+import os
+from urllib.parse import urlparse
+
+# Parse DATABASE_URL or use individual components
+if 'DATABASE_URL' in os.environ:
+    url = urlparse(os.environ['DATABASE_URL'])
+    conn = psycopg2.connect(
+        host=url.hostname,
+        port=url.port,
+        user=url.username,
+        password=url.password,
+        database=url.path[1:]  # Remove leading '/'
+    )
+else:
+    conn = psycopg2.connect(
+        host=os.environ['POSTGRES_SERVER'],
+        port=os.environ['POSTGRES_PORT'],
+        user=os.environ['POSTGRES_USER'],
+        password=os.environ['POSTGRES_PASSWORD'],
+        database=os.environ['POSTGRES_DB']
+    )
+```
+
+**Method C: Node.js Script (if needed)**
+```javascript
+const { Pool } = require('pg');
+require('dotenv').config();
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // Or individual components:
+  // host: process.env.POSTGRES_SERVER,
+  // port: process.env.POSTGRES_PORT,
+  // user: process.env.POSTGRES_USER,
+  // password: process.env.POSTGRES_PASSWORD,
+  // database: process.env.POSTGRES_DB,
+});
+```
+
+#### 3. Common Database Operations
+
+**Check Connection:**
+```sql
+SELECT version();
+SELECT current_database();
+SELECT current_user;
+```
+
+**List Tables:**
+```sql
+\dt
+-- Or
+SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
+```
+
+**Describe Table Structure:**
+```sql
+\d table_name
+-- Or
+SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'table_name';
+```
+
+**Query Episode Context Data:**
+```sql
+-- Look for tables related to episodes, scenes, characters
+SELECT table_name FROM information_schema.tables WHERE table_name LIKE '%episode%' OR table_name LIKE '%scene%' OR table_name LIKE '%character%';
+
+-- Query episode context (adjust table names as needed)
+SELECT * FROM episode_contexts WHERE episode_number = 1;
+SELECT * FROM scenes WHERE episode_id = (SELECT id FROM episodes WHERE episode_number = 1);
+
+-- Query StoryTeller schema for episode context data (using CAT_DANIEL_STORY_ID)
+SELECT s.title, s.story_context, s.narrative_tone, s.core_themes FROM stories s WHERE s.id = '$CAT_DANIEL_STORY_ID';
+
+-- Get character data with visual descriptions
+SELECT c.name, c.description, c.backstory, c.role FROM characters c WHERE c.story_id = '$CAT_DANIEL_STORY_ID';
+
+-- Get location data with visual descriptions  
+SELECT la.name, la.description, la.visual_description, la.atmosphere FROM location_arcs la WHERE la.story_id = '$CAT_DANIEL_STORY_ID';
+
+-- Get character appearance in specific locations
+SELECT c.name, la.name as location, clc.physical_description, clc.clothing_description, clc.demeanor_description 
+FROM character_location_contexts clc 
+JOIN characters c ON clc.character_id = c.id 
+JOIN location_arcs la ON clc.location_arc_id = la.id 
+WHERE c.story_id = '$CAT_DANIEL_STORY_ID';
+
+-- Get location artifacts for visual prompts
+SELECT la.name as location, art.artifact_name, art.description, art.swarmui_prompt_fragment 
+FROM location_artifacts art 
+JOIN location_arcs la ON art.location_arc_id = la.id 
+WHERE la.story_id = '$CAT_DANIEL_STORY_ID';
+```
+
+#### 4. StoryTeller Integration Context
+
+**Database Purpose:**
+- **Primary**: StoryTeller's PostgreSQL instance (shared)
+- **Database**: `storyteller_dev` for development
+- **Port**: Custom port (not default 5432)
+- **Access**: Read/write for episode context data
+
+**Expected Tables (may vary):**
+- `episodes` - Episode metadata
+- `scenes` - Scene information
+- `characters` - Character data
+- `locations` - Location descriptions
+- `episode_contexts` - Complete episode context JSON
+
+**Database Schema Reference:**
+- **Schema File**: `E:\REPOS\StroyArt\story_configuration_db_schema.json`
+- **Usage**: When table structure questions arise, always reference this schema file
+- **Purpose**: Contains complete table definitions, relationships, and data types
+- **Total Tables**: 26 tables with 160 columns
+- **Primary Table**: `stories` (main story entity)
+
+**Key Tables for Episode Context:**
+- `stories` - Story metadata, context, themes, episode planning
+- `characters` - Character definitions with descriptions and backstories
+- `character_relationships` - Character relationship dynamics
+- `plot_arcs` - Plot structure with hierarchical story arcs
+- `location_arcs` - Location definitions with visual descriptions
+- `character_location_contexts` - Character appearance in specific locations
+- `location_artifacts` - Visual elements and artifacts within locations
+- `scene_location_associations` - Scene-to-location mappings
+- `ghost_entity_relationships` - Supernatural entity interactions
+
+#### 5. Troubleshooting Steps
+
+**If Connection Fails:**
+1. Check if PostgreSQL service is running: `netstat -an | findstr :<port>`
+2. Verify credentials in `.env` file
+3. Test connection with `telnet <host> <port>`
+4. Check firewall/network access
+
+**If Tables Don't Exist:**
+1. Check if database exists: `SELECT datname FROM pg_database;`
+2. List all schemas: `SELECT schema_name FROM information_schema.schemata;`
+3. Check StoryTeller documentation for table structure
+
+#### 6. Implementation Notes
+
+**Current Status:**
+- Database API endpoints are NOT implemented yet (Phase 2)
+- Manual mode uses hardcoded `DEFAULT_EPISODE_CONTEXT`
+- Database mode will fetch from PostgreSQL when implemented
+
+**Future Implementation:**
+- API endpoint: `GET /api/v1/scene-context/extract-episode-context`
+- Parameters: `story_id`, `episode_number`
+- Returns: Episode context JSON for prompt generation
+
+#### 7. Security Considerations
+
+- Never commit `.env` file with real credentials
+- Use environment variables for all database connections
+- Limit database user permissions to required operations only
+- Use connection pooling for production
+
+---
+
+## General Project Rules
+
+### File Structure
+- `constants.ts` - Default/fallback data (manual mode)
+- `services/contextService.ts` - Database API calls (when implemented)
+- `App_updated.tsx` - Main application with multi-provider AI
+- `docs/` - Documentation and configuration guides
+
+### Development Workflow
+1. Always use manual mode until database API is implemented
+2. Edit scripts and episode context in textareas
+3. Analysis uses current textarea content (not constants)
+4. Constants are only used as initial defaults
+
+### AI Provider Integration
+- Multi-provider system with cost optimization
+- Qwen for ultra-low cost (99.9% savings)
+- Gemini/Claude for high-quality fallback
+- Provider selection affects both script analysis and prompt generation

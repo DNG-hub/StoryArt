@@ -1,0 +1,752 @@
+Beat #1
+New Image
+The air hangs thick with dust.
+Beat Type:
+ESTABLISHING_SHOT
+Visual Significance:
+HIGH
+Location Attributes:
+
+pulverized concrete debris, scattered construction materials
+Reasoning: Establishes the initial atmosphere and environment of the facility.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, interior shot of a bombed-out high-tech biomedical facility, air thick with visible dust motes, hazy atmosphere, pulverized concrete debris, scattered construction materials, wide shot, desolate, abandoned, eerie.
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #2
+New Image
+Emergency lights flicker, casting long, dancing shadows across the rubble of what was once a high-tech biomedical facility.
+Beat Type:
+ESTABLISHING_SHOT
+Visual Significance:
+HIGH
+Location Attributes:
+
+flickering emergency lights, harsh fluorescent glow
+pulverized concrete debris, scattered construction materials
+Reasoning: Adds critical visual detail to the established environment, showing the state of disrepair and emergency lighting.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, interior shot of a bombed-out high-tech biomedical facility, flickering emergency lights casting long, dancing shadows across pulverized concrete debris and scattered construction materials, harsh fluorescent glow, wide shot, high contrast, tense, unsettling.
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #3
+New Image
+CATHERINE "CAT" MITCHELL (30s), athletic, focused, moves with a practiced economy.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Reasoning: First appearance of the main character, Cat, establishing her presence and demeanor.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, JRUMLV woman (early 30s, athletic build, intense focus, dust-covered olive-drab utility uniform, tactical gear, sleeves rolled up, faded scars on forearms, dark hair in tight tactical bun) moving with a precise, focused posture, inside a bombed-out high-tech biomedical facility, medium shot, determined expression, professional demeanor. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #4
+Reuse
+Her tactical gear is scuffed, her expression grim.
+Beat Type:
+CHARACTER_DETAIL
+Visual Significance:
+MEDIUM
+Reuse instruction: Reuse image from Scene 1, Beat #3.
+
+Reasoning: Provides character detail that can be shown within the same shot as her initial appearance.
+
+Beat #5
+New Image
+She scans the wreckage with a diagnostic tool.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+scattered medical equipment, diagnostic tools
+pulverized concrete debris, scattered construction materials
+Reasoning: Shows Cat performing a specific, important action with a prop, requiring a distinct visual focus.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, JRUMLV woman (athletic build, intense focus, dust-covered olive-drab utility uniform, tactical gear, dark hair in tight tactical bun) holding a diagnostic tool, scanning pulverized concrete debris and scattered medical equipment, inside a bombed-out high-tech biomedical facility, medium shot, focused on the wreckage, investigative posture. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #6
+No Image
+The destruction is precise.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal observation or narrative exposition, not a distinct visual moment.
+
+Beat #7
+No Image
+Surgical.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Continuation of internal observation, no new visual information.
+
+Beat #8
+No Image
+Not the chaotic signature of a faction bombing.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Continuation of internal observation, no new visual information.
+
+Beat #9
+New Image
+She moves deeper, past shattered containment pods and abandoned lab equipment.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+rows of shattered, empty glass containment pods, with alarms frozen on a red flashing state.
+scattered medical equipment, diagnostic tools
+Reasoning: Cat's movement into a new area of the facility, revealing new environmental details.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, JRUMLV woman (athletic build, dust-covered olive-drab utility uniform, tactical gear, dark hair in tight tactical bun) walking deeper into a bombed-out high-tech biomedical facility, passing rows of shattered, empty glass containment pods with alarms frozen on a red flashing state, and scattered medical equipment, wide shot from behind, ominous atmosphere. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #10
+New Image
+Her light falls on a reinforced door, miraculously intact.
+Beat Type:
+VISUAL_DETAIL
+Visual Significance:
+HIGH
+Location Attributes:
+
+rows of server racks, blinking status lights
+Reasoning: Highlights a crucial plot point and a specific object in the environment.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, interior shot of a bombed-out high-tech biomedical facility, a focused beam of light illuminating a miraculously intact, heavily reinforced metal door, contrasting with surrounding pulverized concrete debris and damaged server racks with blinking status lights, wide shot, mysterious, significant.
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #11
+Reuse
+The server room.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+MEDIUM
+Location Attributes:
+
+rows of server racks, blinking status lights
+Reuse instruction: Reuse image from Scene 1, Beat #10.
+
+Reasoning: Identifies the object already shown in the previous beat, no new visual needed.
+
+Beat #12
+No Image
+The target.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal thought or narrative clarification, not a distinct visual moment.
+
+Scene 2: INT. NHIA FACILITY 7 - CONTINUOUS
+Timing: DAY
+Duration: 00:01:00 min
+Role: PRIMARY
+Ad Break: No
+Visual Beats
+Beat #1
+New Image
+As Cat approaches the server room, a figure detaches from the shadows.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+flickering emergency lights, harsh fluorescent glow
+pulverized concrete debris, scattered construction materials
+Reasoning: Introduction of a new character and a significant visual event (figure emerging from shadows).
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, JRUMLV woman (athletic build, dust-covered tactical gear) approaching a reinforced door, as a shadowy figure detaches from the deep shadows, illuminated by flickering emergency lights and harsh fluorescent glow, amidst pulverized concrete debris inside a bombed-out high-tech biomedical facility, wide shot, tense, mysterious. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #2
+New Image
+DANIEL O'BRIEN (late 30s), lean, powerful, a silent predator in tactical gear.
+Beat Type:
+CHARACTER_APPEARANCE
+Visual Significance:
+HIGH
+Reasoning: First clear visual of the new character, Daniel O'Brien, establishing his appearance.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, HSCEIA man (late 30s, lean, powerful build, sharp angles to face, strong jaw, high cheekbones, gray eyes constantly scanning, dust-covered muted gray tactical gear, body armor, M4 carbine held ready) standing with an intense, watchful gaze, inside a bombed-out high-tech biomedical facility, medium shot, formidable presence. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #3
+Reuse
+An M4 carbine is an extension of his body.
+Beat Type:
+CHARACTER_DETAIL
+Visual Significance:
+MEDIUM
+Reuse instruction: Reuse image from Scene 2, Beat #2.
+
+Reasoning: Provides detail about O'Brien's equipment, which can be shown in the same shot as his introduction.
+
+Beat #4
+Reuse
+His gray eyes miss nothing.
+Beat Type:
+CHARACTER_DETAIL
+Visual Significance:
+MEDIUM
+Reuse instruction: Reuse image from Scene 2, Beat #2.
+
+Reasoning: Focuses on a character detail (eyes) that can be achieved with a close-up within the existing shot of O'Brien.
+
+Beat #5
+New Image
+He gives a slight, almost imperceptible nod.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+MEDIUM
+Reasoning: A specific, subtle action that conveys character interaction and requires a distinct visual.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, close-up of HSCEIA man's face (late 30s, sharp angles, strong jaw, high cheekbones, intense gray eyes), giving a slight, almost imperceptible nod, dust-covered muted gray tactical gear visible, inside a bombed-out high-tech biomedical facility, reserved expression. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #6
+No Image
+He's her security detail.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Expositional information, not a distinct visual moment.
+
+Beat #7
+No Image
+A ghost sent by Preacher.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Expositional information, no new visual needed.
+
+Beat #8
+Reuse
+Mitchell.
+Beat Type:
+DIALOGUE
+Visual Significance:
+LOW
+Reuse instruction: Reuse image from Scene 2, Beat #5.
+
+Reasoning: Dialogue can be delivered within the existing shot of the characters interacting.
+
+Beat #9
+Reuse
+I know.
+Beat Type:
+DIALOGUE
+Visual Significance:
+LOW
+Reuse instruction: Reuse image from Scene 2, Beat #5.
+
+Reasoning: Dialogue can be delivered within the existing shot of the characters interacting.
+
+Beat #10
+No Image
+His presence is a weight.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal feeling or narrative description, not a distinct visual moment.
+
+Beat #11
+No Image
+Cat is used to working alone.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal thought or character background, no new visual needed.
+
+Beat #12
+No Image
+She doesn't like surprises.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal thought or character trait, no new visual needed.
+
+Beat #13
+New Image
+She gives him a wide berth as she works the lock on the server room door.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+rows of server racks, blinking status lights
+flickering emergency lights, harsh fluorescent glow
+Reasoning: Cat performs a specific action (working the lock) while interacting with O'Brien's presence, requiring a new visual to show the dynamic and the action.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, JRUMLV woman (athletic build, dust-covered tactical gear, dark hair in tight bun) focused on working the lock mechanism of a reinforced server room door, while HSCEIA man (lean, powerful build, dust-covered tactical gear, M4 carbine) stands a visible distance away, observing, inside a bombed-out high-tech biomedical facility with rows of server racks and flickering emergency lights, wide shot, tense professional distance. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Scene 3: INT. MOBILE MEDICAL BASE - NIGHT
+Timing: NIGHT
+Duration: 00:01:00 min
+Role: PRIMARY
+Ad Break: No
+Visual Beats
+Beat #1
+New Image
+A converted semi-trailer.
+Beat Type:
+ESTABLISHING_SHOT
+Visual Significance:
+HIGH
+Location Attributes:
+
+a fold-out examination table bolted to the floor in the center of the mobile lab.
+Reasoning: Establishes a completely new location for the scene.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, interior shot of a converted semi-trailer mobile medical lab, showing a fold-out examination table bolted to the floor, medical monitors lining reinforced walls, IV bags on ceiling tracks, modular storage units, LED strip lighting, wide shot, clinical, functional, confined.
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #2
+Reuse
+Cramped, clinical.
+Beat Type:
+ESTABLISHING_SHOT
+Visual Significance:
+MEDIUM
+Location Attributes:
+
+a fold-out examination table bolted to the floor in the center of the mobile lab.
+Reuse instruction: Reuse image from Scene 3, Beat #1.
+
+Reasoning: Adds descriptive detail to the established location, can be shown within the same establishing shot.
+
+Beat #3
+New Image
+Medical monitors and computer screens cast a blue glow on Cat's face.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+a compact, stainless steel medical specimen refrigerator, its glass door showing rows of labeled test tubes.
+Reasoning: Introduces Cat in the new setting, highlighting specific lighting and her activity.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, close-up of JRUMLV woman's face (early 30s, athletic build, intense focus, olive-drab utility uniform, dark hair in tight tactical bun), illuminated by a cool blue glow from medical monitors and computer screens, reflections in her eyes, inside a converted semi-trailer mobile medical lab, analytical expression. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #4
+Reuse
+She's analyzing a data drive pulled from the server.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+a compact, stainless steel medical specimen refrigerator, its glass door showing rows of labeled test tubes.
+Reuse instruction: Reuse image from Scene 3, Beat #3.
+
+Reasoning: Describes Cat's ongoing action, which can be shown within the same shot as her initial appearance in the base.
+
+Beat #5
+New Image
+Layers of corrupted data.
+Beat Type:
+VISUAL_DETAIL
+Visual Significance:
+MEDIUM
+Reasoning: Focuses on the specific visual content on the computer screen, crucial for plot progression.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, close-up of a computer screen displaying layers of corrupted data, abstract visual representation of fragmented text, distorted graphics, digital noise, glitch effects, blue glow, inside a mobile medical lab, chaotic, complex.
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #6
+Reuse
+Heavy encryption.
+Beat Type:
+VISUAL_DETAIL
+Visual Significance:
+MEDIUM
+Reuse instruction: Reuse image from Scene 3, Beat #5.
+
+Reasoning: Further describes the data on screen, can be shown within the same close-up shot.
+
+Beat #7
+New Image
+She peels them back, one by one.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+a compact, stainless steel medical specimen refrigerator, its glass door showing rows of labeled test tubes.
+Reasoning: Shows Cat's active interaction with the data, requiring a shot that includes her and the screen.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, JRUMLV woman (athletic build, intense focus, olive-drab utility uniform, dark hair in tight tactical bun) with hands on a keyboard, meticulously working on a computer screen displaying layers of corrupted data being peeled back, inside a converted semi-trailer mobile medical lab, a compact stainless steel medical specimen refrigerator visible in the background, focused, determined. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #8
+Reuse
+Then, she finds it.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+MEDIUM
+Location Attributes:
+
+a compact, stainless steel medical specimen refrigerator, its glass door showing rows of labeled test tubes.
+Reuse instruction: Reuse image from Scene 3, Beat #7.
+
+Reasoning: Cat's reaction to finding something, can be shown within the same shot as her working.
+
+Beat #9
+New Image
+A single, anomalous audio file.
+Beat Type:
+VISUAL_DETAIL
+Visual Significance:
+HIGH
+Reasoning: Close-up on the specific audio file on the screen, a critical plot reveal.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, close-up of a computer screen displaying a single, anomalous audio file, represented by an unusual, complex waveform and a distinct digital icon, glowing blue, inside a mobile medical lab, intriguing, mysterious.
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #10
+No Image
+Not data.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal realization, not a distinct visual moment.
+
+Beat #11
+Reuse
+A voice.
+Beat Type:
+VISUAL_DETAIL
+Visual Significance:
+MEDIUM
+Reuse instruction: Reuse image from Scene 3, Beat #9.
+
+Reasoning: Further describes the content of the file, can be shown on the same screen shot (e.g., waveform).
+
+Beat #12
+No Image
+A patient who died weeks ago, in a hospital miles from here.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Expositional information, no new visual needed.
+
+Beat #13
+Reuse
+It's not... it's not the end... it's... everyone...
+Beat Type:
+DIALOGUE
+Visual Significance:
+LOW
+Reuse instruction: Reuse image from Scene 3, Beat #9.
+
+Reasoning: The voice-over plays while the visual focus remains on the screen or Cat's reaction.
+
+Beat #14
+Reuse
+The voice cuts out.
+Beat Type:
+VISUAL_DETAIL
+Visual Significance:
+MEDIUM
+Reuse instruction: Reuse image from Scene 3, Beat #9.
+
+Reasoning: Visual representation of the audio stopping on the screen, can be shown in the same shot.
+
+Beat #15
+New Image
+Impossible.
+Beat Type:
+CHARACTER_REACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+a compact, stainless steel medical specimen refrigerator, its glass door showing rows of labeled test tubes.
+Reasoning: Cat's strong emotional reaction to the impossible event, requiring a distinct close-up on her face.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, extreme close-up of JRUMLV woman's face (early 30s, athletic build, olive-drab utility uniform, dark hair in tight tactical bun), wide, shocked eyes, furrowed brow, expression of profound disbelief and surprise, illuminated by a blue glow from a screen, inside a converted semi-trailer mobile medical lab, intense emotional reaction. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Scene 4: INT. MOBILE MEDICAL BASE - CONTINUOUS
+Timing: NIGHT
+Duration: 00:01:00 min
+Role: PRIMARY
+Ad Break: No
+Visual Beats
+Beat #1
+New Image
+Cat stares at the waveform on her monitor, her mind racing.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+a compact, stainless steel medical specimen refrigerator, its glass door showing rows of labeled test tubes.
+Reasoning: Re-establishes Cat's focus and internal state after the shocking discovery, setting up the next event.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, JRUMLV woman (athletic build, intense focus, olive-drab utility uniform, dark hair in tight tactical bun) staring intently at a computer monitor displaying a complex audio waveform, thoughtful and contemplative expression, illuminated by the screen's glow, inside a converted semi-trailer mobile medical lab, a compact stainless steel medical specimen refrigerator visible in the background, analytical. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #2
+New Image
+O'Brien stands guard by the door, a silent sentinel.
+Beat Type:
+CHARACTER_ACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+a fold-out examination table bolted to the floor in the center of the mobile lab.
+Reasoning: Re-establishes O'Brien's presence and role in the scene, providing context for the confined space.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, HSCEIA man (lean, powerful build, sharp angles to face, gray eyes scanning, muted gray tactical gear, body armor, M4 carbine held ready) standing guard by a door, alert posture, stoic and watchful, inside a converted semi-trailer mobile medical lab, a fold-out examination table visible, protective presence. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #3
+New Image
+Suddenly, new data streams onto the screen.
+Beat Type:
+VISUAL_EVENT
+Visual Significance:
+HIGH
+Reasoning: A sudden and significant visual event on the screen, indicating a new development.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, close-up of a computer screen, suddenly displaying new data streaming rapidly, lines of glowing characters and code appearing dynamically, urgent digital display, inside a mobile medical lab, sudden, urgent.
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #4
+No Image
+Not from the drive.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal realization, not a distinct visual moment.
+
+Beat #5
+No Image
+From nowhere.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal realization, no new visual needed.
+
+Beat #6
+Reuse
+A string of text, writing itself out in stark, white letters.
+Beat Type:
+VISUAL_EVENT
+Visual Significance:
+HIGH
+Reuse instruction: Reuse image from Scene 4, Beat #3.
+
+Reasoning: Continuation of the visual event on the screen, showing the text appearing.
+
+Beat #7
+New Image
+ON SCREEN: I AM EVERYONE WHO DIED. FIND THE OTHERS.
+Beat Type:
+VISUAL_DETAIL
+Visual Significance:
+HIGH
+Reasoning: Close-up on the critical message, which is a major plot point and requires clear visibility.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, extreme close-up of a computer screen displaying stark, glowing white text: "I AM EVERYONE WHO DIED. FIND THE OTHERS.", against a dark digital background, inside a mobile medical lab, ominous, chilling, direct message.
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #8
+New Image
+Cat's blood runs cold.
+Beat Type:
+CHARACTER_REACTION
+Visual Significance:
+HIGH
+Location Attributes:
+
+a compact, stainless steel medical specimen refrigerator, its glass door showing rows of labeled test tubes.
+Reasoning: Cat's intense emotional reaction to the message, requiring a distinct close-up on her face.
+
+Cinematic (16:9)
+Vertical (9:16)
+
+cinematic, gritty, post-apocalyptic, photorealistic, 8k, masterpiece, extreme close-up of JRUMLV woman's face (early 30s, athletic build, olive-drab utility uniform, dark hair in tight tactical bun), expression of profound shock and fear, pale complexion, wide, unblinking eyes, illuminated by the cold glow of a screen, inside a converted semi-trailer mobile medical lab, dread. <segment:yolo-face_yolov9c.pt,0.7,0.5>
+
+Model: epicrealism_naturalSinRC1VAE
+Size: 1368x768
+Steps: 25
+CFG: 7
+Beat #9
+No Image
+The investigation just changed.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal thought or narrative exposition, no new visual needed.
+
+Beat #10
+No Image
+This isn't about a bombing.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal thought or narrative exposition, no new visual needed.
+
+Beat #11
+No Image
+It's about something else entirely.
+Beat Type:
+NARRATIVE_DETAIL
+Visual Significance:
+LOW
+Reasoning: Internal thought or narrative exposition, no new visual needed.

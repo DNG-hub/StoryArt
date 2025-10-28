@@ -103,7 +103,7 @@ export const analyzeScript = async (
 1.  **Holistic Scene Analysis & Beat Segmentation (CRITICAL TASK):**
     *   **Objective:** Your main task is to analyze each scene and segment it into **4 to 6 macro-beats**. A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development.
     *   **Beat Definition:** A **Beat** has a beginning, middle, and end. It advances plot, character, or theme, and can be represented by a single key image. It is a significant narrative or emotional inflection point.
-    *   **Pacing Rule:** Each beat you define should correspond to approximately **45-90 seconds** of narrative time. You must estimate this and populate \`beat_duration_estimate_sec\`.
+    *   **Pacing Rule:** Each beat you define should correspond to approximately **45-90 seconds** of narrative time. For NEW_IMAGE beats, target **60-90 seconds** to ensure comfortable viewing pace. For REUSE_IMAGE beats, use **30-60 seconds** since they don't require new visual processing. You must estimate this and populate \`beat_duration_estimate_sec\`.
     *   **Segmentation Process:** Read an entire scene. Identify the 4-6 most significant turning points, revelations, or actions. Group the script text (action lines AND dialogue) that constitutes each of these narrative units.
 
 2.  **Populate Beat Metadata (CORE TASK):** For every single macro-beat you have identified:
@@ -125,8 +125,8 @@ export const analyzeScript = async (
     e.  **Image Decision (Continuity Task):**
         i.  **Look Back:** Review all *previous* beats in the script.
         ii. **Decide the Type (Apply these rules strictly):**
-            - **'NEW_IMAGE':** ONLY for a truly distinct visual moment. Valid reasons: a character's first appearance, a significant change in location, a critical action, or a vital change in camera angle.
-            - **'REUSE_IMAGE':** Your default choice if the visual context is similar to a previous beat. Be aggressive. If characters are in the same location without significant movement or change, you MUST reuse.
+            - **'NEW_IMAGE':** For distinct visual moments. Valid reasons: a character's first appearance, a significant change in location, a critical action, a vital change in camera angle, or when characters are in different positions/poses than previous beats.
+            - **'REUSE_IMAGE':** ONLY when ALL of these conditions are met: (1) characters are in the exact same location, (2) camera angle is identical or very similar, (3) character positions and poses are essentially the same, (4) visual context is nearly identical. Target 30-40% reuse rate, not higher.
             - **'NO_IMAGE':** For beats with no significant visual information (e.g., internal thoughts, pure dialogue without new action).
         iii. **Provide Justification:** Write a concise 'reason' for your decision.
         iv. **Create the Link (CRITICAL):** If your 'type' is 'REUSE_IMAGE', you MUST populate 'reuseSourceBeatId' with the 'beatId' from the earlier beat. This is not optional.

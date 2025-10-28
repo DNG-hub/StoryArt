@@ -1,0 +1,489 @@
+{
+  "story_configuration_tab_schema": {
+    "metadata": {
+      "description": "Complete database schema for Story Configuration Tab components",
+      "purpose": "AI-readable structure for data inspection and validation",
+      "components": [
+        "StoryContext",
+        "CharacterManager",
+        "CharacterRelationshipManager",
+        "PlotArcManager",
+        "LocationArcManager",
+        "SupernaturalEntityManager"
+      ],
+      "total_tables": 26,
+      "total_columns": 160,
+      "primary_table": "stories"
+    },
+
+    "tables": {
+      "stories": {
+        "component": "StoryContext",
+        "description": "Main story entity with overarching context and planning data",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique story identifier"},
+          "title": {"type": "VARCHAR(255)", "nullable": false, "description": "Story title"},
+          "description": {"type": "TEXT", "nullable": true, "description": "Story description"},
+          "author": {"type": "VARCHAR(255)", "nullable": true, "description": "Story author"},
+          "genre": {"type": "VARCHAR(100)", "nullable": true, "description": "Story genre"},
+          "word_count": {"type": "INTEGER", "nullable": true, "description": "Word count"},
+          "content_preview": {"type": "TEXT", "nullable": true, "description": "Content preview"},
+          "current_episode_number": {"type": "INTEGER", "nullable": false, "default": 1, "description": "Current episode tracking"},
+          "story_context": {"type": "TEXT", "nullable": true, "description": "Overarching themes and relationship dynamics"},
+          "ai_guidance": {"type": "TEXT", "nullable": true, "description": "AI content generation guidance"},
+          "narrative_tone": {"type": "TEXT", "nullable": true, "description": "Narrative tone and style"},
+          "core_themes": {"type": "TEXT", "nullable": true, "description": "Core thematic elements"},
+          "planned_ending": {"type": "TEXT", "nullable": true, "description": "How story should end"},
+          "total_episodes": {"type": "INTEGER", "nullable": true, "description": "Planned series length"},
+          "series_conclusion": {"type": "TEXT", "nullable": true, "description": "Final story resolution"},
+          "character_final_states": {"type": "TEXT", "nullable": true, "description": "Where characters end up"},
+          "relationship_resolutions": {"type": "TEXT", "nullable": true, "description": "How relationships conclude"},
+          "thematic_resolution": {"type": "TEXT", "nullable": true, "description": "Final thematic answers"},
+          "story_type": {"type": "VARCHAR(50)", "nullable": true, "description": "Story format type"},
+          "complexity_level": {"type": "VARCHAR(20)", "nullable": true, "description": "Complexity level"},
+          "ai_recommended_episodes": {"type": "INTEGER", "nullable": true, "description": "AI recommended episode count"},
+          "override_ai_recommendation": {"type": "BOOLEAN", "nullable": true, "default": false, "description": "Override AI recommendation"},
+          "user_id": {"type": "UUID", "nullable": false, "foreign_key": "users.id", "description": "Owner user"},
+          "organization_id": {"type": "UUID", "nullable": true, "foreign_key": "organizations.id", "description": "Organization"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "updated_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "onupdate": "datetime.utcnow", "description": "Update timestamp"}
+        },
+        "relationships": {
+          "characters": {"type": "one-to-many", "foreign_key": "story_id", "cascade": "all, delete-orphan"},
+          "character_relationships": {"type": "one-to-many", "foreign_key": "story_id", "cascade": "all, delete-orphan"},
+          "plot_arcs": {"type": "one-to-many", "foreign_key": "story_id", "cascade": "all, delete-orphan", "order_by": "arc_number"},
+          "location_arcs": {"type": "one-to-many", "foreign_key": "story_id", "cascade": "all, delete-orphan"}
+        }
+      },
+
+      "characters": {
+        "component": "CharacterManager",
+        "description": "Individual character definitions with descriptions and backstories",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique character identifier"},
+          "name": {"type": "VARCHAR(255)", "nullable": false, "description": "Character name"},
+          "description": {"type": "TEXT", "nullable": true, "description": "Character description"},
+          "backstory": {"type": "TEXT", "nullable": true, "description": "Character backstory"},
+          "role": {"type": "VARCHAR(50)", "nullable": true, "description": "Character role"},
+          "enhancement_source": {"type": "VARCHAR(20)", "nullable": true, "enum": ["technological", "supernatural", "hybrid"], "description": "Source of character enhancements"},
+          "supernatural_influence_level": {"type": "INTEGER", "nullable": true, "constraint": "CHECK (supernatural_influence_level >= 0 AND supernatural_influence_level <= 10)", "description": "Supernatural influence level 0-10 scale"},
+          "enhancement_motivations": {"type": "JSONB", "nullable": true, "description": "Enhancement provider, purpose, and limitations"},
+          "supernatural_conflicts": {"type": "VARCHAR(255)[]", "nullable": true, "description": "Array of internal struggle tags"},
+          "ghost_enhancement_status": {"type": "VARCHAR(20)", "nullable": true, "enum": ["enhanced", "independent", "rejected"], "description": "Relationship to Ghost entity enhancement"},
+          "revenge_programming_resistance": {"type": "INTEGER", "nullable": true, "constraint": "CHECK (revenge_programming_resistance >= 0 AND revenge_programming_resistance <= 10)", "description": "Progression tracking for resistance to supernatural programming"},
+          "humanity_choice_evolution": {"type": "JSONB", "nullable": true, "description": "Character agency development tracking"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "updated_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "onupdate": "datetime.utcnow", "description": "Update timestamp"},
+          "story_id": {"type": "UUID", "nullable": false, "foreign_key": "stories.id", "description": "Parent story"}
+        },
+        "relationships": {
+          "story": {"type": "many-to-one", "foreign_key": "story_id"},
+          "relationships_from": {"type": "one-to-many", "table": "character_relationships", "foreign_key": "source_character_id", "cascade": "all, delete-orphan"},
+          "relationships_to": {"type": "one-to-many", "table": "character_relationships", "foreign_key": "target_character_id", "cascade": "all, delete-orphan"},
+          "character_relationships": {"type": "many-to-many", "through": "character_relationships", "viewonly": true},
+          "location_contexts": {"type": "one-to-many", "table": "character_location_contexts", "foreign_key": "character_id", "cascade": "all, delete-orphan"}
+        }
+      },
+
+      "character_relationships": {
+        "component": "CharacterRelationshipManager",
+        "description": "Relationships between characters with descriptions",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique relationship identifier"},
+          "description": {"type": "TEXT", "nullable": true, "description": "Relationship description"},
+          "relationship_type": {"type": "VARCHAR", "nullable": false, "description": "Type of relationship"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "updated_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "onupdate": "datetime.utcnow", "description": "Update timestamp"},
+          "source_character_id": {"type": "UUID", "nullable": false, "foreign_key": "characters.id", "description": "Source character"},
+          "target_character_id": {"type": "UUID", "nullable": false, "foreign_key": "characters.id", "description": "Target character"},
+          "story_id": {"type": "UUID", "nullable": false, "foreign_key": "stories.id", "description": "Parent story"}
+        },
+        "relationships": {
+          "source_character": {"type": "many-to-one", "foreign_key": "source_character_id"},
+          "target_character": {"type": "many-to-one", "foreign_key": "target_character_id"},
+          "story": {"type": "many-to-one", "foreign_key": "story_id"}
+        }
+      },
+
+      "plot_arcs": {
+        "component": "PlotArcManager",
+        "description": "Plot arcs with hierarchical structure for main plots and subplots",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique plot arc identifier"},
+          "title": {"type": "VARCHAR(255)", "nullable": false, "description": "Plot arc title"},
+          "description": {"type": "TEXT", "nullable": true, "description": "Plot arc description"},
+          "arc_number": {"type": "INTEGER", "nullable": false, "description": "Arc sequence number"},
+          "type": {"type": "VARCHAR(50)", "nullable": false, "default": "NARRATIVE", "description": "Arc type"},
+          "arc_hierarchy": {"type": "VARCHAR(20)", "nullable": false, "default": "primary", "description": "Primary or subplot"},
+          "parent_arc_id": {"type": "UUID", "nullable": true, "foreign_key": "plot_arcs.id", "ondelete": "SET NULL", "description": "Parent arc for subplots"},
+          "interweave_frequency": {"type": "INTEGER", "nullable": false, "default": 3, "description": "How often subplot appears"},
+          "interweave_priority": {"type": "INTEGER", "nullable": false, "default": 5, "description": "Priority in interweaving"},
+          "key_characters": {"type": "TEXT", "nullable": true, "description": "Characters involved"},
+          "relationship_dynamics": {"type": "TEXT", "nullable": true, "description": "Relationship dynamics"},
+          "progression_type": {"type": "VARCHAR(100)", "nullable": false, "default": "subtle_to_overt", "description": "How arc progresses"},
+          "cross_arc_impact": {"type": "TEXT", "nullable": true, "description": "Impact on other arcs"},
+          "custom_secondary_type": {"type": "VARCHAR(100)", "nullable": true, "description": "Custom secondary type"},
+          "resolution_goal": {"type": "TEXT", "nullable": true, "description": "How arc should resolve"},
+          "climax_description": {"type": "TEXT", "nullable": true, "description": "Peak moment description"},
+          "ending_state": {"type": "TEXT", "nullable": true, "description": "Final state after resolution"},
+          "resolution_episode": {"type": "INTEGER", "nullable": true, "description": "Target episode for resolution"},
+          "character_destinations": {"type": "TEXT", "nullable": true, "description": "Where characters end up"},
+          "thematic_payoff": {"type": "TEXT", "nullable": true, "description": "Theme resolution payoff"},
+          "activation_episode": {"type": "INTEGER", "nullable": true, "description": "When subplot first appears"},
+          "peak_episode": {"type": "INTEGER", "nullable": true, "description": "When subplot reaches maximum intensity"},
+          "integration_notes": {"type": "TEXT", "nullable": true, "description": "How subplot integrates with parent"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "updated_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "onupdate": "datetime.utcnow", "description": "Update timestamp"},
+          "story_id": {"type": "UUID", "nullable": false, "foreign_key": "stories.id", "description": "Parent story"}
+        },
+        "relationships": {
+          "story": {"type": "many-to-one", "foreign_key": "story_id"},
+          "parent_arc": {"type": "many-to-one", "foreign_key": "parent_arc_id", "remote_side": "id"},
+          "subplots": {"type": "one-to-many", "foreign_key": "parent_arc_id"},
+          "plot_points": {"type": "one-to-many", "table": "plot_points", "foreign_key": "plot_arc_id", "cascade": "all, delete-orphan"},
+          "scenes": {"type": "one-to-many", "table": "scenes", "foreign_key": "plot_arc_id"},
+          "outgoing_connections": {"type": "one-to-many", "table": "arc_connections", "foreign_key": "source_arc_id", "cascade": "all, delete-orphan"},
+          "incoming_connections": {"type": "one-to-many", "table": "arc_connections", "foreign_key": "target_arc_id", "cascade": "all, delete-orphan"}
+        }
+      },
+
+      "location_arcs": {
+        "component": "LocationArcManager",
+        "description": "Location arcs with detailed visual and atmospheric descriptions",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique location arc identifier"},
+          "story_id": {"type": "UUID", "nullable": false, "foreign_key": "stories.id", "description": "Parent story"},
+          "name": {"type": "VARCHAR(255)", "nullable": false, "description": "Location name"},
+          "description": {"type": "TEXT", "nullable": true, "description": "Location description"},
+          "location_type": {"type": "locationtype", "nullable": false, "enum": ["SPECIFIC", "GENERAL", "CONTEXT"], "description": "Location type"},
+          "atmosphere_category": {"type": "atmospherecategory", "nullable": true, "enum": ["professional", "intimate", "tactical", "flashback", "TENSE", "CALM", "MYSTERIOUS", "ROMANTIC", "ACTION-PACKED", "DEFEATED", "HOPEFUL"], "description": "Atmosphere category"},
+          "geographical_location": {"type": "VARCHAR(500)", "nullable": true, "description": "Geographical location"},
+          "time_period": {"type": "VARCHAR(255)", "nullable": true, "description": "Time period"},
+          "cultural_context": {"type": "VARCHAR(500)", "nullable": true, "description": "Cultural context"},
+          "atmosphere": {"type": "TEXT", "nullable": true, "description": "Free-form atmosphere description"},
+          "visual_description": {"type": "TEXT", "nullable": true, "description": "Visual details"},
+          "key_features": {"type": "TEXT", "nullable": true, "description": "Key features (JSON array)"},
+          "visual_reference_url": {"type": "VARCHAR(1000)", "nullable": true, "description": "Visual reference URL"},
+          "significance_level": {"type": "VARCHAR(50)", "nullable": true, "default": "secondary", "description": "Significance level"},
+          "notes": {"type": "TEXT", "nullable": true, "description": "Additional notes"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "updated_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "onupdate": "datetime.utcnow", "description": "Update timestamp"}
+        },
+        "relationships": {
+          "story": {"type": "many-to-one", "foreign_key": "story_id"},
+          "artifacts": {"type": "one-to-many", "table": "location_artifacts", "foreign_key": "location_arc_id", "cascade": "all, delete-orphan"},
+          "character_contexts": {"type": "one-to-many", "table": "character_location_contexts", "foreign_key": "location_arc_id", "cascade": "all, delete-orphan"},
+          "scene_associations": {"type": "one-to-many", "table": "scene_location_associations", "foreign_key": "location_arc_id", "cascade": "all, delete-orphan"},
+          "ai_suggestions": {"type": "one-to-many", "table": "ai_location_suggestions", "foreign_key": "accepted_as_location_arc_id", "cascade": "all, delete-orphan"}
+        }
+      },
+
+      "plot_points": {
+        "component": "PlotArcManager",
+        "description": "Individual plot points within plot arcs",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique plot point identifier"},
+          "title": {"type": "VARCHAR(255)", "nullable": false, "description": "Plot point title"},
+          "description": {"type": "TEXT", "nullable": true, "description": "Plot point description"},
+          "timing_in_story": {"type": "FLOAT", "nullable": false, "description": "Timing in story (0-1)"},
+          "relative_pacing": {"type": "FLOAT", "nullable": false, "description": "Relative pacing"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "updated_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "onupdate": "datetime.utcnow", "description": "Update timestamp"},
+          "plot_arc_id": {"type": "UUID", "nullable": false, "foreign_key": "plot_arcs.id", "description": "Parent plot arc"}
+        },
+        "relationships": {
+          "plot_arc": {"type": "many-to-one", "foreign_key": "plot_arc_id"}
+        }
+      },
+
+      "arc_connections": {
+        "component": "PlotArcManager",
+        "description": "Connections between plot arcs for subplot relationships",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique connection identifier"},
+          "source_arc_id": {"type": "UUID", "nullable": false, "foreign_key": "plot_arcs.id", "description": "Source plot arc"},
+          "target_arc_id": {"type": "UUID", "nullable": false, "foreign_key": "plot_arcs.id", "description": "Target plot arc"},
+          "connection_type": {"type": "VARCHAR(50)", "nullable": false, "description": "Type of connection"},
+          "connection_subtype": {"type": "VARCHAR(50)", "nullable": true, "description": "Subtype of connection"},
+          "trigger_condition": {"type": "TEXT", "nullable": true, "description": "Condition that triggers connection"},
+          "impact_description": {"type": "TEXT", "nullable": false, "description": "Description of impact"},
+          "timing": {"type": "VARCHAR(20)", "nullable": false, "description": "When connection occurs"},
+          "strength": {"type": "INTEGER", "nullable": false, "constraints": "1-10", "description": "Connection strength"},
+          "direction": {"type": "VARCHAR(15)", "nullable": false, "description": "Connection direction"},
+          "story_id": {"type": "UUID", "nullable": false, "foreign_key": "stories.id", "description": "Parent story"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "updated_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "onupdate": "datetime.utcnow", "description": "Update timestamp"},
+          "notes": {"type": "TEXT", "nullable": true, "description": "Additional notes"}
+        },
+        "relationships": {
+          "source_arc": {"type": "many-to-one", "foreign_key": "source_arc_id"},
+          "target_arc": {"type": "many-to-one", "foreign_key": "target_arc_id"},
+          "story": {"type": "many-to-one", "foreign_key": "story_id"}
+        }
+      },
+
+      "location_artifacts": {
+        "component": "LocationArcManager",
+        "description": "Identifiable elements within location arcs",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique artifact identifier"},
+          "artifact_name": {"type": "VARCHAR(255)", "nullable": false, "description": "Artifact name"},
+          "artifact_type": {"type": "artifacttype", "nullable": false, "enum": ["KEY_ITEM", "FORESHADOWING", "CLUE", "WEAPON", "TECHNOLOGY", "DOCUMENT"], "description": "Type of artifact"},
+          "description": {"type": "TEXT", "nullable": true, "description": "Artifact description"},
+          "always_present": {"type": "BOOLEAN", "nullable": false, "description": "Always present in location"},
+          "scene_specific": {"type": "BOOLEAN", "nullable": false, "description": "Only in specific scenes"},
+          "swarmui_prompt_fragment": {"type": "TEXT", "nullable": true, "description": "AI prompt fragment"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "location_arc_id": {"type": "UUID", "nullable": false, "foreign_key": "location_arcs.id", "description": "Parent location arc"}
+        },
+        "relationships": {
+          "location_arc": {"type": "many-to-one", "foreign_key": "location_arc_id"}
+        }
+      },
+
+      "character_location_contexts": {
+        "component": ["CharacterManager", "LocationArcManager"],
+        "description": "Character context and appearance details within specific locations",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique context identifier"},
+          "temporal_context": {"type": "temporalcontext", "nullable": false, "enum": ["PRE_COLLAPSE", "POST_COLLAPSE", "DREAM_SEQUENCE", "FLASHBACK"], "description": "Time period context"},
+          "age_at_context": {"type": "INTEGER", "nullable": true, "description": "Character age in this context"},
+          "physical_description": {"type": "TEXT", "nullable": true, "description": "Physical appearance"},
+          "clothing_description": {"type": "TEXT", "nullable": true, "description": "Clothing description"},
+          "hair_description": {"type": "TEXT", "nullable": true, "description": "Hair description"},
+          "demeanor_description": {"type": "TEXT", "nullable": true, "description": "Character demeanor"},
+          "swarmui_prompt_override": {"type": "TEXT", "nullable": true, "description": "AI prompt override"},
+          "lora_weight_adjustment": {"type": "FLOAT", "nullable": false, "description": "LoRA weight adjustment"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "updated_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "onupdate": "datetime.utcnow", "description": "Update timestamp"},
+          "character_id": {"type": "UUID", "nullable": false, "foreign_key": "characters.id", "description": "Related character"},
+          "location_arc_id": {"type": "UUID", "nullable": false, "foreign_key": "location_arcs.id", "description": "Related location"}
+        },
+        "relationships": {
+          "character": {"type": "many-to-one", "foreign_key": "character_id"},
+          "location_arc": {"type": "many-to-one", "foreign_key": "location_arc_id"}
+        }
+      },
+
+      "scene_location_associations": {
+        "component": "LocationArcManager",
+        "description": "Associations between scenes and location arcs",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique association identifier"},
+          "association_strength": {"type": "associationstrength", "nullable": false, "enum": ["PRIMARY", "SECONDARY", "TERTIARY"], "description": "Strength of association"},
+          "custom_modifications": {"type": "TEXT", "nullable": true, "description": "Custom modifications"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "scene_id": {"type": "UUID", "nullable": false, "foreign_key": "scenes.id", "description": "Related scene"},
+          "location_arc_id": {"type": "UUID", "nullable": false, "foreign_key": "location_arcs.id", "description": "Related location arc"}
+        },
+        "relationships": {
+          "scene": {"type": "many-to-one", "foreign_key": "scene_id"},
+          "location_arc": {"type": "many-to-one", "foreign_key": "location_arc_id"}
+        }
+      },
+
+      "ai_location_suggestions": {
+        "component": "LocationArcManager",
+        "description": "AI-generated location suggestions that can be accepted",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique suggestion identifier"},
+          "suggested_name": {"type": "VARCHAR(255)", "nullable": false, "description": "Suggested location name"},
+          "suggested_type": {"type": "VARCHAR(100)", "nullable": false, "description": "Suggested location type"},
+          "ai_reasoning": {"type": "TEXT", "nullable": true, "description": "AI reasoning for suggestion"},
+          "suggested_artifacts": {"type": "JSONB", "nullable": true, "description": "Suggested artifacts"},
+          "character_contexts": {"type": "JSONB", "nullable": true, "description": "Suggested character contexts"},
+          "accepted": {"type": "BOOLEAN", "nullable": false, "description": "Whether suggestion was accepted"},
+          "modified_by_user": {"type": "BOOLEAN", "nullable": false, "description": "Whether user modified suggestion"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "story_id": {"type": "UUID", "nullable": false, "foreign_key": "stories.id", "description": "Parent story"},
+          "accepted_as_location_arc_id": {"type": "UUID", "nullable": true, "foreign_key": "location_arcs.id", "description": "Accepted location arc"}
+        },
+        "relationships": {
+          "story": {"type": "many-to-one", "foreign_key": "story_id"},
+          "accepted_as_location_arc": {"type": "many-to-one", "foreign_key": "accepted_as_location_arc_id"}
+        }
+      },
+
+      "ghost_entity_relationships": {
+        "component": "SupernaturalEntityManager",
+        "description": "Tracking Ghost entity relationships and supernatural influence on characters",
+        "columns": {
+          "id": {"type": "UUID", "nullable": false, "primary_key": true, "description": "Unique relationship identifier"},
+          "entity_name": {"type": "VARCHAR(255)", "nullable": false, "description": "Supernatural entity name (e.g., Ghost)"},
+          "relationship_type": {"type": "VARCHAR(50)", "nullable": false, "enum": ["enhanced", "protected", "influenced", "rejected"], "description": "Type of supernatural relationship"},
+          "enhancement_level": {"type": "INTEGER", "nullable": true, "constraint": "CHECK (enhancement_level >= 0 AND enhancement_level <= 10)", "description": "Level of supernatural enhancement 0-10"},
+          "protection_investment": {"type": "JSONB", "nullable": true, "description": "Entity's protective motivations and investment level"},
+          "revenge_agenda_alignment": {"type": "VARCHAR(20)", "nullable": true, "enum": ["aligned", "conflicted", "rejected"], "description": "Character's alignment with entity's revenge agenda"},
+          "communication_method": {"type": "VARCHAR(50)", "nullable": true, "enum": ["electronic", "biological", "environmental", "neural"], "description": "How entity communicates with character"},
+          "influence_notes": {"type": "TEXT", "nullable": true, "description": "Detailed notes on supernatural influence"},
+          "created_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "description": "Creation timestamp"},
+          "updated_at": {"type": "TIMESTAMP WITH TIME ZONE", "nullable": false, "default": "datetime.utcnow", "onupdate": "datetime.utcnow", "description": "Update timestamp"},
+          "character_id": {"type": "UUID", "nullable": false, "foreign_key": "characters.id", "description": "Character affected by supernatural entity"},
+          "story_id": {"type": "UUID", "nullable": false, "foreign_key": "stories.id", "description": "Parent story"}
+        },
+        "relationships": {
+          "character": {"type": "many-to-one", "foreign_key": "character_id"},
+          "story": {"type": "many-to-one", "foreign_key": "story_id"}
+        }
+      }
+    },
+
+    "data_inspection_queries": {
+      "core_story_context": {
+        "description": "Get main story configuration data",
+        "query": "SELECT id, title, story_context, narrative_tone, core_themes, planned_ending, total_episodes, series_conclusion, character_final_states, relationship_resolutions, thematic_resolution, story_type, complexity_level, ai_recommended_episodes, override_ai_recommendation FROM stories WHERE id = ?",
+        "parameters": ["story_id"],
+        "tables": ["stories"],
+        "columns": ["story_context", "narrative_tone", "core_themes", "planned_ending", "total_episodes", "series_conclusion", "character_final_states", "relationship_resolutions", "thematic_resolution", "story_type", "complexity_level", "ai_recommended_episodes", "override_ai_recommendation"]
+      },
+
+      "character_data": {
+        "description": "Get all characters for a story",
+        "query": "SELECT id, name, description, backstory, role FROM characters WHERE story_id = ? ORDER BY created_at",
+        "parameters": ["story_id"],
+        "tables": ["characters"],
+        "columns": ["name", "description", "backstory", "role"]
+      },
+
+      "character_relationships_data": {
+        "description": "Get all character relationships for a story",
+        "query": "SELECT cr.id, cr.description, cr.relationship_type, c1.name as source_name, c2.name as target_name FROM character_relationships cr JOIN characters c1 ON cr.source_character_id = c1.id JOIN characters c2 ON cr.target_character_id = c2.id WHERE cr.story_id = ? ORDER BY cr.created_at",
+        "parameters": ["story_id"],
+        "tables": ["character_relationships", "characters"],
+        "columns": ["description", "relationship_type"]
+      },
+
+      "plot_arcs_data": {
+        "description": "Get all plot arcs for a story with hierarchy",
+        "query": "SELECT id, title, description, arc_number, type, arc_hierarchy, parent_arc_id, interweave_frequency, interweave_priority, key_characters, relationship_dynamics, progression_type, cross_arc_impact, custom_secondary_type, resolution_goal, climax_description, ending_state, resolution_episode, character_destinations, thematic_payoff, activation_episode, peak_episode, integration_notes FROM plot_arcs WHERE story_id = ? ORDER BY arc_number",
+        "parameters": ["story_id"],
+        "tables": ["plot_arcs"],
+        "columns": ["title", "description", "arc_number", "type", "arc_hierarchy", "parent_arc_id", "interweave_frequency", "interweave_priority", "key_characters", "relationship_dynamics", "progression_type", "cross_arc_impact", "custom_secondary_type", "resolution_goal", "climax_description", "ending_state", "resolution_episode", "character_destinations", "thematic_payoff", "activation_episode", "peak_episode", "integration_notes"]
+      },
+
+      "location_arcs_data": {
+        "description": "Get all location arcs for a story",
+        "query": "SELECT id, name, description, location_type, atmosphere_category, geographical_location, time_period, cultural_context, atmosphere, visual_description, key_features, visual_reference_url, significance_level, notes FROM location_arcs WHERE story_id = ? ORDER BY created_at",
+        "parameters": ["story_id"],
+        "tables": ["location_arcs"],
+        "columns": ["name", "description", "location_type", "atmosphere_category", "geographical_location", "time_period", "cultural_context", "atmosphere", "visual_description", "key_features", "visual_reference_url", "significance_level", "notes"]
+      },
+
+      "character_location_contexts_data": {
+        "description": "Get character context in locations",
+        "query": "SELECT clc.id, c.name as character_name, la.name as location_name, clc.temporal_context, clc.age_at_context, clc.physical_description, clc.clothing_description, clc.hair_description, clc.demeanor_description, clc.swarmui_prompt_override, clc.lora_weight_adjustment FROM character_location_contexts clc JOIN characters c ON clc.character_id = c.id JOIN location_arcs la ON clc.location_arc_id = la.id WHERE c.story_id = ? ORDER BY clc.created_at",
+        "parameters": ["story_id"],
+        "tables": ["character_location_contexts", "characters", "location_arcs"],
+        "columns": ["temporal_context", "age_at_context", "physical_description", "clothing_description", "hair_description", "demeanor_description", "swarmui_prompt_override", "lora_weight_adjustment"]
+      },
+
+      "plot_arc_connections_data": {
+        "description": "Get connections between plot arcs",
+        "query": "SELECT ac.id, pa1.title as source_arc_title, pa2.title as target_arc_title, ac.connection_type, ac.connection_subtype, ac.trigger_condition, ac.impact_description, ac.timing, ac.strength, ac.direction, ac.notes FROM arc_connections ac JOIN plot_arcs pa1 ON ac.source_arc_id = pa1.id JOIN plot_arcs pa2 ON ac.target_arc_id = pa2.id WHERE ac.story_id = ? ORDER BY ac.created_at",
+        "parameters": ["story_id"],
+        "tables": ["arc_connections", "plot_arcs"],
+        "columns": ["connection_type", "connection_subtype", "trigger_condition", "impact_description", "timing", "strength", "direction", "notes"]
+      }
+    },
+
+    "validation_rules": {
+      "required_fields": {
+        "stories": ["id", "title", "user_id"],
+        "characters": ["id", "name", "story_id"],
+        "character_relationships": ["id", "relationship_type", "source_character_id", "target_character_id", "story_id"],
+        "plot_arcs": ["id", "title", "arc_number", "story_id"],
+        "location_arcs": ["id", "name", "location_type", "story_id"]
+      },
+
+      "foreign_key_constraints": {
+        "characters.story_id": "stories.id",
+        "character_relationships.source_character_id": "characters.id",
+        "character_relationships.target_character_id": "characters.id",
+        "character_relationships.story_id": "stories.id",
+        "plot_arcs.story_id": "stories.id",
+        "plot_arcs.parent_arc_id": "plot_arcs.id",
+        "location_arcs.story_id": "stories.id",
+        "plot_points.plot_arc_id": "plot_arcs.id",
+        "arc_connections.source_arc_id": "plot_arcs.id",
+        "arc_connections.target_arc_id": "plot_arcs.id",
+        "arc_connections.story_id": "stories.id",
+        "location_artifacts.location_arc_id": "location_arcs.id",
+        "character_location_contexts.character_id": "characters.id",
+        "character_location_contexts.location_arc_id": "location_arcs.id",
+        "scene_location_associations.location_arc_id": "location_arcs.id",
+        "ai_location_suggestions.story_id": "stories.id",
+        "ai_location_suggestions.accepted_as_location_arc_id": "location_arcs.id"
+      },
+
+      "enum_values": {
+        "location_arcs.location_type": ["SPECIFIC", "GENERAL", "CONTEXT"],
+        "location_arcs.atmosphere_category": ["professional", "intimate", "tactical", "flashback", "TENSE", "CALM", "MYSTERIOUS", "ROMANTIC", "ACTION-PACKED", "DEFEATED", "HOPEFUL"],
+        "location_artifacts.artifact_type": ["KEY_ITEM", "FORESHADOWING", "CLUE", "WEAPON", "TECHNOLOGY", "DOCUMENT"],
+        "character_location_contexts.temporal_context": ["PRE_COLLAPSE", "POST_COLLAPSE", "DREAM_SEQUENCE", "FLASHBACK"],
+        "scene_location_associations.association_strength": ["PRIMARY", "SECONDARY", "TERTIARY"],
+        "characters.enhancement_source": ["technological", "supernatural", "hybrid"],
+        "characters.ghost_enhancement_status": ["enhanced", "independent", "rejected"],
+        "ghost_entity_relationships.relationship_type": ["enhanced", "protected", "influenced", "rejected"],
+        "ghost_entity_relationships.revenge_agenda_alignment": ["aligned", "conflicted", "rejected"],
+        "ghost_entity_relationships.communication_method": ["electronic", "biological", "environmental", "neural"]
+      }
+    },
+
+    "component_data_mapping": {
+      "StoryContext": {
+        "primary_table": "stories",
+        "fields": [
+          "story_context", "narrative_tone", "core_themes",
+          "planned_ending", "total_episodes", "series_conclusion",
+          "character_final_states", "relationship_resolutions", "thematic_resolution",
+          "story_type", "complexity_level", "ai_recommended_episodes", "override_ai_recommendation"
+        ]
+      },
+
+      "CharacterManager": {
+        "primary_table": "characters",
+        "fields": ["name", "description", "backstory", "role"],
+        "related_tables": ["character_location_contexts"]
+      },
+
+      "CharacterRelationshipManager": {
+        "primary_table": "character_relationships",
+        "fields": ["description", "relationship_type"],
+        "joins": ["source_character_id -> characters.id", "target_character_id -> characters.id"]
+      },
+
+      "PlotArcManager": {
+        "primary_table": "plot_arcs",
+        "fields": [
+          "title", "description", "arc_number", "type", "arc_hierarchy", "parent_arc_id",
+          "interweave_frequency", "interweave_priority", "key_characters", "relationship_dynamics",
+          "progression_type", "cross_arc_impact", "custom_secondary_type",
+          "resolution_goal", "climax_description", "ending_state", "resolution_episode",
+          "character_destinations", "thematic_payoff", "activation_episode", "peak_episode", "integration_notes"
+        ],
+        "related_tables": ["plot_points", "arc_connections"]
+      },
+
+      "LocationArcManager": {
+        "primary_table": "location_arcs",
+        "fields": [
+          "name", "description", "location_type", "atmosphere_category",
+          "geographical_location", "time_period", "cultural_context", "atmosphere",
+          "visual_description", "key_features", "visual_reference_url",
+          "significance_level", "notes"
+        ],
+        "related_tables": ["location_artifacts", "character_location_contexts", "scene_location_associations", "ai_location_suggestions"]
+      },
+
+      "SupernaturalEntityManager": {
+        "primary_table": "ghost_entity_relationships",
+        "fields": [
+          "entity_name", "relationship_type", "enhancement_level", "protection_investment",
+          "revenge_agenda_alignment", "communication_method", "influence_notes"
+        ],
+        "joins": ["character_id -> characters.id"],
+        "related_tables": ["characters"]
+      }
+    }
+  }
+}

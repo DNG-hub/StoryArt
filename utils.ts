@@ -27,6 +27,12 @@ export function compactEpisodeContext(fullContextJson: string): string {
       episode: {
         episode_number: fullContext.episode.episode_number,
         episode_title: fullContext.episode.episode_title,
+        characters: fullContext.episode.characters?.map((character: any) => ({
+          character_name: character.character_name,
+          aliases: character.aliases,
+          base_trigger: character.base_trigger,
+          visual_description: character.visual_description
+        })) || [],
         scenes: fullContext.episode.scenes.map((scene: any) => ({
           scene_number: scene.scene_number,
           scene_title: scene.scene_title,
