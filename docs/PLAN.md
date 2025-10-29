@@ -752,6 +752,7 @@ interface ImportMeta {
 - **Batch processing** implemented to handle large beat counts
 - **Database context integration** working reliably
 - **LORA trigger substitution** implemented
+- **YOLO segmentation parameters** optimized for SwarmUI compatibility
 
 ### Known Issues for Future Refinement
 1. **Over-generation**: 91 beats when only 11+ needed (inefficient)
@@ -764,6 +765,43 @@ interface ImportMeta {
 1. **Phase 1**: Reduce beat count to 15-20 per scene, improve reuse logic
 2. **Phase 2**: Quality enhancement and content validation
 3. **Phase 3**: Advanced features and performance optimization
+
+## YOLO Segmentation Optimization
+
+**Status:** ✅ Completed
+**Documentation:** See `docs/YOLO_SEGMENTATION_TUNING.md` for comprehensive tuning guide
+
+### Problem Solved
+- **SwarmUI warnings** about YOLO threshold resets eliminated
+- **Face detection accuracy** improved with balanced parameters
+- **Model compatibility** updated to latest YOLO11 segmentation
+
+### Technical Changes
+**Before (Problematic):**
+```
+<segment:yolo-face_yolov9c.pt-INDEX,0.7,1>
+```
+
+**After (Optimized):**
+```
+<segment:yolo-face_yolo11m-seg.pt-INDEX,0.35,0.5>
+```
+
+### Key Improvements
+- **Model**: `yolov9c.pt` → `yolo11m-seg.pt` (latest YOLO11 medium)
+- **Confidence**: `0.7` → `0.35` (balanced detection threshold)
+- **IoU**: `1` → `0.5` (prevents SwarmUI warnings and resets)
+
+### Files Modified
+- `services/promptGenerationService.ts` - Updated system instructions
+- `services/qwenPromptService.ts` - Updated YOLO tag format
+- `docs/YOLO_SEGMENTATION_TUNING.md` - Comprehensive tuning guide
+
+### Impact
+- **Eliminated SwarmUI warnings** about threshold enforcement
+- **Improved face detection** across different scene types
+- **Future-proof parameters** compatible with current SwarmUI
+- **Better segmentation accuracy** with latest model architecture
 
 ---
 
