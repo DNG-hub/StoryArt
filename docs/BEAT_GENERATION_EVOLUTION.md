@@ -119,33 +119,40 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
 
 **Result**: Prompt generation now completes successfully with 91 beats.
 
-### Phase 5: Database Context Service Fix
-**Problem**: `TypeError: Cannot read properties of undefined (reading 'split')` in `services/databaseContextService.ts`
+### Phase 6: YOLO Segmentation Parameter Fix
+**Problem**: YOLO segmentation tags using outdated parameters causing SwarmUI warnings and suboptimal face detection.
 
-**Root Cause**: Null `character_name` values were being processed without safety checks.
+**Root Cause**: SwarmUI now properly enforces YOLO thresholds, making our old parameters problematic:
+- `IoU=1` meant "require 100% confidence" - SwarmUI resets to 0.25 and warns
+- `Confidence=0.7` was too high for many face detections
+- `yolov9c.pt` model was outdated
 
-**Solution**: Added null safety checks
+**Solution**: Updated YOLO segmentation parameters in prompt generation services.
 
 **Changes Made**:
 ```typescript
-// BEFORE: Unsafe processing
-characterMap.set(context.character_name, {
-    aliases: context.character_name.split(' ')[0], // Could fail if character_name is null
-    // ...
-});
+// BEFORE: Problematic parameters
+<segment:yolo-face_yolov9c.pt-INDEX,0.7,1>
+<segment:yolo-face_yolov9c.pt,0.7,0.5>
 
-// AFTER: Safe processing
-if (context.character_name && !characterMap.has(context.character_name)) {
-    characterMap.set(context.character_name, {
-        aliases: context.character_name ? [context.character_name.split(' ')[0]] : [], // Safe alias extraction
-        // ...
-    });
-}
+// AFTER: Optimized parameters  
+<segment:yolo-face_yolo11m-seg.pt-INDEX,0.35,0.5>
+<segment:yolo-face_yolo11m-seg.pt,0.35,0.5>
 ```
 
-**Why**: Database context service was failing when encountering null character names, causing fallback to manual mode.
+**Key Improvements**:
+- **Model**: `yolov9c.pt` → `yolo11m-seg.pt` (latest YOLO11 medium segmentation)
+- **Confidence**: `0.7` → `0.35` (more balanced detection)
+- **IoU**: `1` → `0.5` (prevents SwarmUI warnings and resets)
 
-**Result**: Database context service now works reliably.
+**Files Modified**:
+- `services/promptGenerationService.ts` - Updated system instructions
+- `services/qwenPromptService.ts` - Updated YOLO tag format
+- `docs/YOLO_SEGMENTATION_TUNING.md` - Comprehensive tuning guide
+
+**Why**: SwarmUI's new YOLO threshold enforcement made our old parameters cause warnings and poor face detection. The new parameters provide better balance between accuracy and performance.
+
+**Result**: Improved face detection accuracy and eliminated SwarmUI warnings.
 
 ## Current System Status
 

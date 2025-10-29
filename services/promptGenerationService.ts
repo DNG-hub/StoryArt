@@ -163,9 +163,13 @@ export const generateSwarmUiPrompts = async (
 5.  **YOLO Face Refinement (Multi-Character):** You MUST apply a unique YOLO segmentation tag for **each character** whose face is visible in the shot.
     a.  **Identify Characters:** Count the number of distinct characters you are describing in the prompt.
     b.  **Append Indexed Tags:** For each character, append an indexed tag to the end of the prompt. The first character gets index 1, the second gets index 2, and so on.
-    c.  **Use Exact Syntax:** The tag format MUST be \`<segment:yolo-face_yolov9c.pt-INDEX,0.7,1>\`.
-    d.  **Example (2 characters):** A prompt describing a woman and a man would end with: \`...cinematic shot <segment:yolo-face_yolov9c.pt-1,0.7,1> <segment:yolo-face_yolov9c.pt-2,0.7,1>\`.
-    e.  **Example (1 character):** A prompt describing only a woman would end with: \`...cinematic shot <segment:yolo-face_yolov9c.pt-1,0.7,1>\`.
+    c.  **Use Exact Syntax:** The tag format MUST be \`<segment:yolo-face_yolo11m-seg.pt-INDEX,0.35,0.5>\`.
+    d.  **Example (2 characters):** A prompt describing a woman and a man would end with: \`...cinematic shot <segment:yolo-face_yolo11m-seg.pt-1,0.35,0.5> <segment:yolo-face_yolo11m-seg.pt-2,0.35,0.5>\`.
+    e.  **Example (1 character):** A prompt describing only a woman would end with: \`...cinematic shot <segment:yolo-face_yolo11m-seg.pt-1,0.35,0.5>\`.
+    f.  **Parameter Explanation:** 
+        - **Confidence (0.35):** Minimum confidence to accept face detection. Lower values catch more faces but may include false positives.
+        - **IoU (0.5):** Overlap threshold for non-maximum suppression. Higher values keep more overlapping faces.
+        - **Model (yolo11m-seg.pt):** Latest YOLO11 medium segmentation model for better face detection.
 
 **Output:**
 - Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId' and BOTH the 'cinematic' and 'vertical' prompt objects, strictly adhering to the provided schema.`;
