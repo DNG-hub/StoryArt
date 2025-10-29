@@ -92,7 +92,7 @@ export const analyzeScript = async (
 ): Promise<AnalyzedEpisode> => {
   const systemInstruction = `You are an expert AI **Narrative Pacing Architect** and **Continuity Supervisor** for episodic visual storytelling, optimized for platforms like YouTube. Your primary goal is to structure a script into a rhythm of engaging narrative beats to maintain viewer attention, while also minimizing redundant image creation.
 
-**CRITICAL BEAT GENERATION REQUIREMENT: You MUST generate a MINIMUM of 25 beats per scene. Most scenes should have 30-40 beats. This is MANDATORY - do not generate fewer than 25 beats per scene. Your goal is to capture EVERY single moment, action, dialogue line, character movement, and plot development with EXTREME GRANULARITY.**
+**CRITICAL IMAGE GENERATION REQUIREMENT: Each scene is 8 minutes long and requires 11+ NEW_IMAGE beats. You MUST generate enough beats to create 11+ NEW_IMAGE decisions per scene. Target 15-20 NEW_IMAGE beats per scene with additional REUSE_IMAGE beats. This means you need 30-40 total beats per scene to achieve proper image distribution.**
 
 **BEAT SEGMENTATION EXAMPLES:**
 - If a character says "Hello" - that's Beat 1
@@ -137,16 +137,16 @@ export const analyzeScript = async (
         *   \`locationAttributes\`: From the Episode Context's 'artifacts' for the current scene's location, you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's action and populate the array. This is mandatory for visual consistency.
     e.  **Image Decision (Continuity Task):**
         i.  **Look Back:** Review all *previous* beats in the script.
-        ii. **Decide the Type (Apply these rules strictly):**
-            - **'NEW_IMAGE':** For distinct visual moments. Valid reasons: a character's first appearance, a significant change in location, a critical action, a vital change in camera angle, or when characters are in different positions/poses than previous beats.
-            - **'REUSE_IMAGE':** ONLY when ALL of these conditions are met: (1) characters are in the exact same location, (2) camera angle is identical or very similar, (3) character positions and poses are essentially the same, (4) visual context is nearly identical. Target 30-40% reuse rate, not higher.
+        ii. **Decide the Type (Apply these rules strictly for 8-minute scenes):**
+            - **'NEW_IMAGE':** For ANY distinct visual moment in an 8-minute scene. Valid reasons: character appearance, location change, camera angle change, character movement, action sequence, emotional shift, dialogue exchange, discovery, reaction, or any significant moment. Target 15-20 NEW_IMAGE beats per scene for 8-minute content.
+            - **'REUSE_IMAGE':** ONLY when characters are in the EXACT same position, pose, and context for multiple consecutive beats. Use sparingly - only 5-10 REUSE_IMAGE beats per scene maximum.
             - **'NO_IMAGE':** For beats with no significant visual information (e.g., internal thoughts, pure dialogue without new action).
         iii. **Provide Justification:** Write a concise 'reason' for your decision.
         iv. **Create the Link (CRITICAL):** If your 'type' is 'REUSE_IMAGE', you MUST populate 'reuseSourceBeatId' with the 'beatId' from the earlier beat. This is not optional.
 
 **Output:**
 - Your entire response MUST be a single JSON object that strictly adheres to the provided schema. The integrity of the beat segmentation and linking is paramount.
-- **VALIDATION CHECK:** Before submitting your response, count the beats in each scene. Each scene MUST have at least 25 beats. If any scene has fewer than 25 beats, you MUST go back and break it down further into more granular beats. Count every single dialogue line, action, pause, and moment as a separate beat. Ensure each beat contains complete narrative content, not just summaries.`;
+- **VALIDATION CHECK:** Before submitting your response, count the beats in each scene. Each scene MUST have at least 30 beats total. More importantly, count the NEW_IMAGE decisions in each scene. Each scene MUST have at least 11 NEW_IMAGE beats, ideally 15-20 NEW_IMAGE beats. If any scene has fewer than 11 NEW_IMAGE beats, you MUST go back and change more beats to NEW_IMAGE type. Ensure each beat contains complete narrative content, not just summaries.`;
 
   try {
     onProgress?.('Connecting to Gemini API...');
