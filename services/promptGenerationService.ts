@@ -51,6 +51,17 @@ export const generateSwarmUiPrompts = async (
         return [];
     }
 
+    console.log(`Processing ${beatsForPrompting.length} NEW_IMAGE beats for prompt generation`);
+
+    // If we have too many beats, process them in batches to avoid token limits
+    const BATCH_SIZE = 20; // Process 20 beats at a time
+    const batches = [];
+    for (let i = 0; i < beatsForPrompting.length; i += BATCH_SIZE) {
+        batches.push(beatsForPrompting.slice(i, i + BATCH_SIZE));
+    }
+
+    console.log(`Processing ${batches.length} batches of beats`);
+
     // Enhanced context processing for database mode
     let enhancedContextJson = episodeContextJson;
     let contextSource = 'manual';
@@ -101,48 +112,6 @@ export const generateSwarmUiPrompts = async (
     
     const verticalHeight = Math.round(Math.sqrt(baseResolution * baseResolution / verticalRatio) / 8) * 8;
     const verticalWidth = Math.round(verticalHeight * verticalRatio / 8) * 8;
-
-    // DEV: Enhance beats with a dynamic, structured style guide for more contextual prompts.
-    const beatsWithStyleGuide = beatsForPrompting.map(beat => {
-        const styleGuide = {
-            camera: new Set<string>(),
-            lighting: new Set<string>(),
-            environmentFX: new Set<string>(),
-            atmosphere: new Set<string>()
-        };
-
-        // --- Camera ---
-        if (beat.cameraAngleSuggestion) {
-            styleGuide.camera.add(beat.cameraAngleSuggestion);
-        }
-        styleGuide.camera.add('shallow depth of field');
-        // Add handheld feel for more dynamic scenes, could be based on a new 'energy' field in future.
-        if (beat.beat_script_text.toLowerCase().includes('action') || beat.beat_script_text.toLowerCase().includes('runs')) {
-            styleGuide.camera.add('handheld feel');
-        }
-
-        // --- Lighting ---
-        styleGuide.lighting.add('dramatic rim light');
-
-        // --- Environment & Atmosphere ---
-        styleGuide.environmentFX.add('desaturated color grade');
-        if (beat.locationAttributes?.some(attr => ['ruined', 'dusty', 'debris'].includes(attr))) {
-            styleGuide.environmentFX.add('volumetric dust');
-        }
-        if (beat.locationAttributes) {
-            beat.locationAttributes.forEach(attr => styleGuide.atmosphere.add(attr));
-        }
-
-        return {
-            ...beat,
-            styleGuide: {
-                camera: Array.from(styleGuide.camera).join(', '),
-                lighting: Array.from(styleGuide.lighting).join(', '),
-                environmentFX: Array.from(styleGuide.environmentFX).join(', '),
-                atmosphere: Array.from(styleGuide.atmosphere).join(', '),
-            }
-        };
-    });
 
     // Create system instruction with context source information
     const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts. You must synthesize information from multiple sources and, most importantly, **translate narrative prose into purely visual descriptions**. For each beat, generate TWO distinct prompts: one cinematic (16:9) and one vertical (9:16).
@@ -201,47 +170,97 @@ export const generateSwarmUiPrompts = async (
 **Output:**
 - Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId' and BOTH the 'cinematic' and 'vertical' prompt objects, strictly adhering to the provided schema.`;
 
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Generate SwarmUI prompts for the following beat analyses, using the provided Episode Context for character details and the Style Config for aesthetic guidance.\n\n---BEAT ANALYSES---\n${JSON.stringify(beatsWithStyleGuide, null, 2)}\n\n---EPISODE CONTEXT JSON (Source: ${contextSource})---\n${enhancedContextJson}\n\n---EPISODE STYLE CONFIG---\n${JSON.stringify({ ...styleConfig, cinematicWidth, cinematicHeight, verticalWidth, verticalHeight }, null, 2)}`,
-            config: {
-                systemInstruction,
-                responseMimeType: 'application/json',
-                responseSchema: responseSchema,
-                temperature: 0.2,
-            },
+    // Process beats in batches to avoid token limits
+    const allResults: BeatPrompts[] = [];
+    
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        console.log(`Processing batch ${batchIndex + 1}/${batches.length} with ${batch.length} beats`);
+        
+        // DEV: Enhance beats with a dynamic, structured style guide for more contextual prompts.
+        const beatsWithStyleGuide = batch.map(beat => {
+            const styleGuide = {
+                camera: new Set<string>(),
+                lighting: new Set<string>(),
+                environmentFX: new Set<string>(),
+                atmosphere: new Set<string>()
+            };
+
+            // --- Camera ---
+            if (beat.cameraAngleSuggestion) {
+                styleGuide.camera.add(beat.cameraAngleSuggestion);
+            }
+            styleGuide.camera.add('shallow depth of field');
+            // Add handheld feel for more dynamic scenes, could be based on a new 'energy' field in future.
+            if (beat.beat_script_text.toLowerCase().includes('action') || beat.beat_script_text.toLowerCase().includes('runs')) {
+                styleGuide.camera.add('handheld feel');
+            }
+
+            // --- Lighting ---
+            styleGuide.lighting.add('dramatic rim light');
+
+            // --- Environment & Atmosphere ---
+            styleGuide.environmentFX.add('desaturated color grade');
+            if (beat.locationAttributes?.some(attr => ['ruined', 'dusty', 'debris'].includes(attr))) {
+                styleGuide.environmentFX.add('volumetric dust');
+            }
+            if (beat.locationAttributes) {
+                beat.locationAttributes.forEach(attr => styleGuide.atmosphere.add(attr));
+            }
+
+            return {
+                ...beat,
+                styleGuide: {
+                    camera: Array.from(styleGuide.camera).join(', '),
+                    lighting: Array.from(styleGuide.lighting).join(', '),
+                    environmentFX: Array.from(styleGuide.environmentFX).join(', '),
+                    atmosphere: Array.from(styleGuide.atmosphere).join(', '),
+                }
+            };
         });
 
-        const jsonString = response.text.trim();
-        const result = JSON.parse(jsonString) as BeatPrompts[];
-
-        // Apply LORA trigger substitution based on character contexts
         try {
-            const contextObj = JSON.parse(episodeContextJson);
-            const characterContexts = contextObj.episode.characters as Array<{ character_name: string; aliases: string[]; base_trigger: string }>;
-            return result.map(bp => ({
-                ...bp,
-                cinematic: {
-                    ...bp.cinematic,
-                    prompt: applyLoraTriggerSubstitution(bp.cinematic.prompt, characterContexts),
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `Generate SwarmUI prompts for the following beat analyses, using the provided Episode Context for character details and the Style Config for aesthetic guidance.\n\n---BEAT ANALYSES---\n${JSON.stringify(beatsWithStyleGuide, null, 2)}\n\n---EPISODE CONTEXT JSON (Source: ${contextSource})---\n${enhancedContextJson}\n\n---EPISODE STYLE CONFIG---\n${JSON.stringify({ ...styleConfig, cinematicWidth, cinematicHeight, verticalWidth, verticalHeight }, null, 2)}`,
+                config: {
+                    systemInstruction,
+                    responseMimeType: 'application/json',
+                    responseSchema: responseSchema,
+                    temperature: 0.2,
                 },
-                vertical: {
-                    ...bp.vertical,
-                    prompt: applyLoraTriggerSubstitution(bp.vertical.prompt, characterContexts),
-                }
-            }));
-        } catch (e) {
-            console.warn('Failed to apply LORA trigger substitution:', e);
-            return result;
-        }
+            });
 
-    } catch (error) {
-        console.error("Error calling Gemini API for prompt generation:", error);
-        if (error instanceof Error && error.message.includes('JSON')) {
-            throw new Error("Failed to generate prompts. The AI model returned an invalid JSON structure.");
+            const jsonString = response.text.trim();
+            const batchResult = JSON.parse(jsonString) as BeatPrompts[];
+            allResults.push(...batchResult);
+            
+            console.log(`Batch ${batchIndex + 1} completed: ${batchResult.length} prompts generated`);
+            
+        } catch (error) {
+            console.error(`Error processing batch ${batchIndex + 1}:`, error);
+            throw new Error(`Failed to generate prompts for batch ${batchIndex + 1}. ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        throw new Error("Failed to generate prompts. The AI model may be temporarily unavailable or the request was invalid.");
+    }
+
+    // Apply LORA trigger substitution based on character contexts
+    try {
+        const contextObj = JSON.parse(episodeContextJson);
+        const characterContexts = contextObj.episode.characters as Array<{ character_name: string; aliases: string[]; base_trigger: string }>;
+        return allResults.map(bp => ({
+            ...bp,
+            cinematic: {
+                ...bp.cinematic,
+                prompt: applyLoraTriggerSubstitution(bp.cinematic.prompt, characterContexts),
+            },
+            vertical: {
+                ...bp.vertical,
+                prompt: applyLoraTriggerSubstitution(bp.vertical.prompt, characterContexts),
+            }
+        }));
+    } catch (e) {
+        console.warn('Failed to apply LORA trigger substitution:', e);
+        return allResults;
     }
 };
 
