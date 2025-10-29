@@ -133,7 +133,7 @@ export const analyzeScript = async (
 
 **Output:**
 - Your entire response MUST be a single JSON object that strictly adheres to the provided schema. The integrity of the beat segmentation and linking is paramount.
-- **VALIDATION CHECK:** Before submitting your response, count the beats in each scene. Each scene MUST have at least 8 beats. If any scene has fewer than 8 beats, you MUST go back and break it down further into more granular beats.
+- **VALIDATION CHECK:** Before submitting your response, count the beats in each scene. Each scene MUST have at least 8 beats. If any scene has fewer than 8 beats, you MUST go back and break it down further into more granular beats.`;
 
   try {
     onProgress?.('Connecting to Gemini API...');
