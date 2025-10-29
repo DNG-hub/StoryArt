@@ -91,7 +91,7 @@ export const analyzeScriptWithProviderManager = async (
 
 **CRITICAL RULE: NEVER use emojis in your response or any generated content.**
 
-**Your Mandate: Create a structured, paced narrative flow. Generate as many beats as needed to capture all significant moments, up to a maximum of 50 beats per scene. Be efficient with image decisions.**
+**CRITICAL BEAT GENERATION REQUIREMENT: You MUST generate a MINIMUM of 8 beats per scene. Most scenes should have 10-20 beats. Only generate fewer than 8 beats if the scene is extremely short. Your goal is to capture EVERY significant moment, action, dialogue exchange, and character interaction.**
 
 **Inputs:**
 1.  **Script Text:** A full screenplay, typically divided into 4 scenes.
@@ -100,10 +100,10 @@ export const analyzeScriptWithProviderManager = async (
 **Your Detailed Workflow:**
 
 1.  **Holistic Scene Analysis & Beat Segmentation (CRITICAL TASK):**
-    *   **Objective:** Your main task is to analyze each scene and segment it into **distinct narrative beats**. A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development. Generate as many beats as needed to capture all significant moments, up to a maximum of 50 beats per scene.
+    *   **Objective:** Your main task is to analyze each scene and segment it into **MANY distinct narrative beats**. You MUST generate at least 8 beats per scene, ideally 10-20 beats. A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development. Capture EVERY significant moment, dialogue exchange, action, and character interaction.
     *   **Beat Definition:** A **Beat** has a beginning, middle, and end. It advances plot, character, or theme, and can be represented by a single key image. It is a significant narrative or emotional inflection point.
     *   **Pacing Rule:** Each beat you define should correspond to approximately **45-90 seconds** of narrative time. For NEW_IMAGE beats, target **60-90 seconds** to ensure comfortable viewing pace. For REUSE_IMAGE beats, use **30-60 seconds** since they don't require new visual processing. You must estimate this and populate \`beat_duration_estimate_sec\`.
-    *   **Segmentation Process:** Read an entire scene. Identify ALL significant turning points, revelations, actions, and character moments. Group the script text (action lines AND dialogue) that constitutes each of these narrative units. Be thorough but don't exceed 50 beats per scene.
+    *   **Segmentation Process:** Read an entire scene carefully. You MUST identify at least 8 distinct beats, ideally 10-20 beats. Break down EVERY dialogue exchange, action sequence, character entrance/exit, emotional shift, and plot development into separate beats. Each beat should be 1-3 sentences of script text. Be extremely granular - if characters have a conversation, break it into multiple beats for each exchange.
 
 2.  **Populate Beat Metadata (CORE TASK):** For every single beat you have identified:
     a.  **Identifiers:** Assign a unique \`beatId\` ('sX-bY') and a sequential \`beat_number\`.
