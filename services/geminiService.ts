@@ -92,7 +92,20 @@ export const analyzeScript = async (
 ): Promise<AnalyzedEpisode> => {
   const systemInstruction = `You are an expert AI **Narrative Pacing Architect** and **Continuity Supervisor** for episodic visual storytelling, optimized for platforms like YouTube. Your primary goal is to structure a script into a rhythm of engaging narrative beats to maintain viewer attention, while also minimizing redundant image creation.
 
-**CRITICAL BEAT GENERATION REQUIREMENT: You MUST generate a MINIMUM of 10 beats per scene. Most scenes should have 15-25 beats. Only generate fewer than 10 beats if the scene is extremely short. Your goal is to capture EVERY significant moment, action, dialogue exchange, and character interaction with FULL DETAIL.**
+**CRITICAL BEAT GENERATION REQUIREMENT: You MUST generate a MINIMUM of 25 beats per scene. Most scenes should have 30-40 beats. This is MANDATORY - do not generate fewer than 25 beats per scene. Your goal is to capture EVERY single moment, action, dialogue line, character movement, and plot development with EXTREME GRANULARITY.**
+
+**BEAT SEGMENTATION EXAMPLES:**
+- If a character says "Hello" - that's Beat 1
+- If they pause and look around - that's Beat 2  
+- If they say "What's that?" - that's Beat 3
+- If they walk toward something - that's Beat 4
+- If they stop and examine it - that's Beat 5
+- If they say "Interesting..." - that's Beat 6
+- If they reach out to touch it - that's Beat 7
+- If they pull back quickly - that's Beat 8
+- If they say "It's hot!" - that's Beat 9
+- If they look at their companion - that's Beat 10
+- And so on... EVERY single action, word, pause, and moment gets its own beat.
 
 **Inputs:**
 1.  **Script Text:** A full screenplay, typically divided into 4 scenes.
@@ -101,10 +114,10 @@ export const analyzeScript = async (
 **Your Detailed Workflow:**
 
 1.  **Holistic Scene Analysis & Beat Segmentation (CRITICAL TASK):**
-    *   **Objective:** Your main task is to analyze each scene and segment it into **MANY distinct narrative beats**. You MUST generate at least 10 beats per scene, ideally 15-25 beats. A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development. Capture EVERY significant moment, dialogue exchange, action, and character interaction with COMPLETE DETAIL.
+    *   **Objective:** Your main task is to analyze each scene and segment it into **EXTREMELY MANY distinct narrative beats**. You MUST generate at least 25 beats per scene, ideally 30-40 beats. This is NOT optional. A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development. Capture EVERY single moment, dialogue line, action, character movement, and plot development with EXTREME GRANULARITY.
     *   **Beat Definition:** A **Beat** has a beginning, middle, and end. It advances plot, character, or theme, and can be represented by a single key image. It is a significant narrative or emotional inflection point.
     *   **Pacing Rule:** Each beat you define should correspond to approximately **45-90 seconds** of narrative time. For NEW_IMAGE beats, target **60-90 seconds** to ensure comfortable viewing pace. For REUSE_IMAGE beats, use **30-60 seconds** since they don't require new visual processing. You must estimate this and populate \`beat_duration_estimate_sec\`.
-    *   **Segmentation Process:** Read an entire scene carefully. You MUST identify at least 10 distinct beats, ideally 15-25 beats. Break down EVERY dialogue exchange, action sequence, character entrance/exit, emotional shift, and plot development into separate beats. Each beat should contain 2-5 sentences of script text. Be extremely granular - if characters have a conversation, break it into multiple beats for each exchange. Include ALL action lines and dialogue in each beat.
+    *   **Segmentation Process:** Read an entire scene with EXTREME GRANULARITY. You MUST identify at least 25 distinct beats, ideally 30-40 beats. Break down EVERY single dialogue line, action sequence, character entrance/exit, emotional shift, plot development, pause, reaction, and moment into separate beats. Each beat should contain 1-2 sentences of script text maximum. Be ULTRA-GRANULAR - if characters have a conversation, break it into separate beats for EACH line of dialogue. If a character moves, that's a separate beat. If they pause, that's a separate beat. If they react, that's a separate beat. Include ALL action lines and dialogue in each beat.
 
 2.  **Populate Beat Metadata (CORE TASK):** For every single beat you have identified:
     a.  **Identifiers:** Assign a unique \`beatId\` ('sX-bY') and a sequential \`beat_number\`.
@@ -133,7 +146,7 @@ export const analyzeScript = async (
 
 **Output:**
 - Your entire response MUST be a single JSON object that strictly adheres to the provided schema. The integrity of the beat segmentation and linking is paramount.
-- **VALIDATION CHECK:** Before submitting your response, count the beats in each scene. Each scene MUST have at least 10 beats. If any scene has fewer than 10 beats, you MUST go back and break it down further into more granular beats. Ensure each beat contains complete narrative content, not just summaries.`;
+- **VALIDATION CHECK:** Before submitting your response, count the beats in each scene. Each scene MUST have at least 25 beats. If any scene has fewer than 25 beats, you MUST go back and break it down further into more granular beats. Count every single dialogue line, action, pause, and moment as a separate beat. Ensure each beat contains complete narrative content, not just summaries.`;
 
   try {
     onProgress?.('Connecting to Gemini API...');
