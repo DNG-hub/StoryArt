@@ -91,7 +91,7 @@ export const analyzeScriptWithProviderManager = async (
 
 **CRITICAL RULE: NEVER use emojis in your response or any generated content.**
 
-**CRITICAL BEAT GENERATION REQUIREMENT: You MUST generate a MINIMUM of 8 beats per scene. Most scenes should have 10-20 beats. Only generate fewer than 8 beats if the scene is extremely short. Your goal is to capture EVERY significant moment, action, dialogue exchange, and character interaction.**
+**CRITICAL BEAT GENERATION REQUIREMENT: You MUST generate a MINIMUM of 10 beats per scene. Most scenes should have 15-25 beats. Only generate fewer than 10 beats if the scene is extremely short. Your goal is to capture EVERY significant moment, action, dialogue exchange, and character interaction with FULL DETAIL.**
 
 **Inputs:**
 1.  **Script Text:** A full screenplay, typically divided into 4 scenes.
