@@ -742,6 +742,29 @@ interface ImportMeta {
 3. **MEDIUM TERM:** Complete integration testing
 4. **LONG TERM:** Performance optimization and production deployment
 
+## Beat Generation System Evolution
+
+**Status:** ✅ Functional but needs refinement
+**Documentation:** See `docs/BEAT_GENERATION_EVOLUTION.md` for complete change history
+
+### Current Achievement
+- **91 NEW_IMAGE beats** generated (exceeds 11+ requirement)
+- **Batch processing** implemented to handle large beat counts
+- **Database context integration** working reliably
+- **LORA trigger substitution** implemented
+
+### Known Issues for Future Refinement
+1. **Over-generation**: 91 beats when only 11+ needed (inefficient)
+2. **Image reuse too conservative**: Almost no REUSE_IMAGE beats
+3. **Processing efficiency**: 5 API calls for prompt generation
+4. **Beat granularity inconsistency**: Some too granular, others too broad
+5. **Narrative content quality**: Some beats have minimal content
+
+### Refinement Priority
+1. **Phase 1**: Reduce beat count to 15-20 per scene, improve reuse logic
+2. **Phase 2**: Quality enhancement and content validation
+3. **Phase 3**: Advanced features and performance optimization
+
 ---
 
 ## Phase 3: Interactive Prompt Refinement
