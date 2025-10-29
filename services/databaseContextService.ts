@@ -344,26 +344,28 @@ export async function generateEnhancedEpisodeContext(
     const characterMap = new Map<string, CharacterContext>();
 
     characterLocationData.forEach(context => {
-      if (!characterMap.has(context.character_name)) {
+      if (context.character_name && !characterMap.has(context.character_name)) {
         characterMap.set(context.character_name, {
           character_name: context.character_name,
-          aliases: [context.character_name.split(' ')[0]], // Simple alias extraction
-          base_trigger: context.character_name.includes('Cat') ? 'JRUMLV woman' : 'HSCEIA man',
+          aliases: context.character_name ? [context.character_name.split(' ')[0]] : [], // Safe alias extraction
+          base_trigger: context.character_name && context.character_name.includes('Cat') ? 'JRUMLV woman' : 'HSCEIA man',
           visual_description: context.physical_description,
           location_contexts: []
         });
       }
 
-      const character = characterMap.get(context.character_name)!;
-      character.location_contexts.push({
-        location_name: context.location_name,
-        physical_description: context.physical_description,
-        clothing_description: context.clothing_description,
-        demeanor_description: context.demeanor_description,
-        swarmui_prompt_override: context.swarmui_prompt_override,
-        temporal_context: context.temporal_context,
-        lora_weight_adjustment: context.lora_weight_adjustment
-      });
+      if (context.character_name) {
+        const character = characterMap.get(context.character_name)!;
+        character.location_contexts.push({
+          location_name: context.location_name,
+          physical_description: context.physical_description,
+          clothing_description: context.clothing_description,
+          demeanor_description: context.demeanor_description,
+          swarmui_prompt_override: context.swarmui_prompt_override,
+          temporal_context: context.temporal_context,
+          lora_weight_adjustment: context.lora_weight_adjustment
+        });
+      }
     });
 
     characters.push(...characterMap.values());
