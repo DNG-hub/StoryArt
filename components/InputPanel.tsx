@@ -26,10 +26,20 @@ const DatabaseContextIndicator: React.FC<{
         const locations = context.episode?.scenes?.length || 0;
         const artifacts = context.episode?.scenes?.reduce((total: number, scene: any) => 
           total + (scene.location?.artifacts?.length || 0), 0) || 0;
-        const characterContexts = context.episode?.characters?.reduce((total: number, char: any) => 
-          total + (char.location_contexts?.length || 0), 0) || 0;
-        const tacticalOverrides = context.episode?.scenes?.filter((scene: any) => 
-          scene.location?.tactical_override_location).length || 0;
+        
+        // Characters are nested in scenes, and location_context is a single object (not array)
+        const characterContexts = context.episode?.scenes?.reduce((total: number, scene: any) => 
+          total + (scene.characters?.filter((char: any) => char.location_context).length || 0), 0) || 0;
+        
+        // Tactical overrides: check if characters have swarmui_prompt_override or lora_weight_adjustment
+        // (these indicate location-specific tactical customization)
+        const tacticalOverrides = context.episode?.scenes?.reduce((total: number, scene: any) => {
+          const charactersWithOverrides = scene.characters?.filter((char: any) => 
+            char.location_context?.swarmui_prompt_override || 
+            char.location_context?.lora_weight_adjustment
+          ).length || 0;
+          return total + charactersWithOverrides;
+        }, 0) || 0;
 
         setContextMetrics({ locations, artifacts, characterContexts, tacticalOverrides });
 
