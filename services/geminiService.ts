@@ -2,11 +2,38 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalyzedEpisode } from '../types';
 import { compactEpisodeContext } from '../utils';
 
-if (!process.env.API_KEY) {
-  console.warn("API_KEY environment variable not set. Using a placeholder.");
+// Read API key from .env via import.meta.env (Vite client-side)
+// Vite requires VITE_ prefix for client-side environment variables
+const getApiKey = () => {
+  // Try VITE_ prefix first (recommended), then fallback to non-prefixed for backward compat
+  return import.meta.env.VITE_GEMINI_API_KEY || 
+         import.meta.env.GEMINI_API_KEY || 
+         (process.env as any).GEMINI_API_KEY ||
+         (process.env as any).API_KEY;
+};
+
+const apiKey = getApiKey();
+
+if (!apiKey) {
+  console.warn("Gemini API key not found. Please set VITE_GEMINI_API_KEY in your .env file.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+// Create a function to get a fresh instance with current API key (allows key refresh)
+const getGeminiClient = () => {
+  const currentKey = getApiKey();
+  if (!currentKey) {
+    throw new Error("VITE_GEMINI_API_KEY is not configured in .env file. Please set it and restart the dev server.");
+  }
+  return new GoogleGenAI({ apiKey: currentKey });
+};
+
+// Initialize with current API key from .env
+let ai = getGeminiClient();
+
+// Function to refresh client with new API key (if .env was updated)
+export const refreshGeminiClient = () => {
+  ai = getGeminiClient();
+};
 
 const responseSchema = {
   type: Type.OBJECT,
@@ -45,6 +72,7 @@ const responseSchema = {
                 characters: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of characters present in the beat." },
                 core_action: { type: Type.STRING, description: "A concise, one-sentence summary of the beat's main action or event." },
                 beat_script_text: { type: Type.STRING, description: "The full, verbatim script text (including action lines and dialogue) that constitutes this entire beat." },
+                source_paragraph: { type: Type.STRING, description: "The broader narrative paragraph or section from the original script that this beat was extracted from. This provides additional context beyond just the beat text." },
                 emotional_tone: { type: Type.STRING, description: "The dominant emotion or mood of the beat (e.g., 'Tense', 'Hopeful')." },
                 visual_anchor: { type: Type.STRING, description: "A description of the single, most powerful image that could represent this beat." },
                 transition_trigger: { type: Type.STRING, description: "The event or discovery that leads into the next beat." },
@@ -71,7 +99,7 @@ const responseSchema = {
               },
               required: [
                 'beatId', 'beat_number', 'beat_title', 'beat_type', 'narrative_function', 'setting',
-                'characters', 'core_action', 'beat_script_text', 'emotional_tone', 'visual_anchor',
+                'characters', 'core_action', 'beat_script_text', 'source_paragraph', 'emotional_tone', 'visual_anchor',
                 'transition_trigger', 'beat_duration_estimate_sec', 'visualSignificance', 'imageDecision'
               ]
             }
@@ -85,8 +113,162 @@ const responseSchema = {
 };
 
 
+// Helper function to split script into manageable chunks
+function splitScriptIntoChunks(scriptText: string, maxWordsPerChunk: number = 3000): string[] {
+  const lines = scriptText.split('\n');
+  const chunks: string[] = [];
+  let currentChunk: string[] = [];
+  let currentWordCount = 0;
+
+  for (const line of lines) {
+    const lineWords = line.split(' ').length;
+
+    // If this line would exceed the limit and we have content, start a new chunk
+    if (currentWordCount + lineWords > maxWordsPerChunk && currentChunk.length > 0) {
+      chunks.push(currentChunk.join('\n'));
+      currentChunk = [];
+      currentWordCount = 0;
+    }
+
+    currentChunk.push(line);
+    currentWordCount += lineWords;
+  }
+
+  // Add the last chunk if it has content
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk.join('\n'));
+  }
+
+  return chunks;
+}
+
+// Helper function to merge analyzed episode chunks
+function mergeAnalyzedEpisodes(chunks: AnalyzedEpisode[]): AnalyzedEpisode {
+  if (chunks.length === 0) {
+    throw new Error('No chunks to merge');
+  }
+
+  if (chunks.length === 1) {
+    return chunks[0];
+  }
+
+  const merged = { ...chunks[0] };
+
+  // Merge scenes from all chunks
+  for (let i = 1; i < chunks.length; i++) {
+    merged.scenes = [...merged.scenes, ...chunks[i].scenes];
+  }
+
+  return merged;
+}
+
+// Helper function to parse Gemini JSON response
+async function parseGeminiResponse(jsonString: string): Promise<AnalyzedEpisode> {
+  console.log('Raw Gemini response length:', jsonString.length);
+  console.log('Raw Gemini response preview:', jsonString.substring(0, 500) + '...');
+  console.log('Raw Gemini response end:', '...' + jsonString.substring(jsonString.length - 500));
+
+  try {
+    // Try to clean and validate the JSON response
+    let cleanedJsonString = jsonString;
+
+    // Check if the response appears to be truncated
+    if (!cleanedJsonString.trim().endsWith('}')) {
+      console.warn('Response appears to be truncated, attempting to repair...');
+
+      // Find the last complete object/array closing
+      const lastCompleteIndex = Math.max(
+        cleanedJsonString.lastIndexOf('}}'),
+        cleanedJsonString.lastIndexOf(']}'),
+        cleanedJsonString.lastIndexOf('}]')
+      );
+
+      if (lastCompleteIndex > cleanedJsonString.length * 0.8) {
+        cleanedJsonString = cleanedJsonString.substring(0, lastCompleteIndex + 2);
+      } else {
+        // Try to find a complete JSON structure by matching braces
+        let openBraces = 0;
+        let inString = false;
+        let escape = false;
+        let lastValidIndex = -1;
+
+        for (let i = 0; i < cleanedJsonString.length; i++) {
+          const char = cleanedJsonString[i];
+
+          if (escape) {
+            escape = false;
+            continue;
+          }
+
+          if (char === '\\') {
+            escape = true;
+            continue;
+          }
+
+          if (char === '"') {
+            inString = !inString;
+            continue;
+          }
+
+          if (!inString) {
+            if (char === '{') openBraces++;
+            else if (char === '}') openBraces--;
+
+            if (openBraces === 0 && i > 0) {
+              lastValidIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (lastValidIndex > -1) {
+          cleanedJsonString = cleanedJsonString.substring(0, lastValidIndex + 1);
+        }
+      }
+    }
+
+    // Remove any potential control characters that might cause issues
+    cleanedJsonString = cleanedJsonString.replace(/[\x00-\x1F\x7F]/g, '');
+
+    const result = JSON.parse(cleanedJsonString);
+    return result as AnalyzedEpisode;
+  } catch (parseError) {
+    console.error('JSON Parse Error Details:', parseError);
+    console.error('Original response length:', jsonString.length);
+    console.error('Response preview (first 500):', jsonString.substring(0, 500));
+    console.error('Response preview (last 500):', jsonString.substring(Math.max(0, jsonString.length - 500)));
+
+    // Find the error position and show context around it
+    if (parseError instanceof SyntaxError && parseError.message.includes('position')) {
+      const positionMatch = parseError.message.match(/position (\d+)/);
+      if (positionMatch) {
+        const position = parseInt(positionMatch[1]);
+        const start = Math.max(0, position - 100);
+        const end = Math.min(jsonString.length, position + 100);
+        console.error('Error context:', jsonString.substring(start, end));
+      }
+    }
+
+    // Try to extract just the JSON portion if there's extra text
+    try {
+      const jsonStart = jsonString.indexOf('{');
+      const jsonEnd = jsonString.lastIndexOf('}') + 1;
+      if (jsonStart >= 0 && jsonEnd > jsonStart) {
+        const extractedJson = jsonString.substring(jsonStart, jsonEnd);
+        console.log('Attempting to parse extracted JSON...');
+        const extractedResult = JSON.parse(extractedJson);
+        return extractedResult as AnalyzedEpisode;
+      }
+    } catch (extractError) {
+      console.error('Failed to parse extracted JSON:', extractError);
+    }
+
+    throw new Error(`The AI model returned an invalid JSON structure. Response length: ${jsonString.length} characters. This can happen with complex scripts. Try simplifying the script or checking the episode context data format.`);
+  }
+}
+
 export const analyzeScript = async (
-  scriptText: string, 
+  scriptText: string,
   episodeContextJson: string,
   onProgress?: (message: string) => void
 ): Promise<AnalyzedEpisode> => {
@@ -125,6 +307,7 @@ export const analyzeScript = async (
         *   \`beat_title\`: Create a short, descriptive title (e.g., "The Reinforced Door").
         *   \`core_action\`: Write a **detailed 2-3 sentence summary** of what happens in the beat. Include specific actions, dialogue exchanges, character movements, and plot developments. This should be comprehensive enough to understand exactly what is being visualized.
         *   \`beat_script_text\`: Copy the **COMPLETE, VERBATIM block of script text** (action lines AND dialogue) that constitutes this entire beat. This must include ALL dialogue, action descriptions, and stage directions. Do NOT summarize or abbreviate - include the full text exactly as it appears in the script.
+        *   \`source_paragraph\`: Copy the **BROADER NARRATIVE PARAGRAPH or section** from the original script that this beat was extracted from. This should include the surrounding context and any additional narrative text that provides fuller understanding of the scene flow. This gives refinement context beyond just the individual beat text.
     c.  **Narrative Analysis:**
         *   \`beat_type\`: Classify the beat's primary purpose ('Revelation', 'Action', 'Escalation', 'Pivot', 'Resolution', 'Other').
         *   \`narrative_function\`: Describe its role in the story (e.g., "Inciting Incident," "Rising Action").
@@ -134,7 +317,7 @@ export const analyzeScript = async (
         *   \`characters\`: List the characters present.
         *   \`visual_anchor\`: Describe the single most powerful image that represents this beat.
         *   \`transition_trigger\`: What event in this beat leads to the next one?
-        *   \`locationAttributes\`: From the Episode Context's 'artifacts' for the current scene's location, you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's action and populate the array. This is mandatory for visual consistency.
+        *   \`locationAttributes\`: From the Episode Context's 'artifacts' for the current scene's location, you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's action and populate the array. This is mandatory for visual consistency. **USE THE RICH LOCATION DATA:** Include atmosphere descriptions, environmental details, key features, and artifact prompt fragments from the detailed location context provided. Pay special attention to 'atmosphere', 'atmosphere_category', 'geographical_location', 'time_period', and rich artifact descriptions with their 'prompt_fragment' values.
     e.  **Image Decision (Continuity Task):**
         i.  **Look Back:** Review all *previous* beats in the script.
         ii. **Decide the Type (Apply these rules strictly for 8-minute scenes):**
@@ -150,35 +333,211 @@ export const analyzeScript = async (
 
   try {
     onProgress?.('Connecting to Gemini API...');
-    
+
     const compactedContextJson = compactEpisodeContext(episodeContextJson);
     onProgress?.('Compacting episode context...');
 
-    onProgress?.('Sending script to Gemini for analysis...');
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Analyze the following script using the provided visually-focused Episode Context as your guide.\n\n---SCRIPT---\n${scriptText}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`,
-      config: {
-        systemInstruction,
-        responseMimeType: 'application/json',
-        responseSchema: responseSchema,
-        temperature: 0.1,
-      },
-    });
+    // Check if script needs chunking based on word count
+    const wordCount = scriptText.split(' ').length;
+    const maxWordsPerRequest = 3000; // Conservative limit to avoid token issues
+
+    if (wordCount <= maxWordsPerRequest) {
+      // Process as single chunk
+      onProgress?.('Sending script to Gemini for analysis...');
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Analyze the following script using the provided visually-focused Episode Context as your guide.\n\n---SCRIPT---\n${scriptText}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: responseSchema,
+          temperature: 0.1,
+          maxOutputTokens: 200000, // Increase token limit to prevent truncation
+          candidateCount: 1, // Ensure single response
+        },
+      });
+
+      onProgress?.('Processing Gemini response...');
+      const jsonString = response.text.trim();
+      return await parseGeminiResponse(jsonString);
+    } else {
+      // Process in chunks
+      onProgress?.(`Script is large (${wordCount} words). Processing in chunks...`);
+      const chunks = splitScriptIntoChunks(scriptText, maxWordsPerRequest);
+      const analyzedChunks: AnalyzedEpisode[] = [];
+
+      for (let i = 0; i < chunks.length; i++) {
+        onProgress?.(`Processing chunk ${i + 1} of ${chunks.length}...`);
+
+        const chunkSystemInstruction = `${systemInstruction}
+
+**IMPORTANT: This is chunk ${i + 1} of ${chunks.length} from a larger script. Focus on creating complete, detailed beats for the scenes in this chunk. Maintain consistent scene numbering and character continuity.**`;
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `Analyze the following script chunk using the provided visually-focused Episode Context as your guide.\n\n---SCRIPT CHUNK ${i + 1}---\n${chunks[i]}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`,
+          config: {
+            systemInstruction: chunkSystemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: responseSchema,
+            temperature: 0.1,
+            maxOutputTokens: 200000,
+            candidateCount: 1,
+          },
+        });
+
+        onProgress?.(`Processing chunk ${i + 1} response...`);
+        const jsonString = response.text.trim();
+        const chunkResult = await parseGeminiResponse(jsonString);
+        analyzedChunks.push(chunkResult);
+      }
+
+      onProgress?.('Merging all chunks...');
+      return mergeAnalyzedEpisodes(analyzedChunks);
+    }
 
     onProgress?.('Processing Gemini response...');
     const jsonString = response.text.trim();
-    const result = JSON.parse(jsonString);
-    
-    onProgress?.('Analysis complete!');
-    return result as AnalyzedEpisode;
+    console.log('Raw Gemini response length:', jsonString.length);
+    console.log('Raw Gemini response preview:', jsonString.substring(0, 500) + '...');
+    console.log('Raw Gemini response end:', '...' + jsonString.substring(jsonString.length - 500));
+
+    try {
+      // Try to clean and validate the JSON response
+      let cleanedJsonString = jsonString;
+
+      // Check if the response appears to be truncated
+      if (!cleanedJsonString.trim().endsWith('}')) {
+        console.warn('Response appears to be truncated, attempting to repair...');
+
+        // Find the last complete object/array closing
+        const lastCompleteIndex = Math.max(
+          cleanedJsonString.lastIndexOf('}}'),
+          cleanedJsonString.lastIndexOf(']}'),
+          cleanedJsonString.lastIndexOf('}]')
+        );
+
+        if (lastCompleteIndex > cleanedJsonString.length * 0.8) {
+          // If we found a reasonable closing point, truncate there and add proper closing
+          cleanedJsonString = cleanedJsonString.substring(0, lastCompleteIndex + 2);
+
+          // Count open braces/brackets to determine what closing tags we need
+          let openBraces = 0;
+          let openBrackets = 0;
+          let inString = false;
+          let escape = false;
+
+          for (let i = 0; i < cleanedJsonString.length; i++) {
+            const char = cleanedJsonString[i];
+
+            if (escape) {
+              escape = false;
+              continue;
+            }
+
+            if (char === '\\') {
+              escape = true;
+              continue;
+            }
+
+            if (char === '"') {
+              inString = !inString;
+              continue;
+            }
+
+            if (!inString) {
+              if (char === '{') openBraces++;
+              else if (char === '}') openBraces--;
+              else if (char === '[') openBrackets++;
+              else if (char === ']') openBrackets--;
+            }
+          }
+
+          // Add missing closing braces/brackets
+          for (let i = 0; i < openBrackets; i++) {
+            cleanedJsonString += ']';
+          }
+          for (let i = 0; i < openBraces; i++) {
+            cleanedJsonString += '}';
+          }
+        }
+      }
+
+      // Remove any potential control characters that might cause issues
+      cleanedJsonString = cleanedJsonString.replace(/[\x00-\x1F\x7F]/g, '');
+
+      const result = JSON.parse(cleanedJsonString);
+      return result as AnalyzedEpisode;
+    } catch (parseError) {
+      console.error('JSON Parse Error Details:', parseError);
+      console.error('Original response length:', jsonString.length);
+      console.error('Response preview (first 500):', jsonString.substring(0, 500));
+      console.error('Response preview (last 500):', jsonString.substring(Math.max(0, jsonString.length - 500)));
+
+      // Find the error position and show context around it
+      if (parseError instanceof SyntaxError && parseError.message.includes('position')) {
+        const positionMatch = parseError.message.match(/position (\d+)/);
+        if (positionMatch) {
+          const position = parseInt(positionMatch[1]);
+          const start = Math.max(0, position - 100);
+          const end = Math.min(jsonString.length, position + 100);
+          console.error(`Context around error position ${position}:`, jsonString.substring(start, end));
+        }
+      }
+
+      throw new Error(`Failed to parse Gemini response as JSON: ${parseError.message}`);
+    }
 
   } catch (error) {
     console.error("Error calling Gemini API:", error);
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : 'Unknown',
+      stack: error instanceof Error ? error.stack : undefined
+    });
     onProgress?.('Error occurred during analysis');
-    if (error instanceof Error && error.message.includes('JSON')) {
+    
+    if (error instanceof Error) {
+      // Check for specific error types
+      if (error.message.includes('JSON') || error.message.includes('parse')) {
         throw new Error("Failed to analyze script. The AI model returned an invalid JSON structure. This can happen with complex scripts. Try simplifying the script or checking the episode context data format.");
+      }
+      
+      // API key errors
+      if (error.message.includes('API_KEY') || error.message.includes('authentication') || error.message.includes('401')) {
+        throw new Error("Failed to analyze script. API key is invalid or missing. Please check your GEMINI_API_KEY environment variable in .env");
+      }
+      
+      // Leaked API key error (403)
+      if (error.message.includes('leaked') || error.message.includes('reported as leaked') || (error.message.includes('403') && error.message.includes('PERMISSION_DENIED'))) {
+        throw new Error("Failed to analyze script. Your Gemini API key has been reported as leaked and is no longer valid. Please generate a new API key from Google AI Studio and update your GEMINI_API_KEY in .env. You can also switch to a different LLM provider (Qwen, Claude, etc.) in the Provider Selector.");
+      }
+      
+      // Network errors
+      if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('timeout')) {
+        throw new Error(`Failed to analyze script. Network error: ${error.message}. Please check your internet connection and try again.`);
+      }
+      
+      // Rate limiting
+      if (error.message.includes('rate limit') || error.message.includes('429')) {
+        throw new Error("Failed to analyze script. Rate limit exceeded. Please wait a moment and try again.");
+      }
+      
+      // Quota/usage errors
+      if (error.message.includes('quota') || error.message.includes('usage')) {
+        throw new Error("Failed to analyze script. API quota exceeded. Please check your Gemini API usage limits.");
+      }
+      
+      // Model unavailable
+      if (error.message.includes('not found') || error.message.includes('404')) {
+        throw new Error("Failed to analyze script. The requested AI model is unavailable. Please check your model configuration.");
+      }
+      
+      // Provide the actual error message if it's informative
+      const errorMsg = error.message.length > 0 ? error.message : 'Unknown error occurred';
+      throw new Error(`Failed to analyze script: ${errorMsg}`);
     }
+    
     throw new Error("Failed to analyze script. The AI model may be temporarily unavailable or the request was invalid.");
   }
 };
