@@ -4,9 +4,10 @@ import type { SwarmUIExportData } from '../types';
 const STORAGE_KEY = 'storyart-latest-session';
 
 // Use environment variable with fallback - check if Redis API is part of StoryTeller API or separate
+// Note: Base URL should NOT include /api/v1 - it's added per endpoint
 const REDIS_API_BASE_URL = import.meta.env.VITE_REDIS_API_URL || 
                            import.meta.env.VITE_STORYTELLER_API_URL || 
-                           'http://localhost:7802/api/v1';
+                           'http://localhost:7802';
 
 export interface RedisSessionResponse {
   success: boolean;
@@ -16,16 +17,49 @@ export interface RedisSessionResponse {
   storage?: 'redis' | 'memory' | 'localStorage'; // Storage source
 }
 
+export interface SessionListItem {
+  timestamp: number;
+  scriptText: string;
+  storyUuid: string;
+  analyzedEpisode?: {
+    episodeNumber?: number;
+    title?: string;
+    scenes?: any[];
+  };
+}
+
+export interface SessionListResponse {
+  success: boolean;
+  sessions?: SessionListItem[];
+  count?: number;
+  error?: string;
+}
+
 /**
  * Saves session data to Redis API (or localStorage fallback)
  */
-export const saveSessionToRedis = async (data: SwarmUIExportData): Promise<void> => {
-  // Try Redis API first
-  const storyTellerUrl = import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000';
+export const saveSessionToRedis = async (data: SwarmUIExportData): Promise<{ success: boolean; storage: 'redis' | 'memory' | 'localStorage'; error?: string }> => {
+  // Normalize URLs - remove trailing slashes and /api/v1 if present
+  const normalizeUrl = (url: string) => {
+    let normalized = url.trim();
+    if (normalized.endsWith('/')) {
+      normalized = normalized.slice(0, -1);
+    }
+    // If it already includes /api/v1, remove it so we can add it consistently
+    if (normalized.endsWith('/api/v1')) {
+      normalized = normalized.slice(0, -7);
+    }
+    return normalized;
+  };
+
+  const redisApiUrl = normalizeUrl(REDIS_API_BASE_URL);
+  const storyTellerUrl = normalizeUrl(import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000');
   const endpoints = [
-    `${REDIS_API_BASE_URL}/session/save`,
+    `${redisApiUrl}/api/v1/session/save`,
     `${storyTellerUrl}/api/v1/session/save`,
   ];
+
+  let lastError: Error | null = null;
 
   for (const endpoint of endpoints) {
     try {
@@ -46,18 +80,50 @@ export const saveSessionToRedis = async (data: SwarmUIExportData): Promise<void>
       if (response.ok) {
         const result = await response.json();
         if (result.success) {
-          console.log('✅ Session saved to Redis API');
-          return;
+          console.log(`✅ Session saved to Redis API (${result.storage || 'redis'})`);
+          return { success: true, storage: result.storage || 'redis' };
+        } else {
+          // API returned success: false
+          const errorMsg = result.error || 'Unknown error from API';
+          console.error(`❌ API save failed: ${errorMsg}`);
+          lastError = new Error(errorMsg);
+          continue;
         }
+      } else {
+        // Non-OK response
+        const errorText = await response.text().catch(() => 'Unknown error');
+        let errorMsg = `HTTP ${response.status}: ${errorText}`;
+        
+        // Special handling for payload too large
+        if (response.status === 413) {
+          errorMsg = `Payload too large (${response.status}). The session data is too big to save. Consider reducing the number of beats or prompts.`;
+        }
+        
+        console.error(`❌ Save endpoint failed: ${errorMsg}`);
+        lastError = new Error(errorMsg);
+        continue;
       }
     } catch (error) {
+      // Network or other fetch errors
+      if (error instanceof Error) {
+        console.error(`❌ Save endpoint error (${endpoint}):`, error.message);
+        lastError = error;
+      }
       // Continue to next endpoint or fallback
       continue;
     }
   }
 
   // Fallback to localStorage if Redis API is not available
-  saveSessionToLocalStorage(data);
+  try {
+    saveSessionToLocalStorage(data);
+    console.log('✅ Session saved to localStorage (fallback)');
+    return { success: true, storage: 'localStorage' };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Failed to save to localStorage';
+    console.error(`❌ localStorage save failed: ${errorMsg}`);
+    throw new Error(`Failed to save session. Redis API unavailable and localStorage save failed: ${errorMsg}`);
+  }
 };
 
 /**
@@ -118,10 +184,23 @@ export const getLatestSession = async (skipApiCalls: boolean = false): Promise<R
     };
   }
 
-  // Try StoryTeller API endpoint first (if Redis is part of StoryTeller)
-  const storyTellerUrl = import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000';
+  // Normalize URLs - remove trailing slashes and /api/v1 if present
+  const normalizeUrl = (url: string) => {
+    let normalized = url.trim();
+    if (normalized.endsWith('/')) {
+      normalized = normalized.slice(0, -1);
+    }
+    // If it already includes /api/v1, remove it so we can add it consistently
+    if (normalized.endsWith('/api/v1')) {
+      normalized = normalized.slice(0, -7);
+    }
+    return normalized;
+  };
+
+  const redisApiUrl = normalizeUrl(REDIS_API_BASE_URL);
+  const storyTellerUrl = normalizeUrl(import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000');
   const endpoints = [
-    `${REDIS_API_BASE_URL}/session/latest`,
+    `${redisApiUrl}/api/v1/session/latest`,
     `${storyTellerUrl}/api/v1/session/latest`,
     `${storyTellerUrl}/api/v1/redis/session/latest`,
   ];
@@ -191,5 +270,141 @@ export const getLatestSession = async (skipApiCalls: boolean = false): Promise<R
   return {
     success: false,
     error: `No session found. Redis API endpoints are not configured or the service is not running. When you analyze a script, your session will be saved locally for restoration.`,
+  };
+};
+
+/**
+ * Fetches the list of all saved sessions from the Redis API
+ * 
+ * @returns {Promise<SessionListResponse>} The API response containing session list or an error.
+ */
+export const getSessionList = async (): Promise<SessionListResponse> => {
+  // Normalize URLs - remove trailing slashes and /api/v1 if present
+  const normalizeUrl = (url: string) => {
+    let normalized = url.trim();
+    if (normalized.endsWith('/')) {
+      normalized = normalized.slice(0, -1);
+    }
+    // If it already includes /api/v1, remove it so we can add it consistently
+    if (normalized.endsWith('/api/v1')) {
+      normalized = normalized.slice(0, -7);
+    }
+    return normalized;
+  };
+
+  const redisApiUrl = normalizeUrl(import.meta.env.VITE_REDIS_API_URL || 'http://localhost:7802');
+  const storyTellerUrl = normalizeUrl(import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000');
+  const endpoints = [
+    `${redisApiUrl}/api/v1/session/list`,
+    `${storyTellerUrl}/api/v1/session/list`,
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      }).catch((fetchError) => {
+        return new Response(null, { status: 404, statusText: 'Not Found' });
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const result: SessionListResponse = await response.json();
+        if (result.success && result.sessions) {
+          return result;
+        }
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  // Fallback: Check localStorage
+  const localSession = getSessionFromLocalStorage();
+  if (localSession) {
+    return {
+      success: true,
+      sessions: [{
+        timestamp: Date.now(),
+        scriptText: localSession.scriptText,
+        storyUuid: localSession.storyUuid,
+        analyzedEpisode: localSession.analyzedEpisode,
+      }],
+      count: 1,
+    };
+  }
+
+  return {
+    success: false,
+    error: 'No sessions found. Redis API endpoints are not configured or the service is not running.',
+  };
+};
+
+/**
+ * Restores a specific session by timestamp
+ * 
+ * @param timestamp - The timestamp of the session to restore
+ * @returns {Promise<RedisSessionResponse>} The session data or an error.
+ */
+export const getSessionByTimestamp = async (timestamp: number): Promise<RedisSessionResponse> => {
+  // Normalize URLs - remove trailing slashes and /api/v1 if present
+  const normalizeUrl = (url: string) => {
+    let normalized = url.trim();
+    if (normalized.endsWith('/')) {
+      normalized = normalized.slice(0, -1);
+    }
+    // If it already includes /api/v1, remove it so we can add it consistently
+    if (normalized.endsWith('/api/v1')) {
+      normalized = normalized.slice(0, -7);
+    }
+    return normalized;
+  };
+
+  const redisApiUrl = normalizeUrl(import.meta.env.VITE_REDIS_API_URL || 'http://localhost:7802');
+  const storyTellerUrl = normalizeUrl(import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000');
+  const endpoints = [
+    `${redisApiUrl}/api/v1/session/${timestamp}`,
+    `${storyTellerUrl}/api/v1/session/${timestamp}`,
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      }).catch((fetchError) => {
+        return new Response(null, { status: 404, statusText: 'Not Found' });
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const result: RedisSessionResponse = await response.json();
+        if (result.success && result.data) {
+          return result;
+        }
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+  
+  return {
+    success: false,
+    error: `Session with timestamp ${timestamp} not found.`,
   };
 };

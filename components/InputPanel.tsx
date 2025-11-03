@@ -140,6 +140,7 @@ interface InputPanelProps {
   onSaveToRedis?: () => Promise<void>;
   isSaving?: boolean;
   saveError?: string | null;
+  onOpenSessionBrowser?: () => void;
   selectedLLM: LLMProvider;
   onSelectedLLMChange: (llm: LLMProvider) => void;
 }
@@ -261,6 +262,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   onSaveToRedis,
   isSaving = false,
   saveError = null,
+  onOpenSessionBrowser,
   selectedLLM,
   onSelectedLLMChange
 }) => {
@@ -513,7 +515,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             ) : restoreSuccess ? (
               '✅ Restored'
             ) : (
-              'Restore'
+              'Browse & Restore'
             )}
           </button>
           {onSaveToRedis && (
@@ -555,6 +557,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             Session restored from {localStorage.getItem('last-restore-storage') || 'storage'}
           </p>
         )}
+        {/* Session browser is now opened by the "Restore" button above */}
       </div>
     </div>
   );

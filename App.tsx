@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 // import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom'; // Removed routing
 import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
+import { SessionBrowser } from './components/SessionBrowser';
 // import RefinementWorkspace from './components/RefinementWorkspace'; // Component removed
 // import { ServiceStatusPanel } from './components/ServiceStatusPanel'; // Component removed
 import { analyzeScript } from './services/geminiService';
+import { analyzeScriptWithProvider } from './services/multiProviderAnalysisService';
 import { getEpisodeContext } from './services/contextService';
 // import { ensureServiceRunning, type ServiceStatus } from './services/storytellerService'; // Service removed
 import { parseEpisodeNumber, postProcessAnalysis } from './utils';
@@ -14,7 +16,7 @@ import { GithubIcon, PanelExpandIcon } from './components/icons';
 import { generateHierarchicalSwarmUiPrompts } from './services/promptGenerationService';
 // import { useSwarmUIExport } from './hooks/useSwarmUIExport'; // Hook removed
 import { type SwarmUIExportData } from './types';
-import { getLatestSession, saveSessionToRedis } from './services/redisService';
+import { getLatestSession, saveSessionToRedis, getSessionByTimestamp } from './services/redisService';
 
 type RetrievalMode = 'manual' | 'database';
 
@@ -232,6 +234,7 @@ function App() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSessionBrowserOpen, setIsSessionBrowserOpen] = useState(false);
 
   // Service status state - kept for potential future use but not currently displayed
   const [serviceStatus, setServiceStatus] = useState<{ isRunning: boolean; isStarting: boolean; message?: string }>({
@@ -497,21 +500,9 @@ function App() {
 
     try {
       // STAGE 1: Storyboard Analysis
+      // Use unified provider routing - all providers are now supported
       setLoadingMessage(`Analyzing script with ${selectedLLM.toUpperCase()}...`);
-      
-      let analysisResult: AnalyzedEpisode;
-      
-      // Since multi-LLM service was removed, we'll stick with gemini for now
-      // but the selectedLLM is logged and can be used to switch services if more are added.
-      if (selectedLLM === 'gemini') {
-        analysisResult = await analyzeScript(scriptText, episodeContext, setLoadingMessage);
-      } else {
-        // This is where you would call other services, e.g., analyzeWithQwen(...)
-        // For now, we'll throw an error if a non-Gemini provider is selected
-        // to make it clear that it's not implemented yet.
-        console.warn(`Analysis with ${selectedLLM} is not implemented. Using Gemini as fallback.`);
-        analysisResult = await analyzeScript(scriptText, episodeContext, setLoadingMessage);
-      }
+      const analysisResult = await analyzeScriptWithProvider(selectedLLM, scriptText, episodeContext, setLoadingMessage);
 
       console.log('Analysis result received:', analysisResult);
       
@@ -520,9 +511,9 @@ function App() {
       setAnalyzedEpisode(processedResult); // Show storyboard first
 
       // STAGE 2: Prompt Generation
-      // Always use hierarchical prompt generation (default and only option)
-      setLoadingMessage('Generating SwarmUI prompts...');
-      const promptsResult = await generateHierarchicalSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid, setLoadingMessage);
+      // Use the same provider selected for analysis
+      setLoadingMessage(`Generating SwarmUI prompts with ${selectedLLM.toUpperCase()}...`);
+      const promptsResult = await generateHierarchicalSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid, selectedLLM, setLoadingMessage);
       
       // Integrate prompts back into the analysis object
       if (processedResult.scenes && Array.isArray(processedResult.scenes)) {
@@ -545,17 +536,26 @@ function App() {
 
       // Save session to Redis API (with localStorage fallback)
       try {
-        await saveSessionToRedis({
+        const saveResult = await saveSessionToRedis({
           scriptText,
           episodeContext,
           storyUuid,
           analyzedEpisode: processedResult,
         });
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000); // Clear success message after 3 seconds
+        
+        if (saveResult.success) {
+          const storageType = saveResult.storage === 'redis' ? 'Redis' : 
+                            saveResult.storage === 'memory' ? 'memory storage' : 
+                            'localStorage';
+          console.log(`✅ Session auto-saved to ${storageType}`);
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+        } else {
+          console.warn('⚠️ Auto-save failed:', saveResult.error);
+        }
       } catch (error) {
         // Session save failure shouldn't break the analysis flow
-        console.warn('Failed to save session:', error);
+        console.warn('Failed to auto-save session:', error);
       }
 
     // FIX: Corrected syntax for the try-catch block.
@@ -567,7 +567,13 @@ function App() {
     }
   };
 
-  const handleRestoreFromRedis = async () => {
+  // Open session browser to select a version to restore
+  const handleRestoreFromRedis = () => {
+    setIsSessionBrowserOpen(true);
+  };
+
+  // Restore the latest session directly (used by auto-restore on mount)
+  const handleRestoreLatestSession = async () => {
     setIsRestoring(true);
     setRestoreError(null);
     setRestoreSuccess(false);
@@ -608,13 +614,70 @@ function App() {
     setIsRestoring(false);
   };
 
+  const handleRestoreSessionByTimestamp = async (timestamp: number) => {
+    setIsRestoring(true);
+    setRestoreError(null);
+    setRestoreSuccess(false);
+    setError(null);
+
+    try {
+      const response = await getSessionByTimestamp(timestamp);
+
+      if (response.success && response.data) {
+        const data = response.data;
+        setScriptText(data.scriptText);
+        setEpisodeContext(data.episodeContext);
+        
+        // Validate UUID from restored session
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (data.storyUuid && uuidRegex.test(data.storyUuid)) {
+          setStoryUuid(data.storyUuid);
+        } else {
+          console.warn(
+            `Restored session contained an invalid UUID: "${data.storyUuid}". Falling back to default.`
+          );
+          setStoryUuid(
+            import.meta.env.VITE_CAT_DANIEL_STORY_ID || '59f64b1e-726a-439d-a6bc-0dfefcababdb'
+          );
+        }
+        
+        setAnalyzedEpisode(data.analyzedEpisode);
+        setRestoreSuccess(true);
+        if (response.storage) {
+          localStorage.setItem('last-restore-storage', response.storage);
+        }
+        setTimeout(() => setRestoreSuccess(false), 3000);
+        
+        // Close the browser after successful restore
+        setIsSessionBrowserOpen(false);
+      } else {
+        setRestoreError(response.error || 'Failed to restore session.');
+      }
+    } catch (error) {
+      setRestoreError(error instanceof Error ? error.message : 'Failed to restore session.');
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
   const handleSaveToRedis = async () => {
     setIsSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
 
     try {
-      await saveSessionToRedis({
+      // Verify prompts are in the data before saving
+      const hasPrompts = analyzedEpisode?.scenes?.some(scene => 
+        scene.beats?.some(beat => beat.prompts)
+      );
+      
+      if (hasPrompts) {
+        console.log('✅ Prompts detected in analyzedEpisode, will be saved');
+      } else {
+        console.warn('⚠️ No prompts found in analyzedEpisode. Make sure you have generated prompts before saving.');
+      }
+
+      const result = await saveSessionToRedis({
         scriptText,
         episodeContext,
         storyUuid,
@@ -624,11 +687,22 @@ function App() {
           scenes: []
         },
       });
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000); // Clear success message after 3 seconds
+
+      if (result.success) {
+        const storageType = result.storage === 'redis' ? 'Redis' : 
+                          result.storage === 'memory' ? 'memory storage' : 
+                          'localStorage';
+        console.log(`✅ Session saved successfully to ${storageType}`);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        throw new Error(result.error || 'Save failed for unknown reason');
+      }
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Failed to save session to Redis.');
-      setTimeout(() => setSaveError(null), 5000); // Clear error message after 5 seconds
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save session to Redis.';
+      console.error('❌ Save error:', errorMessage);
+      setSaveError(errorMessage);
+      setTimeout(() => setSaveError(null), 5000);
     } finally {
       setIsSaving(false);
     }
@@ -636,46 +710,54 @@ function App() {
 
   // Render Dashboard directly without routing
   return (
-    <Dashboard
-      scriptText={scriptText}
-      setScriptText={setScriptText}
-      episodeContext={episodeContext}
-      setEpisodeContext={setEpisodeContext}
-      analyzedEpisode={analyzedEpisode}
-      setAnalyzedEpisode={setAnalyzedEpisode}
-      isLoading={isLoading}
-      setIsLoading={setIsLoading}
-      loadingMessage={loadingMessage}
-      setLoadingMessage={setLoadingMessage}
-      error={error}
-      setError={setError}
-      isContextFetching={isContextFetching}
-      setIsContextFetching={setIsContextFetching}
-      contextError={contextError}
-      setContextError={setContextError}
-      retrievalMode={retrievalMode}
-      setRetrievalMode={setRetrievalMode}
-      storyUuid={storyUuid}
-      setStoryUuid={setStoryUuid}
-      isInputCollapsed={isInputCollapsed}
-      setIsInputCollapsed={setIsInputCollapsed}
-      styleConfig={styleConfig}
-      setStyleConfig={setStyleConfig}
-      selectedLLM={selectedLLM}
-      setSelectedLLM={setSelectedLLM}
-      handleAnalyze={handleAnalyze}
-      handleFetchContext={handleFetchContext}
-      handleReset={handleReset}
-      handleNavigateToRefine={handleNavigateToRefine}
-      onRestoreFromRedis={handleRestoreFromRedis}
-      isRestoring={isRestoring}
-      restoreError={restoreError}
-      restoreSuccess={restoreSuccess}
-      saveSuccess={saveSuccess}
-      onSaveToRedis={handleSaveToRedis}
-      isSaving={isSaving}
-      saveError={saveError}
-    />
+    <>
+      <Dashboard
+        scriptText={scriptText}
+        setScriptText={setScriptText}
+        episodeContext={episodeContext}
+        setEpisodeContext={setEpisodeContext}
+        analyzedEpisode={analyzedEpisode}
+        setAnalyzedEpisode={setAnalyzedEpisode}
+        isLoading={isLoading}
+        setIsLoading={setIsLoading}
+        loadingMessage={loadingMessage}
+        setLoadingMessage={setLoadingMessage}
+        error={error}
+        setError={setError}
+        isContextFetching={isContextFetching}
+        setIsContextFetching={setIsContextFetching}
+        contextError={contextError}
+        setContextError={setContextError}
+        retrievalMode={retrievalMode}
+        setRetrievalMode={setRetrievalMode}
+        storyUuid={storyUuid}
+        setStoryUuid={setStoryUuid}
+        isInputCollapsed={isInputCollapsed}
+        setIsInputCollapsed={setIsInputCollapsed}
+        styleConfig={styleConfig}
+        setStyleConfig={setStyleConfig}
+        selectedLLM={selectedLLM}
+        setSelectedLLM={setSelectedLLM}
+        handleAnalyze={handleAnalyze}
+        handleFetchContext={handleFetchContext}
+        handleReset={handleReset}
+        handleNavigateToRefine={handleNavigateToRefine}
+        onRestoreFromRedis={handleRestoreFromRedis}
+        isRestoring={isRestoring}
+        restoreError={restoreError}
+        restoreSuccess={restoreSuccess}
+        saveSuccess={saveSuccess}
+        onSaveToRedis={handleSaveToRedis}
+        isSaving={isSaving}
+        saveError={saveError}
+        onOpenSessionBrowser={() => setIsSessionBrowserOpen(true)}
+      />
+      <SessionBrowser
+        isOpen={isSessionBrowserOpen}
+        onClose={() => setIsSessionBrowserOpen(false)}
+        onRestoreSession={handleRestoreSessionByTimestamp}
+      />
+    </>
   );
 }
 

@@ -211,6 +211,61 @@ app.get('/api/v1/session/list', async (req, res) => {
   }
 });
 
+// Get session by timestamp endpoint
+app.get('/api/v1/session/:timestamp', async (req, res) => {
+  try {
+    const timestamp = parseInt(req.params.timestamp, 10);
+    
+    if (isNaN(timestamp)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid timestamp parameter'
+      });
+    }
+
+    const sessionKey = `${SESSION_KEY_PREFIX}${timestamp}`;
+    let sessionData = null;
+
+    try {
+      if (redisClient?.isOpen) {
+        const data = await redisClient.get(sessionKey);
+        if (data) {
+          sessionData = JSON.parse(data);
+        }
+      } else {
+        // Memory storage
+        if (memoryStorage.has(sessionKey)) {
+          sessionData = JSON.parse(memoryStorage.get(sessionKey));
+        }
+      }
+    } catch (error) {
+      console.error('Error retrieving session:', error);
+    }
+
+    if (!sessionData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found'
+      });
+    }
+
+    // Remove timestamp before returning
+    const { timestamp: ts, ...session } = sessionData;
+
+    res.json({
+      success: true,
+      data: session,
+      storage: redisClient?.isOpen ? 'redis' : 'memory'
+    });
+  } catch (error) {
+    console.error('Error retrieving session by timestamp:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to retrieve session'
+    });
+  }
+});
+
 // Start server
 const startServer = async () => {
   // Try to initialize Redis (non-blocking)
@@ -224,6 +279,7 @@ const startServer = async () => {
     console.log(`   POST   /api/v1/session/save    - Save a session`);
     console.log(`   GET    /api/v1/session/latest  - Get latest session`);
     console.log(`   GET    /api/v1/session/list    - List all sessions`);
+    console.log(`   GET    /api/v1/session/:timestamp - Get session by timestamp`);
     console.log(`   GET    /health                 - Health check\n`);
   });
 };

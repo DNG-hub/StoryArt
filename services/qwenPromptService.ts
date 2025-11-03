@@ -57,12 +57,12 @@ export const generateSwarmUiPromptsWithQwen = async (
     -   **Focus:** Tight, character-centric. Recompose for a vertical frame.
     -   **Example:** \`cinematic, gritty, close-up of a determined JRUMLV woman (face taut with concentration) in tactical gear, background of glowing biohazard symbols, dramatic lighting.\`
 
-4.  **YOLO Face Refinement:** For any prompt featuring a human where the face is visible, you MUST append this EXACT tag to the very end of the prompt string: \`<segment:yolo-face_yolo11m-seg.pt,0.35,0.5>\`.
+4.  **YOLO Face Refinement:** For any prompt featuring a human where the face is visible, you MUST append this EXACT tag to the very end of the prompt string: \`<segment:yolo-face_yolov9c.pt,0.35,0.5>\`.
 
 **YOLO Parameter Guidelines:**
 - **Confidence (0.35):** Balanced threshold for face detection. Lower (0.25) catches more faces, higher (0.45) reduces false positives.
 - **IoU (0.5):** Standard overlap threshold. Lower (0.3) suppresses more overlapping faces, higher (0.6) keeps more overlapping instances.
-- **Model (yolo11m-seg.pt):** Latest YOLO11 medium segmentation model with improved face detection accuracy.
+- **Model (face_yolov9c.pt):** YOLOv9 face detection model optimized for face segmentation tasks.
 
 **Output:**
 - Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId' and BOTH the 'cinematic' and 'vertical' prompt objects, strictly adhering to the provided schema.`;

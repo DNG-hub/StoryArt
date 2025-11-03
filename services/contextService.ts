@@ -28,14 +28,43 @@ export async function getEpisodeContext(storyId: string, episodeNumber: number):
 
     const result = await response.json();
     if (result.success && result.data) {
-      console.log('StoryTeller API Response Structure:', {
-        hasEpisode: !!result.data.episode,
-        episodeKeys: result.data.episode ? Object.keys(result.data.episode) : [],
-        hasScenes: !!result.data.episode?.scenes,
-        sceneCount: result.data.episode?.scenes?.length || 0,
-        hasCharacters: !!result.data.episode?.characters,
-        characterCount: result.data.episode?.characters?.length || 0
+      // Enhanced logging for location override debugging
+      const episode = result.data.episode;
+      console.log('📋 StoryTeller API Response Structure:', {
+        hasEpisode: !!episode,
+        episodeKeys: episode ? Object.keys(episode) : [],
+        hasScenes: !!episode?.scenes,
+        sceneCount: episode?.scenes?.length || 0,
+        hasCharacters: !!episode?.characters,
+        characterCount: episode?.characters?.length || 0
       });
+
+      // Analyze location overrides in response
+      if (episode?.scenes) {
+        console.log('\n🔍 LOCATION OVERRIDE ANALYSIS:');
+        episode.scenes.forEach((scene: any, idx: number) => {
+          const sceneChars = scene.characters || [];
+          const sceneApps = scene.character_appearances || [];
+          const totalChars = sceneChars.length + sceneApps.length;
+          let overrideCount = 0;
+
+          [...sceneChars, ...sceneApps].forEach((char: any) => {
+            const locCtx = char.location_context || char;
+            if (locCtx?.swarmui_prompt_override) {
+              overrideCount++;
+              console.log(`   ✅ Scene ${scene.scene_number}: ${char.name || char.character_name} has override`);
+              const preview = locCtx.swarmui_prompt_override.substring(0, 60) + '...';
+              console.log(`      "${preview}"`);
+            }
+          });
+
+          if (totalChars > 0 && overrideCount === 0) {
+            console.log(`   ⚠️  Scene ${scene.scene_number}: ${totalChars} character(s) but NO overrides found`);
+          }
+        });
+        console.log('');
+      }
+
       return result.data;
     } else {
       throw new Error(`API Error: ${result.error || 'Unknown error occurred while fetching context.'}`);
