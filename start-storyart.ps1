@@ -40,6 +40,14 @@ $Frontend = @{
   HealthUrl = 'http://localhost:3000'                   # vite responds at /
 }
 
+$Backend = @{
+  Name      = 'Redis Session API Server'
+  Port      = 7802
+  WorkDir   = 'E:\REPOS\StoryArt'
+  StartCmd  = 'npm run dev:server'
+  HealthUrl = 'http://localhost:7802/health'
+}
+
 $OpenUrl = 'http://localhost:3000'
 
 # =========================
@@ -83,12 +91,28 @@ function Stop-ProcessOnPort {
   }
 
   foreach ($processId in $owners) {
+    # Skip system processes (PID 0-4)
+    if ($processId -le 4) {
+      continue
+    }
+    
     try {
       $proc = Get-Process -Id $processId -ErrorAction Stop
-      $tree = (Get-ChildPids -ParentPid $processId) + $processId | Sort-Object -Descending -Unique
+      
+      # Skip system processes
+      $systemProcesses = @('Idle', 'System', 'smss', 'csrss', 'wininit', 'winlogon', 'services', 'lsass', 'svchost')
+      if ($systemProcesses -contains $proc.ProcessName) {
+        continue
+      }
+      
+      $tree = (Get-ChildPids -ParentPid $processId) + $processId | Sort-Object -Descending -Unique | Where-Object { $_ -gt 4 }
       foreach ($cpid in $tree) {
         $p = Get-Process -Id $cpid -ErrorAction SilentlyContinue
         if ($p) {
+          # Skip system processes
+          if ($systemProcesses -contains $p.ProcessName) {
+            continue
+          }
           Write-Host ("  - Killing {0} (PID {1})" -f $p.ProcessName, $cpid) -ForegroundColor Red
           Stop-Process -Id $cpid -Force -ErrorAction SilentlyContinue
         }
@@ -183,17 +207,28 @@ function Stop-StoryArtProcesses {
   try {
     $port3000 = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
     $port5173 = Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
-    $portProcesses = @($port3000, $port5173) | Where-Object { $_ -ne $null } | Select-Object -Unique
+    $portProcesses = @($port3000, $port5173) | Where-Object { $_ -ne $null -and $_ -gt 4 } | Select-Object -Unique
   } catch {
     # ignore
   }
   
-  $allProcesses = @($nodeProcesses.ProcessId) + $portProcesses | Select-Object -Unique
+  $allProcesses = @($nodeProcesses.ProcessId) + $portProcesses | Select-Object -Unique | Where-Object { $_ -ne $null -and $_ -gt 4 }
   
   foreach ($processId in $allProcesses) {
+    # Skip system processes (PID 0, 4, etc.)
+    if ($processId -le 4) {
+      continue
+    }
+    
     try {
       $proc = Get-Process -Id $processId -ErrorAction SilentlyContinue
       if ($proc) {
+        # Skip system processes like Idle, System, etc.
+        $systemProcesses = @('Idle', 'System', 'smss', 'csrss', 'wininit', 'winlogon', 'services', 'lsass', 'svchost')
+        if ($systemProcesses -contains $proc.ProcessName) {
+          continue
+        }
+        
         Write-Host "  Killing process $($proc.ProcessName) (PID $processId)" -ForegroundColor Red
         Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
       }
@@ -223,6 +258,7 @@ Stop-StoryArtProcesses
 
 # Then clear specific ports with process tree management
 Stop-ProcessOnPort -Port $Frontend.Port -ServiceName $Frontend.Name
+Stop-ProcessOnPort -Port $Backend.Port -ServiceName $Backend.Name
 
 # Give processes extra time to fully terminate
 Write-Host "Waiting for processes to fully terminate..." -ForegroundColor Yellow
@@ -232,6 +268,20 @@ Start-Sleep -Seconds 3
 # 2) FRONTEND deps (once)
 # =========================
 Ensure-NodeModules -Dir $Frontend.WorkDir
+
+# =========================
+# 2.5) START BACKEND SERVER
+# =========================
+Write-Host "`nStarting Redis Session API server…" -ForegroundColor Green
+$backendArgs = @("-NoExit", "-Command", $Backend.StartCmd)
+try {
+  Start-Process -FilePath "powershell" -ArgumentList $backendArgs -WorkingDirectory $Backend.WorkDir | Out-Null
+  Write-Host "Waiting for Redis API server to be ready..." -ForegroundColor Yellow
+  Start-Sleep -Seconds 2
+  [void](Wait-HttpReady -Url $Backend.HealthUrl -TimeoutSeconds 10)
+} catch {
+  Write-Host "Failed to start Redis API server (will use localStorage fallback)." -ForegroundColor Yellow
+}
 
 # =========================
 # 3) START FRONTEND
@@ -257,6 +307,7 @@ if (-not $NoBrowser) {
 
 Write-Host "`nStoryArt development environment started:" -ForegroundColor Green
 Write-Host ("  Frontend: {0}" -f $OpenUrl) -ForegroundColor Cyan
+Write-Host ("  Backend API: http://localhost:{0}" -f $Backend.Port) -ForegroundColor Cyan
 Write-Host ("="*64) -ForegroundColor DarkCyan
 
 Write-Host "`nDevelopment Tips:" -ForegroundColor Yellow

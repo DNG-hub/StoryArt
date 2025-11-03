@@ -124,6 +124,9 @@ interface InputPanelProps {
   setStyleConfig: (config: EpisodeStyleConfig) => void;
   useHierarchicalPrompts: boolean;
   onUseHierarchicalPromptsChange: (value: boolean) => void;
+  onRestoreFromRedis: () => Promise<void>;
+  isRestoring: boolean;
+  restoreError: string | null;
 }
 
 const RetrievalModeSwitch: React.FC<{
@@ -220,7 +223,10 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   styleConfig,
   setStyleConfig,
   useHierarchicalPrompts,
-  onUseHierarchicalPromptsChange
+  onUseHierarchicalPromptsChange,
+  onRestoreFromRedis,
+  isRestoring,
+  restoreError
 }) => {
   const [isContextJsonValid, setIsContextJsonValid] = useState(true);
 
@@ -414,7 +420,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
         </div>
 
       </div>
-      <div className="mt-6">
+      <div className="mt-6 space-y-2">
         <button
           onClick={onAnalyze}
           disabled={isAnalyzeDisabled}
@@ -442,6 +448,16 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             </div>
           )}
         </button>
+        <button
+          onClick={onRestoreFromRedis}
+          disabled={isRestoring || isLoading}
+          className="w-full text-sm text-center text-gray-400 hover:text-brand-blue disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isRestoring ? 'Restoring from Redis...' : 'Restore Last Session'}
+        </button>
+        {restoreError && (
+          <p className="text-xs text-center text-red-400 mt-1">{restoreError}</p>
+        )}
       </div>
     </div>
   );

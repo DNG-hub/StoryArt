@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+// import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom'; // Removed routing
 import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
-import RefinementWorkspace from './components/RefinementWorkspace';
-import { ServiceStatusPanel } from './components/ServiceStatusPanel';
+// import RefinementWorkspace from './components/RefinementWorkspace'; // Component removed
+// import { ServiceStatusPanel } from './components/ServiceStatusPanel'; // Component removed
 import { analyzeScript } from './services/geminiService';
 import { getEpisodeContext } from './services/contextService';
-import { ensureServiceRunning, type ServiceStatus } from './services/storytellerService';
+// import { ensureServiceRunning, type ServiceStatus } from './services/storytellerService'; // Service removed
 import { parseEpisodeNumber, postProcessAnalysis } from './utils';
 import type { AnalyzedEpisode, EpisodeStyleConfig, EnhancedEpisodeContext, SceneContext, BeatAnalysis, LLMSelection, LLMProvider } from './types';
 import { DEFAULT_SCRIPT, DEFAULT_EPISODE_CONTEXT } from './constants';
 import { GithubIcon, PanelExpandIcon } from './components/icons';
 import { generateSwarmUiPrompts, generateHierarchicalSwarmUiPrompts } from './services/promptGenerationService';
-import { useSwarmUIExport } from './hooks/useSwarmUIExport';
+// import { useSwarmUIExport } from './hooks/useSwarmUIExport'; // Hook removed
 import { type SwarmUIExportData } from './types';
+import { getLatestSession, saveSessionToRedis } from './services/redisService';
 
 type RetrievalMode = 'manual' | 'database';
 
@@ -66,7 +67,9 @@ function Dashboard({
   handleFetchContext,
   handleReset,
   handleNavigateToRefine,
-  handleRestoreFromRedis
+  onRestoreFromRedis,
+  isRestoring,
+  restoreError
 }: {
   scriptText: string;
   setScriptText: (text: string) => void;
@@ -100,29 +103,22 @@ function Dashboard({
   handleFetchContext: () => Promise<void>;
   handleReset: () => void;
   handleNavigateToRefine: (beatId: string) => void;
-  handleRestoreFromRedis: (data: SwarmUIExportData) => void;
+  onRestoreFromRedis: () => Promise<void>;
+  isRestoring: boolean;
+  restoreError: string | null;
 }) {
-  const {
-    isExporting: isSavingToSwarmUI,
-    exportError: saveToSwarmUIError,
-    lastExportId,
-    exportToSwarmUI,
-    clearError: clearSwarmUIError,
-  } = useSwarmUIExport();
-
+  // SwarmUI export hook removed - stubbing out functionality
+  const isSavingToSwarmUI = false;
+  const saveToSwarmUIError: string | null = null;
+  
   const handleSaveToSwarmUI = async () => {
     if (!analyzedEpisode) {
       return;
     }
 
-    try {
-      const exportId = await exportToSwarmUI(scriptText, episodeContext, analyzedEpisode, storyUuid);
-      if (exportId) {
-        console.log('Successfully saved to SwarmUI with ID:', exportId);
-      }
-    } catch (error) {
-      console.error('Failed to save to SwarmUI:', error);
-    }
+    // SwarmUI export functionality removed
+    console.warn('SwarmUI export feature is not available. The useSwarmUIExport hook was removed.');
+    // TODO: Implement SwarmUI export functionality if needed
   };
 
   return (
@@ -161,7 +157,9 @@ function Dashboard({
                 onUseHierarchicalPromptsChange={setUseHierarchicalPrompts}
                 selectedLLM={selectedLLM}
                 onSelectedLLMChange={setSelectedLLM}
-                onRestoreFromRedis={handleRestoreFromRedis}
+                onRestoreFromRedis={onRestoreFromRedis}
+                isRestoring={isRestoring}
+                restoreError={restoreError}
               />
             </div>
           )}
@@ -172,10 +170,6 @@ function Dashboard({
               loadingMessage={loadingMessage}
               error={error}
               onReset={handleReset}
-              onNavigateToRefine={handleNavigateToRefine}
-              onSaveToSwarmUI={handleSaveToSwarmUI}
-              isSavingToSwarmUI={isSavingToSwarmUI}
-              saveToSwarmUIError={saveToSwarmUIError}
             />
           </div>
            {isInputCollapsed && (
@@ -206,22 +200,27 @@ function Dashboard({
 }
 
 // App wrapper that provides router context
-function AppWrapper() {
-  return (
-    <Router>
-      <App />
-    </Router>
-  );
-}
+// Routing removed - single page app
+// function AppWrapper() {
+//   return (
+//     <Router>
+//       <App />
+//     </Router>
+//   );
+// }
 
 function App() {
-  const navigate = useNavigate();
+  // const navigate = useNavigate(); // Routing removed
   const [scriptText, setScriptText] = useState<string>(DEFAULT_SCRIPT);
   const [episodeContext, setEpisodeContext] = useState<string>(DEFAULT_EPISODE_CONTEXT);
   const [analyzedEpisode, setAnalyzedEpisode] = useState<AnalyzedEpisode | null>(null);
 
-  // Service status state
-  const [serviceStatus, setServiceStatus] = useState<ServiceStatus & { message?: string }>({
+  // Redis state
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+
+  // Service status state - kept for potential future use but not currently displayed
+  const [serviceStatus, setServiceStatus] = useState<{ isRunning: boolean; isStarting: boolean; message?: string }>({
     isRunning: false,
     isStarting: false
   });
@@ -337,7 +336,9 @@ function App() {
   };
 
   const handleNavigateToRefine = (beatId: string) => {
-    navigate(`/refine/${beatId}`);
+    // RefinementWorkspace component removed - route disabled
+    console.log('Refinement feature disabled. Beat ID:', beatId);
+    // navigate(`/refine/${beatId}`); // Route disabled
   };
 
   const [isContextFetching, setIsContextFetching] = useState<boolean>(false);
@@ -370,24 +371,8 @@ function App() {
             throw new Error("Cannot fetch context: Script must begin with 'EPISODE: X'.");
         }
 
-        // First ensure StoryTeller service is running
-        setShowServiceStatus(true);
-        setLoadingMessage('Checking StoryTeller service...');
-
-        const serviceRunning = await ensureServiceRunning((status) => {
-          setServiceStatus(status);
-          if (status.message) {
-            setLoadingMessage(status.message);
-          }
-        });
-
-        if (!serviceRunning) {
-          throw new Error('StoryTeller service is not available. Please start it manually and try again.');
-        }
-
-        // Hide service status panel once service is confirmed running
-        setShowServiceStatus(false);
-
+        // StoryTeller service check removed - proceed directly to context fetch
+        // Note: If StoryTeller service is required, ensure it's running before using database mode
         setLoadingMessage('Fetching episode context from API...');
         const contextData = await getEpisodeContext(storyUuid, episodeNumber);
         const formattedContext = JSON.stringify(contextData, null, 2);
@@ -396,7 +381,7 @@ function App() {
     } catch (e: any) {
         setContextError(e.message || 'An unexpected error occurred while fetching context.');
         setEpisodeContext('');
-        setShowServiceStatus(false); // Hide service status on error
+        // Service status panel removed - no need to hide it
     } finally {
         setIsContextFetching(false);
         setLoadingMessage('');
@@ -475,6 +460,14 @@ function App() {
       
       setAnalyzedEpisode({ ...processedResult });
 
+      // Save session to Redis API (with localStorage fallback)
+      await saveSessionToRedis({
+        scriptText,
+        episodeContext,
+        storyUuid,
+        analyzedEpisode: processedResult,
+      });
+
     // FIX: Corrected syntax for the try-catch block.
     } catch (e: any) {
       setError(e.message || 'An unexpected error occurred.');
@@ -484,74 +477,66 @@ function App() {
     }
   };
 
-  const handleRestoreFromRedis = (data: SwarmUIExportData) => {
-    setScriptText(data.scriptText);
-    setEpisodeContext(data.episodeContext);
-    setStoryUuid(data.storyUuid);
-    setAnalyzedEpisode(data.analyzedEpisode);
+  const handleRestoreFromRedis = async () => {
+    setIsRestoring(true);
+    setRestoreError(null);
     setError(null);
+
+    const response = await getLatestSession();
+
+    if (response.success && response.data) {
+      const data = response.data;
+      setScriptText(data.scriptText);
+      setEpisodeContext(data.episodeContext);
+      setStoryUuid(data.storyUuid);
+      setAnalyzedEpisode(data.analyzedEpisode);
+    } else {
+      setRestoreError(response.error || 'Failed to restore session from Redis.');
+    }
+
+    setIsRestoring(false);
   };
 
+  // Render Dashboard directly without routing
   return (
-    <>
-      <Routes>
-        <Route path="/" element={
-          <Dashboard
-            scriptText={scriptText}
-            setScriptText={setScriptText}
-            episodeContext={episodeContext}
-            setEpisodeContext={setEpisodeContext}
-            analyzedEpisode={analyzedEpisode}
-            setAnalyzedEpisode={setAnalyzedEpisode}
-            isLoading={isLoading}
-            setIsLoading={setIsLoading}
-            loadingMessage={loadingMessage}
-            setLoadingMessage={setLoadingMessage}
-            error={error}
-            setError={setError}
-            isContextFetching={isContextFetching}
-            setIsContextFetching={setIsContextFetching}
-            contextError={contextError}
-            setContextError={setContextError}
-            retrievalMode={retrievalMode}
-            setRetrievalMode={setRetrievalMode}
-            storyUuid={storyUuid}
-            setStoryUuid={setStoryUuid}
-            isInputCollapsed={isInputCollapsed}
-            setIsInputCollapsed={setIsInputCollapsed}
-            styleConfig={styleConfig}
-            setStyleConfig={setStyleConfig}
-            useHierarchicalPrompts={useHierarchicalPrompts}
-            setUseHierarchicalPrompts={setUseHierarchicalPrompts}
-            selectedLLM={selectedLLM}
-            setSelectedLLM={setSelectedLLM}
-            handleAnalyze={handleAnalyze}
-            handleFetchContext={handleFetchContext}
-            handleReset={handleReset}
-            handleNavigateToRefine={handleNavigateToRefine}
-            handleRestoreFromRedis={handleRestoreFromRedis}
-          />
-        } />
-
-        <Route path="/refine/:beatId" element={
-          <RefinementWorkspace
-            getBeatData={getBeatData}
-            onSaveRefinement={handleSaveRefinement}
-            onQueueForGeneration={handleQueueForGeneration}
-          />
-        } />
-
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-
-      {/* Service Status Panel */}
-      <ServiceStatusPanel
-        status={serviceStatus}
-        isVisible={showServiceStatus}
-        onClose={() => setShowServiceStatus(false)}
-      />
-    </>
+    <Dashboard
+      scriptText={scriptText}
+      setScriptText={setScriptText}
+      episodeContext={episodeContext}
+      setEpisodeContext={setEpisodeContext}
+      analyzedEpisode={analyzedEpisode}
+      setAnalyzedEpisode={setAnalyzedEpisode}
+      isLoading={isLoading}
+      setIsLoading={setIsLoading}
+      loadingMessage={loadingMessage}
+      setLoadingMessage={setLoadingMessage}
+      error={error}
+      setError={setError}
+      isContextFetching={isContextFetching}
+      setIsContextFetching={setIsContextFetching}
+      contextError={contextError}
+      setContextError={setContextError}
+      retrievalMode={retrievalMode}
+      setRetrievalMode={setRetrievalMode}
+      storyUuid={storyUuid}
+      setStoryUuid={setStoryUuid}
+      isInputCollapsed={isInputCollapsed}
+      setIsInputCollapsed={setIsInputCollapsed}
+      styleConfig={styleConfig}
+      setStyleConfig={setStyleConfig}
+      useHierarchicalPrompts={useHierarchicalPrompts}
+      setUseHierarchicalPrompts={setUseHierarchicalPrompts}
+      selectedLLM={selectedLLM}
+      setSelectedLLM={setSelectedLLM}
+      handleAnalyze={handleAnalyze}
+      handleFetchContext={handleFetchContext}
+      handleReset={handleReset}
+      handleNavigateToRefine={handleNavigateToRefine}
+      onRestoreFromRedis={handleRestoreFromRedis}
+      isRestoring={isRestoring}
+      restoreError={restoreError}
+    />
   );
 }
 
-export default AppWrapper;
+export default App;
