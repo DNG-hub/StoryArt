@@ -36,12 +36,22 @@ export const generateSwarmUiPrompts = async (
     episodeContextJson: string,
     styleConfig: EpisodeStyleConfig,
     retrievalMode: RetrievalMode = 'manual',
-    storyId?: string
+    storyId?: string,
+    onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> => {
-    if (!process.env.API_KEY) {
-        throw new Error("API_KEY environment variable not set. Cannot generate prompts.");
+    onProgress?.('Verifying API key...');
+    // Read API key from .env via import.meta.env (Vite client-side)
+    // Try VITE_ prefix first (recommended), then fallback to non-prefixed for backward compat
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || 
+                   import.meta.env.GEMINI_API_KEY || 
+                   (process.env as any).API_KEY ||
+                   (process.env as any).GEMINI_API_KEY;
+    
+    if (!apiKey) {
+        throw new Error("VITE_GEMINI_API_KEY is not configured in .env file. Please set it and restart the dev server.");
     }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
+    onProgress?.('✅ API key verified. Initializing prompt generation...');
 
     const beatsForPrompting = analyzedEpisode.scenes.flatMap(scene =>
         scene.beats.filter(beat => beat.imageDecision.type === 'NEW_IMAGE')
@@ -51,6 +61,7 @@ export const generateSwarmUiPrompts = async (
         return [];
     }
 
+    onProgress?.(`Processing ${beatsForPrompting.length} NEW_IMAGE beats for prompt generation...`);
     console.log(`Processing ${beatsForPrompting.length} NEW_IMAGE beats for prompt generation`);
 
     // If we have too many beats, process them in batches to avoid token limits
@@ -60,6 +71,7 @@ export const generateSwarmUiPrompts = async (
         batches.push(beatsForPrompting.slice(i, i + BATCH_SIZE));
     }
 
+    onProgress?.(`Organized into ${batches.length} batch${batches.length > 1 ? 'es' : ''} for processing...`);
     console.log(`Processing ${batches.length} batches of beats`);
 
     // Enhanced context processing for database mode
@@ -68,28 +80,43 @@ export const generateSwarmUiPrompts = async (
     
     if (retrievalMode === 'database' && storyId) {
         try {
-            console.log('Generating enhanced episode context from database...');
-            const enhancedContext = await generateEnhancedEpisodeContext(
-                storyId,
-                analyzedEpisode.episodeNumber,
-                analyzedEpisode.title,
-                `Episode ${analyzedEpisode.episodeNumber} analysis`, // Basic summary
-                analyzedEpisode.scenes.map(scene => ({
-                    scene_number: scene.sceneNumber,
-                    scene_title: scene.title,
-                    scene_summary: scene.metadata.sceneRole,
-                    location: scene.beats[0]?.locationAttributes ? {
-                        name: scene.beats[0].locationAttributes[0] || 'Unknown Location',
-                        description: 'Location from beat analysis',
-                        visual_description: 'Visual description from database',
-                        artifacts: []
-                    } : null
-                }))
+            // Check if episodeContextJson already contains database structure
+            // (when fetched via contextService.ts)
+            const parsedContext = JSON.parse(episodeContextJson);
+            const hasDatabaseStructure = parsedContext.episode?.scenes?.some((scene: any) => 
+                scene.location?.visual_description || scene.location?.artifacts?.length > 0
             );
             
-            enhancedContextJson = JSON.stringify(enhancedContext, null, 2);
-            contextSource = 'database';
-            console.log('✅ Enhanced context generated from database');
+            if (hasDatabaseStructure) {
+                // Already have database context - use it directly
+                console.log('✅ Using existing database context with location descriptions and artifacts');
+                contextSource = 'database';
+                enhancedContextJson = episodeContextJson;
+            } else {
+                // Need to generate enhanced context (fallback for older flows)
+                console.log('Generating enhanced episode context from database...');
+                const enhancedContext = await generateEnhancedEpisodeContext(
+                    storyId,
+                    analyzedEpisode.episodeNumber,
+                    analyzedEpisode.title,
+                    `Episode ${analyzedEpisode.episodeNumber} analysis`,
+                    analyzedEpisode.scenes.map(scene => ({
+                        scene_number: scene.sceneNumber,
+                        scene_title: scene.title,
+                        scene_summary: scene.metadata.sceneRole,
+                        location: scene.beats[0]?.locationAttributes ? {
+                            name: scene.beats[0].locationAttributes[0] || 'Unknown Location',
+                            description: 'Location from beat analysis',
+                            visual_description: 'Visual description from database',
+                            artifacts: []
+                        } : null
+                    }))
+                );
+                
+                enhancedContextJson = JSON.stringify(enhancedContext, null, 2);
+                contextSource = 'database';
+                console.log('✅ Enhanced context generated from database');
+            }
         } catch (error) {
             console.warn('Failed to generate enhanced context from database, falling back to manual context:', error);
             contextSource = 'manual (fallback)';
@@ -141,7 +168,23 @@ export const generateSwarmUiPrompts = async (
         ii. **Use Correct Trigger Syntax:** Use the character's 'base_trigger' followed by a parenthetical group of key visual descriptors. Example: \`JRUMLV woman (athletic build, tactical gear, hair in a tight bun)\`. No weighted syntax.
         iii. **Contextualize Appearance:** Adapt the character's 'visual_description' to the scene's context. A 'pristine lab coat' in a 'bombed-out ruin' becomes a 'torn, dust-covered lab coat'.
         iv. **Database Context Enhancement:** Use 'location_contexts' and 'swarmui_prompt_override' for highly detailed, location-specific appearances when available.
-    b.  **Environment:** Use 'locationAttributes' and the 'atmosphere' from the style guide as your primary set dressing. **All scenes are interior shots.** You MUST include terms like "interior shot," "inside the facility," to prevent outdoor scenes. Use 'swarmui_prompt_fragment' from database artifacts for richer visuals.
+    b.  **Environment:** 
+        i. **Location Visual Description (CRITICAL):** You MUST use the 'visual_description' field from \`episode.scenes[sceneNumber].location.visual_description\` in the Episode Context JSON. This is NOT optional - it contains the detailed visual description of the location that must appear in your prompts.
+        ii. **Artifacts (CRITICAL):** You MUST include relevant artifacts from \`episode.scenes[sceneNumber].location.artifacts[]\` in the Episode Context JSON. Each artifact has a \`swarmui_prompt_fragment\` field that contains visual elements you MUST incorporate. If artifacts are present, they are part of the location's visual identity and MUST be described.
+        iii. **Location Attributes:** Use 'locationAttributes' from the beat analysis and the 'atmosphere' from the style guide as additional set dressing.
+        iv. **Interior Shots:** **All scenes are interior shots.** You MUST include terms like "interior shot," "inside the facility," to prevent outdoor scenes.
+        v. **Database Context Priority:** When Episode Context shows "Context Source: database", you MUST prioritize the location's \`visual_description\` and \`artifacts\` over generic location names. Do NOT say "NHIA Facility 7" - instead describe what the \`visual_description\` tells you about the location.
+    c.  **Composition & Character Positioning Intelligence (Flux Model Targeting - CRITICAL):**
+        This is a critical step to counteract known Flux/Flux1 model deficiencies regarding character positioning and facing direction. You MUST apply these rules:
+        i.  **Default to Facing Camera (Baseline Rule):** By default, characters MUST face the viewer/camera. You MUST proactively use explicit phrases like "facing the camera," "looking at the viewer," "portrait of," "making eye contact with the camera," "character facing forward," or "direct gaze toward camera" to ensure this. Without explicit direction, Flux models often position characters facing away.
+        ii. **Narrative Override (CRITICAL):** You MUST override the default "facing camera" rule ONLY if the narrative context explicitly demands it. Analyze the 'core_action' and 'beat_script_text' for these specific cues:
+            - **Interaction/Observation:** If a character is examining an object ("kneeling by a crater"), interacting with a console/screen, or surveying a scene, their pose should prioritize that action. They may be in profile or have their back partially to the camera to establish their point-of-view. BUT still describe their facing explicitly: "in profile view," "looking at the console," "back partially turned to camera."
+            - **Emotional Context:** If the 'emotional_tone' is introspective, mysterious, or somber, you may compositionally choose to have the character looking away from the camera to enhance that feeling. BUT be explicit: "looking away from camera," "gaze turned toward window," etc.
+        iii. **Multi-Character Spacing & Gaze Control (CRITICAL for 2+ characters):** When two or more characters are present, you MUST prevent unnatural face-to-face positioning (a known Flux model quirk). Apply these rules:
+            - **Spatial Separation:** Use explicit spatial language like "[Character A] on the left," "[Character B] on the right," "standing apart with distance between them," "positioned on opposite sides of the frame," "characters separated by [distance/element]."
+            - **Individual Gaze Control:** Control each character's gaze independently to avoid unintended intimate eye contact. Examples: "[Character A] looks at the console, [Character B] looks toward the doorway," "[Character A] faces camera, [Character B] looks to the left," "[Character A] examining the data screen, [Character B] scanning the room." Do NOT let both characters face each other unless the script explicitly calls for a confrontation or intimate moment.
+            - **Prevent Clustering:** Explicitly state they are NOT positioned face-to-face: "not facing each other," "characters are not making eye contact with each other," "positioned at angles to each other."
+        iv. **Integrate Existing Notes:** Always incorporate any specific \`cameraAngleSuggestion\` or \`characterPositioning\` provided in the beat analysis, using them to inform your final composition while still applying the Flux positioning rules above.
 
 3.  **Visually Translate the Action (Visual Filter Rule):**
     Read the 'core_action' and 'beat_script_text' for intent, then describe only what a camera sees. Use the 'visual_anchor' as the shot's focus.
@@ -179,6 +222,7 @@ export const generateSwarmUiPrompts = async (
     
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
         const batch = batches[batchIndex];
+        onProgress?.(`Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} beats)...`);
         console.log(`Processing batch ${batchIndex + 1}/${batches.length} with ${batch.length} beats`);
         
         // DEV: Enhance beats with a dynamic, structured style guide for more contextual prompts.
@@ -224,6 +268,7 @@ export const generateSwarmUiPrompts = async (
         });
 
         try {
+            onProgress?.(`Sending batch ${batchIndex + 1} to Gemini API for prompt generation...`);
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: `Generate SwarmUI prompts for the following beat analyses, using the provided Episode Context for character details and the Style Config for aesthetic guidance.\n\n---BEAT ANALYSES---\n${JSON.stringify(beatsWithStyleGuide, null, 2)}\n\n---EPISODE CONTEXT JSON (Source: ${contextSource})---\n${enhancedContextJson}\n\n---EPISODE STYLE CONFIG---\n${JSON.stringify({ ...styleConfig, cinematicWidth, cinematicHeight, verticalWidth, verticalHeight }, null, 2)}`,
@@ -235,10 +280,12 @@ export const generateSwarmUiPrompts = async (
                 },
             });
 
+            onProgress?.(`Processing Gemini response for batch ${batchIndex + 1}...`);
             const jsonString = response.text.trim();
             const batchResult = JSON.parse(jsonString) as BeatPrompts[];
             allResults.push(...batchResult);
             
+            onProgress?.(`✅ Batch ${batchIndex + 1} completed: ${batchResult.length} prompts generated`);
             console.log(`Batch ${batchIndex + 1} completed: ${batchResult.length} prompts generated`);
             
         } catch (error) {
@@ -248,22 +295,69 @@ export const generateSwarmUiPrompts = async (
     }
 
     // Apply LORA trigger substitution based on character contexts
+    onProgress?.('Applying LORA trigger substitutions...');
     try {
         const contextObj = JSON.parse(episodeContextJson);
-        const characterContexts = contextObj.episode.characters as Array<{ character_name: string; aliases: string[]; base_trigger: string }>;
-        return allResults.map(bp => ({
-            ...bp,
-            cinematic: {
-                ...bp.cinematic,
-                prompt: applyLoraTriggerSubstitution(bp.cinematic.prompt, characterContexts),
-            },
-            vertical: {
-                ...bp.vertical,
-                prompt: applyLoraTriggerSubstitution(bp.vertical.prompt, characterContexts),
-            }
-        }));
+        
+        // Extract characters - handle both structures:
+        // 1. episode.characters (manual mode)
+        // 2. episode.scenes[].characters[] (database mode)
+        let characterContexts: Array<{ character_name: string; aliases: string[]; base_trigger: string }> = [];
+        
+        if (contextObj.episode?.characters && Array.isArray(contextObj.episode.characters)) {
+            // Manual mode: characters at episode level
+            characterContexts = contextObj.episode.characters.map((char: any) => ({
+                character_name: char.character_name || char.name || '',
+                aliases: char.aliases || [],
+                base_trigger: char.base_trigger || ''
+            })).filter((char: any) => char.character_name && char.base_trigger);
+        } else if (contextObj.episode?.scenes && Array.isArray(contextObj.episode.scenes)) {
+            // Database mode: extract unique characters from scenes
+            const characterMap = new Map<string, { character_name: string; aliases: string[]; base_trigger: string }>();
+            
+            contextObj.episode.scenes.forEach((scene: any) => {
+                if (scene.characters && Array.isArray(scene.characters)) {
+                    scene.characters.forEach((char: any) => {
+                        const name = char.name || char.character_name || '';
+                        const baseTrigger = char.base_trigger || '';
+                        
+                        if (name && baseTrigger && !characterMap.has(name)) {
+                            characterMap.set(name, {
+                                character_name: name,
+                                aliases: char.aliases || [],
+                                base_trigger: baseTrigger
+                            });
+                        }
+                    });
+                }
+            });
+            
+            characterContexts = Array.from(characterMap.values());
+        }
+        
+        // Only apply substitution if we have character contexts
+        if (characterContexts.length > 0) {
+            const finalResults = allResults.map(bp => ({
+                ...bp,
+                cinematic: {
+                    ...bp.cinematic,
+                    prompt: applyLoraTriggerSubstitution(bp.cinematic.prompt, characterContexts),
+                },
+                vertical: {
+                    ...bp.vertical,
+                    prompt: applyLoraTriggerSubstitution(bp.vertical.prompt, characterContexts),
+                }
+            }));
+            onProgress?.(`✅ Prompt generation complete! Generated ${finalResults.length} prompt pairs.`);
+            return finalResults;
+        } else {
+            // No character contexts found - return prompts without substitution
+            onProgress?.(`⚠️ No character contexts found for LORA substitution. Generated ${allResults.length} prompt pairs.`);
+            return allResults;
+        }
     } catch (e) {
         console.warn('Failed to apply LORA trigger substitution:', e);
+        onProgress?.(`⚠️ LORA substitution failed, but prompts are ready. Generated ${allResults.length} prompt pairs.`);
         return allResults;
     }
 };
@@ -291,8 +385,10 @@ export const generateHierarchicalSwarmUiPrompts = async (
     episodeContextJson: string,
     styleConfig: EpisodeStyleConfig,
     retrievalMode: RetrievalMode = 'manual',
-    storyId?: string
+    storyId?: string,
+    onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> => {
+    onProgress?.('Initializing hierarchical prompt generation service...');
     console.log("INFO: Using NEW Hierarchical Prompt Generation Service.");
 
     // This function reuses the logic and AI call from the original service.
@@ -358,5 +454,6 @@ export const generateHierarchicalSwarmUiPrompts = async (
     // This is a placeholder for calling the refactored AI logic.
     // For this implementation, we will just call the original function, which
     // will now benefit from the enriched `locationAttributes`.
-    return generateSwarmUiPrompts(enrichedAnalyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId);
+    onProgress?.('Starting prompt generation with enriched location context...');
+    return generateSwarmUiPrompts(enrichedAnalyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress);
 };

@@ -19,6 +19,25 @@
           };
         })(console.warn);
       }
+
+      // Suppress expected network errors for session restore endpoints
+      // These 404s are expected when Redis API services aren't running
+      const originalError = console.error;
+      console.error = function() {
+        const message = arguments[0];
+        if (typeof message === 'string') {
+          // Suppress expected 404 errors from session restore endpoints
+          if (message.includes('/session/latest') && message.includes('404')) {
+            return; // Silently ignore expected 404s
+          }
+          if (message.includes('Failed to load resource') && 
+              (message.includes(':7802/api/v1/session') || 
+               message.includes(':8000/api/v1/session'))) {
+            return; // Silently ignore expected session API failures
+          }
+        }
+        originalError.apply(console, arguments);
+      };
     </script>
     <script>
       tailwind.config = {

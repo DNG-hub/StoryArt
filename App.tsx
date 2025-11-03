@@ -69,7 +69,10 @@ function Dashboard({
   isRestoring,
   restoreError,
   restoreSuccess,
-  saveSuccess
+  saveSuccess,
+  onSaveToRedis,
+  isSaving,
+  saveError
 }: {
   scriptText: string;
   setScriptText: (text: string) => void;
@@ -106,6 +109,9 @@ function Dashboard({
   restoreError: string | null;
   restoreSuccess: boolean;
   saveSuccess: boolean;
+  onSaveToRedis?: () => Promise<void>;
+  isSaving?: boolean;
+  saveError?: string | null;
 }) {
   // SwarmUI export hook removed - stubbing out functionality
   const isSavingToSwarmUI = false;
@@ -160,6 +166,9 @@ function Dashboard({
                 restoreError={restoreError}
                 restoreSuccess={restoreSuccess}
                 saveSuccess={saveSuccess}
+                onSaveToRedis={onSaveToRedis}
+                isSaving={isSaving}
+                saveError={saveError}
               />
             </div>
           )}
@@ -170,6 +179,7 @@ function Dashboard({
               loadingMessage={loadingMessage}
               error={error}
               onReset={handleReset}
+              onEditBeat={handleNavigateToRefine}
             />
           </div>
            {isInputCollapsed && (
@@ -220,6 +230,8 @@ function App() {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [restoreSuccess, setRestoreSuccess] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Service status state - kept for potential future use but not currently displayed
   const [serviceStatus, setServiceStatus] = useState<{ isRunning: boolean; isStarting: boolean; message?: string }>({
@@ -338,9 +350,35 @@ function App() {
   };
 
   const handleNavigateToRefine = (beatId: string) => {
-    // RefinementWorkspace component removed - route disabled
-    console.log('Refinement feature disabled. Beat ID:', beatId);
-    // navigate(`/refine/${beatId}`); // Route disabled
+    // Find the beat data
+    const beatData = getBeatData(beatId);
+    
+    if (!beatData) {
+      console.error('Beat not found:', beatId);
+      alert(`Beat ${beatId} not found. Please ensure the analysis has been completed.`);
+      return;
+    }
+
+    // For now, show an alert with beat information and indicate edit feature is coming
+    // TODO: Implement full refinement modal/workspace
+    const { beat, sceneContext, episodeContext } = beatData;
+    
+    console.log('Opening refinement for beat:', beatId, beat);
+    
+    // Create a simple modal or alert to show the beat details
+    // For now, show an informative message
+    const message = `Beat Editor (Coming Soon)\n\n` +
+      `Beat ID: ${beat.beatId}\n` +
+      `Scene: ${sceneContext?.sceneNumber || 'Unknown'}\n` +
+      `Script: ${beat.beat_script_text?.substring(0, 100) || 'No text'}...\n\n` +
+      `The full beat refinement editor is under development. ` +
+      `For now, you can view and edit the prompt directly in the beat card below.`;
+    
+    alert(message);
+    
+    // Future: Open a modal with the refinement workspace
+    // setRefiningBeatId(beatId);
+    // setIsRefinementModalOpen(true);
   };
 
   const [isContextFetching, setIsContextFetching] = useState<boolean>(false);
@@ -395,7 +433,8 @@ function App() {
   useEffect(() => {
     const restoreFromLocalStorage = async () => {
       try {
-        const response = await getLatestSession();
+        // Skip API calls on auto-restore to avoid console errors (check localStorage only)
+        const response = await getLatestSession(true); // true = skip API calls
         if (response.success && response.data) {
           const data = response.data;
           // Only restore if we have actual data (not just defaults)
@@ -483,7 +522,7 @@ function App() {
       // STAGE 2: Prompt Generation
       // Always use hierarchical prompt generation (default and only option)
       setLoadingMessage('Generating SwarmUI prompts...');
-      const promptsResult = await generateHierarchicalSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid);
+      const promptsResult = await generateHierarchicalSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid, setLoadingMessage);
       
       // Integrate prompts back into the analysis object
       if (processedResult.scenes && Array.isArray(processedResult.scenes)) {
@@ -569,6 +608,32 @@ function App() {
     setIsRestoring(false);
   };
 
+  const handleSaveToRedis = async () => {
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
+    try {
+      await saveSessionToRedis({
+        scriptText,
+        episodeContext,
+        storyUuid,
+        analyzedEpisode: analyzedEpisode || {
+          episodeNumber: 1,
+          title: '',
+          scenes: []
+        },
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000); // Clear success message after 3 seconds
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Failed to save session to Redis.');
+      setTimeout(() => setSaveError(null), 5000); // Clear error message after 5 seconds
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Render Dashboard directly without routing
   return (
     <Dashboard
@@ -607,6 +672,9 @@ function App() {
       restoreError={restoreError}
       restoreSuccess={restoreSuccess}
       saveSuccess={saveSuccess}
+      onSaveToRedis={handleSaveToRedis}
+      isSaving={isSaving}
+      saveError={saveError}
     />
   );
 }

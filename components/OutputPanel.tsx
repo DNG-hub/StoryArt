@@ -8,15 +8,32 @@ interface OutputPanelProps {
   loadingMessage: string;
   error: string | null;
   onReset: () => void;
+  onEditBeat?: (beatId: string) => void;
 }
 
-const ImageDecisionDisplay: React.FC<{ decision: ImageDecision }> = ({ decision }) => {
+const ImageDecisionDisplay: React.FC<{ 
+  decision: ImageDecision; 
+  onClick?: () => void;
+  clickable?: boolean;
+}> = ({ decision, onClick, clickable = false }) => {
   const baseClasses = "px-2 py-1 text-xs font-semibold rounded-full flex items-center gap-1.5";
   let content: React.ReactNode;
 
   switch (decision.type) {
     case 'NEW_IMAGE':
-      content = <span className={`${baseClasses} bg-green-800 text-green-200`}>New Image</span>;
+      content = (
+        clickable ? (
+          <button
+            onClick={onClick}
+            className={`${baseClasses} bg-green-800 text-green-200 hover:bg-green-700 cursor-pointer transition-colors`}
+            title="Click to edit this beat"
+          >
+            New Image
+          </button>
+        ) : (
+          <span className={`${baseClasses} bg-green-800 text-green-200`}>New Image</span>
+        )
+      );
       break;
     case 'REUSE_IMAGE':
       content = <span className={`${baseClasses} bg-yellow-800 text-yellow-200`}><LinkIcon /> Reuse</span>;
@@ -92,7 +109,12 @@ const PromptTabs: React.FC<{ beat: BeatAnalysis }> = ({ beat }) => {
 };
 
 
-const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beatIndex: number }> = ({ beat, sceneNumber, beatIndex }) => {
+const BeatAnalysisCard: React.FC<{ 
+  beat: BeatAnalysis; 
+  sceneNumber: number; 
+  beatIndex: number;
+  onEditBeat?: (beatId: string) => void;
+}> = ({ beat, sceneNumber, beatIndex, onEditBeat }) => {
     if (!beat.imageDecision) {
         return (
             <div className="bg-gray-900/70 p-4 rounded-lg border border-gray-700">
@@ -108,7 +130,11 @@ const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beat
                 Scene {sceneNumber} - Beat #{beatIndex + 1}
             </h4>
             <div className="flex items-center gap-2">
-              <ImageDecisionDisplay decision={beat.imageDecision} />
+              <ImageDecisionDisplay 
+                decision={beat.imageDecision} 
+                onClick={() => onEditBeat?.(beat.beatId)}
+                clickable={beat.imageDecision.type === 'NEW_IMAGE' && !!onEditBeat}
+              />
             </div>
         </div>
 
@@ -183,7 +209,7 @@ const LoadingStateDisplay = ({ loadingMessage }: { loadingMessage: string }) => 
 
     const provider = getProviderFromMessage(loadingMessage);
     
-    // Create dynamic steps based on provider
+    // Create dynamic steps based on provider and include prompt generation steps
     const dynamicSteps = [
         { id: 1, text: "Initializing...", trigger: "Initializing analysis" },
         { id: 2, text: `Connecting to ${provider} API...`, trigger: "Connecting to" },
@@ -191,17 +217,28 @@ const LoadingStateDisplay = ({ loadingMessage }: { loadingMessage: string }) => 
         { id: 4, text: `Sending Script to ${provider}...`, trigger: "Sending script to" },
         { id: 5, text: `Processing ${provider} Response...`, trigger: "Processing" },
         { id: 6, text: "Post-processing Analysis...", trigger: "Post-processing analysis" },
-        { id: 7, text: `Generating SwarmUI Prompts with ${provider}...`, trigger: "Generating SwarmUI prompts" },
+        { id: 7, text: "Initializing Prompt Generation...", trigger: "Initializing hierarchical" },
+        { id: 8, text: "Verifying API Key...", trigger: "Verifying API key" },
+        { id: 9, text: "Processing Beats for Prompts...", trigger: "Processing" },
+        { id: 10, text: "Sending to Gemini API...", trigger: "Sending batch" },
+        { id: 11, text: "Applying LORA Substitutions...", trigger: "Applying LORA" },
+        { id: 12, text: "✅ Prompt Generation Complete!", trigger: "Prompt generation complete" },
     ];
 
     let currentStepIndex = -1;
-    for (let i = 0; i < dynamicSteps.length; i++) {
-        if (loadingMessage.startsWith(dynamicSteps[i].trigger)) {
+    // Check in reverse order to match more specific triggers first
+    for (let i = dynamicSteps.length - 1; i >= 0; i--) {
+        if (loadingMessage.toLowerCase().includes(dynamicSteps[i].trigger.toLowerCase())) {
             currentStepIndex = i;
+            break; // Use first match found (most specific due to reverse iteration)
         }
     }
-    if (loadingMessage.startsWith("✅") || loadingMessage.includes("completed")) {
-        currentStepIndex = 4;
+    // Special cases for completion
+    if (loadingMessage.includes("Prompt generation complete") || loadingMessage.includes("✅ Prompt generation")) {
+        currentStepIndex = dynamicSteps.length - 1; // Last step (completion)
+    } else if (loadingMessage.startsWith("✅") || loadingMessage.includes("completed")) {
+        // Generic completion - find the highest completed step
+        currentStepIndex = Math.max(currentStepIndex, dynamicSteps.length - 1);
     }
 
     return (
@@ -242,7 +279,7 @@ const LoadingStateDisplay = ({ loadingMessage }: { loadingMessage: string }) => 
     );
 };
 
-export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, loadingMessage, error }) => {
+export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, loadingMessage, error, onEditBeat }) => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-800/50 rounded-lg p-6 min-h-[500px]">
@@ -303,7 +340,8 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
                     key={beat.beatId} 
                     beat={beat} 
                     sceneNumber={scene.sceneNumber} 
-                    beatIndex={beatIndex} 
+                    beatIndex={beatIndex}
+                    onEditBeat={onEditBeat}
                   />
                 ))
               ) : (

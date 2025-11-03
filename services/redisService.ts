@@ -95,9 +95,29 @@ const getSessionFromLocalStorage = (): SwarmUIExportData | null => {
 /**
  * Fetches the latest session data from the Redis API, with localStorage fallback.
  * 
+ * @param skipApiCalls - If true, only check localStorage (avoids network calls and console errors)
  * @returns {Promise<RedisSessionResponse>} The API response containing session data or an error.
  */
-export const getLatestSession = async (): Promise<RedisSessionResponse> => {
+export const getLatestSession = async (skipApiCalls: boolean = false): Promise<RedisSessionResponse> => {
+  // Check localStorage first to avoid unnecessary network calls (and console errors)
+  const localSession = getSessionFromLocalStorage();
+  if (localSession) {
+    return {
+      success: true,
+      data: localSession,
+      message: 'Restored from local storage',
+      storage: 'localStorage'
+    };
+  }
+
+  // If skipApiCalls is true or no localStorage session, only try API if explicitly allowed
+  if (skipApiCalls) {
+    return {
+      success: false,
+      error: 'No session found in local storage. Redis API calls skipped to avoid console errors.',
+    };
+  }
+
   // Try StoryTeller API endpoint first (if Redis is part of StoryTeller)
   const storyTellerUrl = import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000';
   const endpoints = [
@@ -115,18 +135,24 @@ export const getLatestSession = async (): Promise<RedisSessionResponse> => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
+      // Suppress browser console errors for expected 404s by catching them before fetch completes
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
         signal: controller.signal,
+      }).catch((fetchError) => {
+        // Network errors (connection refused, CORS, etc.) are expected when services aren't running
+        // Return a fake response object that mimics a 404 to allow graceful handling
+        return new Response(null, { status: 404, statusText: 'Not Found' });
       });
 
       clearTimeout(timeoutId);
 
       if (!response.ok) {
         // 404 means endpoint doesn't exist - try next endpoint silently
+        // Don't log to console - these are expected when services aren't running
         if (response.status === 404) {
           continue;
         }
@@ -161,18 +187,7 @@ export const getLatestSession = async (): Promise<RedisSessionResponse> => {
     }
   }
 
-  // All endpoints failed - try localStorage fallback
-  const localSession = getSessionFromLocalStorage();
-  if (localSession) {
-    return {
-      success: true,
-      data: localSession,
-      message: 'Restored from local storage (Redis API not available)',
-      storage: 'localStorage'
-    };
-  }
-
-  // No session found in localStorage either
+  // All endpoints failed - localStorage already checked at start, so no session exists
   return {
     success: false,
     error: `No session found. Redis API endpoints are not configured or the service is not running. When you analyze a script, your session will be saved locally for restoration.`,
