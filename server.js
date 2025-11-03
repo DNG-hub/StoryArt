@@ -47,10 +47,11 @@ const initializeRedis = async () => {
 
 // In-memory fallback storage (when Redis is not available)
 const memoryStorage = new Map();
+const memorySessionIndex = []; // Used to track order for versioning
 
-// Session key prefix
+// Session key constants
 const SESSION_KEY_PREFIX = 'storyart:session:';
-const LATEST_SESSION_KEY = 'storyart:session:latest';
+const SESSION_INDEX_KEY = 'storyart:sessions:index'; // Redis Sorted Set
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -74,29 +75,32 @@ app.post('/api/v1/session/save', async (req, res) => {
       });
     }
 
-    const sessionKey = `${SESSION_KEY_PREFIX}${Date.now()}`;
+    const timestamp = Date.now();
+    const sessionKey = `${SESSION_KEY_PREFIX}${timestamp}`;
     const sessionValue = JSON.stringify({
       ...sessionData,
-      timestamp: Date.now()
+      timestamp
     });
 
     try {
       if (redisClient?.isOpen) {
         // Save to Redis
         await redisClient.setEx(sessionKey, 86400 * 7, sessionValue); // 7 days TTL
-        await redisClient.set(LATEST_SESSION_KEY, sessionValue);
+        await redisClient.zAdd(SESSION_INDEX_KEY, { score: timestamp, value: sessionKey });
         console.log(`✅ Session saved to Redis: ${sessionKey}`);
       } else {
         // Fallback to memory storage
         memoryStorage.set(sessionKey, sessionValue);
-        memoryStorage.set(LATEST_SESSION_KEY, sessionValue);
+        memorySessionIndex.push({ score: timestamp, value: sessionKey });
+        memorySessionIndex.sort((a, b) => b.score - a.score); // Keep newest first
         console.log(`✅ Session saved to memory: ${sessionKey}`);
       }
     } catch (storageError) {
       console.error('Storage error:', storageError);
       // Fallback to memory
       memoryStorage.set(sessionKey, sessionValue);
-      memoryStorage.set(LATEST_SESSION_KEY, sessionValue);
+      memorySessionIndex.push({ score: timestamp, value: sessionKey });
+      memorySessionIndex.sort((a, b) => b.score - a.score);
     }
 
     res.json({
@@ -121,11 +125,14 @@ app.get('/api/v1/session/latest', async (req, res) => {
 
     try {
       if (redisClient?.isOpen) {
-        // Try Redis first
-        const data = await redisClient.get(LATEST_SESSION_KEY);
-        if (data) {
-          sessionData = JSON.parse(data);
-          console.log('✅ Session retrieved from Redis');
+        // Get the latest session key from the sorted set
+        const latestKeys = await redisClient.zRange(SESSION_INDEX_KEY, 0, 0, { REV: true });
+        if (latestKeys && latestKeys.length > 0) {
+          const data = await redisClient.get(latestKeys[0]);
+          if (data) {
+            sessionData = JSON.parse(data);
+            console.log(`✅ Latest session retrieved from Redis: ${latestKeys[0]}`);
+          }
         }
       }
     } catch (redisError) {
@@ -133,9 +140,12 @@ app.get('/api/v1/session/latest', async (req, res) => {
     }
 
     // Fallback to memory storage
-    if (!sessionData && memoryStorage.has(LATEST_SESSION_KEY)) {
-      sessionData = JSON.parse(memoryStorage.get(LATEST_SESSION_KEY));
-      console.log('✅ Session retrieved from memory');
+    if (!sessionData && memorySessionIndex.length > 0) {
+      const latestKey = memorySessionIndex[0].value;
+      if (memoryStorage.has(latestKey)) {
+        sessionData = JSON.parse(memoryStorage.get(latestKey));
+        console.log(`✅ Latest session retrieved from memory: ${latestKey}`);
+      }
     }
 
     if (!sessionData) {
@@ -168,7 +178,8 @@ app.get('/api/v1/session/list', async (req, res) => {
     const sessions = [];
 
     if (redisClient?.isOpen) {
-      const keys = await redisClient.keys(`${SESSION_KEY_PREFIX}*`);
+      // Get all session keys from the sorted set, newest first
+      const keys = await redisClient.zRange(SESSION_INDEX_KEY, 0, -1, { REV: true });
       for (const key of keys) {
         const data = await redisClient.get(key);
         if (data) {
@@ -177,9 +188,9 @@ app.get('/api/v1/session/list', async (req, res) => {
       }
     } else {
       // Memory storage
-      for (const [key, value] of memoryStorage.entries()) {
-        if (key.startsWith(SESSION_KEY_PREFIX)) {
-          sessions.push(JSON.parse(value));
+      for (const item of memorySessionIndex) {
+        if (memoryStorage.has(item.value)) {
+          sessions.push(JSON.parse(memoryStorage.get(item.value)));
         }
       }
     }

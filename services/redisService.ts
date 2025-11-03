@@ -13,6 +13,7 @@ export interface RedisSessionResponse {
   data?: SwarmUIExportData;
   error?: string;
   message?: string;
+  storage?: 'redis' | 'memory' | 'localStorage'; // Storage source
 }
 
 /**
@@ -167,6 +168,7 @@ export const getLatestSession = async (): Promise<RedisSessionResponse> => {
       success: true,
       data: localSession,
       message: 'Restored from local storage (Redis API not available)',
+      storage: 'localStorage'
     };
   }
 

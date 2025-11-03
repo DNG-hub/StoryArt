@@ -11,7 +11,7 @@ import { parseEpisodeNumber, postProcessAnalysis } from './utils';
 import type { AnalyzedEpisode, EpisodeStyleConfig, EnhancedEpisodeContext, SceneContext, BeatAnalysis, LLMSelection, LLMProvider } from './types';
 import { DEFAULT_SCRIPT, DEFAULT_EPISODE_CONTEXT } from './constants';
 import { GithubIcon, PanelExpandIcon } from './components/icons';
-import { generateSwarmUiPrompts, generateHierarchicalSwarmUiPrompts } from './services/promptGenerationService';
+import { generateHierarchicalSwarmUiPrompts } from './services/promptGenerationService';
 // import { useSwarmUIExport } from './hooks/useSwarmUIExport'; // Hook removed
 import { type SwarmUIExportData } from './types';
 import { getLatestSession, saveSessionToRedis } from './services/redisService';
@@ -59,8 +59,6 @@ function Dashboard({
   setIsInputCollapsed,
   styleConfig,
   setStyleConfig,
-  useHierarchicalPrompts,
-  setUseHierarchicalPrompts,
   selectedLLM,
   setSelectedLLM,
   handleAnalyze,
@@ -69,7 +67,9 @@ function Dashboard({
   handleNavigateToRefine,
   onRestoreFromRedis,
   isRestoring,
-  restoreError
+  restoreError,
+  restoreSuccess,
+  saveSuccess
 }: {
   scriptText: string;
   setScriptText: (text: string) => void;
@@ -95,8 +95,6 @@ function Dashboard({
   setIsInputCollapsed: (collapsed: boolean) => void;
   styleConfig: EpisodeStyleConfig;
   setStyleConfig: (config: EpisodeStyleConfig) => void;
-  useHierarchicalPrompts: boolean;
-  setUseHierarchicalPrompts: (use: boolean) => void;
   selectedLLM: LLMProvider;
   setSelectedLLM: (selection: LLMProvider) => void;
   handleAnalyze: () => Promise<void>;
@@ -106,6 +104,8 @@ function Dashboard({
   onRestoreFromRedis: () => Promise<void>;
   isRestoring: boolean;
   restoreError: string | null;
+  restoreSuccess: boolean;
+  saveSuccess: boolean;
 }) {
   // SwarmUI export hook removed - stubbing out functionality
   const isSavingToSwarmUI = false;
@@ -153,13 +153,13 @@ function Dashboard({
                 onToggleCollapse={() => setIsInputCollapsed(true)}
                 styleConfig={styleConfig}
                 setStyleConfig={setStyleConfig}
-                useHierarchicalPrompts={useHierarchicalPrompts}
-                onUseHierarchicalPromptsChange={setUseHierarchicalPrompts}
                 selectedLLM={selectedLLM}
                 onSelectedLLMChange={setSelectedLLM}
                 onRestoreFromRedis={onRestoreFromRedis}
                 isRestoring={isRestoring}
                 restoreError={restoreError}
+                restoreSuccess={restoreSuccess}
+                saveSuccess={saveSuccess}
               />
             </div>
           )}
@@ -218,6 +218,8 @@ function App() {
   // Redis state
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreSuccess, setRestoreSuccess] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Service status state - kept for potential future use but not currently displayed
   const [serviceStatus, setServiceStatus] = useState<{ isRunning: boolean; isStarting: boolean; message?: string }>({
@@ -345,7 +347,9 @@ function App() {
   const [contextError, setContextError] = useState<string | null>(null);
   
   const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>('manual');
-  const [storyUuid, setStoryUuid] = useState<string>('59f64b1e-726a-439d-a6bc-0dfefcababdb');
+  const [storyUuid, setStoryUuid] = useState<string>(
+    import.meta.env.VITE_CAT_DANIEL_STORY_ID || '59f64b1e-726a-439d-a6bc-0dfefcababdb'
+  );
   
   const [isInputCollapsed, setIsInputCollapsed] = useState(true);
   
@@ -355,7 +359,6 @@ function App() {
     verticalAspectRatio: '9:16',
   });
 
-  const [useHierarchicalPrompts, setUseHierarchicalPrompts] = useState<boolean>(false);
 
   const [selectedLLM, setSelectedLLM] = useState<LLMProvider>('gemini'); // Default to Gemini as it's set as DEFAULT_AI_PROVIDER in .env
 
@@ -387,6 +390,39 @@ function App() {
         setLoadingMessage('');
     }
   };
+
+  // Auto-restore session from localStorage on mount (if available)
+  useEffect(() => {
+    const restoreFromLocalStorage = async () => {
+      try {
+        const response = await getLatestSession();
+        if (response.success && response.data) {
+          const data = response.data;
+          // Only restore if we have actual data (not just defaults)
+          if (data.scriptText && data.scriptText !== DEFAULT_SCRIPT) {
+            setScriptText(data.scriptText);
+            if (data.episodeContext) setEpisodeContext(data.episodeContext);
+            if (data.storyUuid) {
+              const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+              if (uuidRegex.test(data.storyUuid)) {
+                setStoryUuid(data.storyUuid);
+              }
+            }
+            if (data.analyzedEpisode) {
+              setAnalyzedEpisode(data.analyzedEpisode);
+            }
+            console.log('✅ Auto-restored session from', response.storage || 'localStorage');
+          }
+        }
+      } catch (error) {
+        // Silently fail - defaults will be used
+        console.debug('No previous session found, using defaults');
+      }
+    };
+    
+    restoreFromLocalStorage();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount
 
   useEffect(() => {
     if (retrievalMode === 'database' && storyUuid) {
@@ -421,11 +457,22 @@ function App() {
     setLoadingMessage('Initializing analysis...');
 
     try {
-      // STAGE 1: Storyboard Analysis using Gemini
-      setLoadingMessage('Analyzing script with Gemini...');
+      // STAGE 1: Storyboard Analysis
+      setLoadingMessage(`Analyzing script with ${selectedLLM.toUpperCase()}...`);
       
       let analysisResult: AnalyzedEpisode;
-      analysisResult = await analyzeScript(scriptText, episodeContext, setLoadingMessage);
+      
+      // Since multi-LLM service was removed, we'll stick with gemini for now
+      // but the selectedLLM is logged and can be used to switch services if more are added.
+      if (selectedLLM === 'gemini') {
+        analysisResult = await analyzeScript(scriptText, episodeContext, setLoadingMessage);
+      } else {
+        // This is where you would call other services, e.g., analyzeWithQwen(...)
+        // For now, we'll throw an error if a non-Gemini provider is selected
+        // to make it clear that it's not implemented yet.
+        console.warn(`Analysis with ${selectedLLM} is not implemented. Using Gemini as fallback.`);
+        analysisResult = await analyzeScript(scriptText, episodeContext, setLoadingMessage);
+      }
 
       console.log('Analysis result received:', analysisResult);
       
@@ -434,12 +481,9 @@ function App() {
       setAnalyzedEpisode(processedResult); // Show storyboard first
 
       // STAGE 2: Prompt Generation
-      // This is the control switch. Based on the state of `useHierarchicalPrompts`,
-      // we delegate to the appropriate prompt generation service.
+      // Always use hierarchical prompt generation (default and only option)
       setLoadingMessage('Generating SwarmUI prompts...');
-      const promptsResult = useHierarchicalPrompts
-        ? await generateHierarchicalSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid)
-        : await generateSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid);
+      const promptsResult = await generateHierarchicalSwarmUiPrompts(processedResult, episodeContext, styleConfig, retrievalMode, storyUuid);
       
       // Integrate prompts back into the analysis object
       if (processedResult.scenes && Array.isArray(processedResult.scenes)) {
@@ -461,12 +505,19 @@ function App() {
       setAnalyzedEpisode({ ...processedResult });
 
       // Save session to Redis API (with localStorage fallback)
-      await saveSessionToRedis({
-        scriptText,
-        episodeContext,
-        storyUuid,
-        analyzedEpisode: processedResult,
-      });
+      try {
+        await saveSessionToRedis({
+          scriptText,
+          episodeContext,
+          storyUuid,
+          analyzedEpisode: processedResult,
+        });
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000); // Clear success message after 3 seconds
+      } catch (error) {
+        // Session save failure shouldn't break the analysis flow
+        console.warn('Failed to save session:', error);
+      }
 
     // FIX: Corrected syntax for the try-catch block.
     } catch (e: any) {
@@ -480,6 +531,7 @@ function App() {
   const handleRestoreFromRedis = async () => {
     setIsRestoring(true);
     setRestoreError(null);
+    setRestoreSuccess(false);
     setError(null);
 
     const response = await getLatestSession();
@@ -488,8 +540,28 @@ function App() {
       const data = response.data;
       setScriptText(data.scriptText);
       setEpisodeContext(data.episodeContext);
-      setStoryUuid(data.storyUuid);
+      
+      // Validate UUID from restored session
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (data.storyUuid && uuidRegex.test(data.storyUuid)) {
+        setStoryUuid(data.storyUuid);
+      } else {
+        console.warn(
+          `Restored session contained an invalid UUID: "${data.storyUuid}". Falling back to default.`
+        );
+        // Fallback to env var or default if restored UUID is invalid
+        setStoryUuid(
+          import.meta.env.VITE_CAT_DANIEL_STORY_ID || '59f64b1e-726a-439d-a6bc-0dfefcababdb'
+        );
+      }
+      
       setAnalyzedEpisode(data.analyzedEpisode);
+      setRestoreSuccess(true);
+      // Store storage source for display
+      if (response.storage) {
+        localStorage.setItem('last-restore-storage', response.storage);
+      }
+      setTimeout(() => setRestoreSuccess(false), 3000); // Clear success message after 3 seconds
     } else {
       setRestoreError(response.error || 'Failed to restore session from Redis.');
     }
@@ -524,8 +596,6 @@ function App() {
       setIsInputCollapsed={setIsInputCollapsed}
       styleConfig={styleConfig}
       setStyleConfig={setStyleConfig}
-      useHierarchicalPrompts={useHierarchicalPrompts}
-      setUseHierarchicalPrompts={setUseHierarchicalPrompts}
       selectedLLM={selectedLLM}
       setSelectedLLM={setSelectedLLM}
       handleAnalyze={handleAnalyze}
@@ -535,6 +605,8 @@ function App() {
       onRestoreFromRedis={handleRestoreFromRedis}
       isRestoring={isRestoring}
       restoreError={restoreError}
+      restoreSuccess={restoreSuccess}
+      saveSuccess={saveSuccess}
     />
   );
 }

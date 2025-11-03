@@ -122,12 +122,49 @@ interface InputPanelProps {
   onToggleCollapse: () => void;
   styleConfig: EpisodeStyleConfig;
   setStyleConfig: (config: EpisodeStyleConfig) => void;
-  useHierarchicalPrompts: boolean;
-  onUseHierarchicalPromptsChange: (value: boolean) => void;
   onRestoreFromRedis: () => Promise<void>;
   isRestoring: boolean;
   restoreError: string | null;
+  restoreSuccess: boolean;
+  saveSuccess: boolean;
+  selectedLLM: LLMProvider;
+  onSelectedLLMChange: (llm: LLMProvider) => void;
 }
+
+const LLMProviderSelector: React.FC<{
+  selectedLLM: LLMProvider;
+  onSelectedLLMChange: (llm: LLMProvider) => void;
+}> = ({ selectedLLM, onSelectedLLMChange }) => {
+  const llmOptions: LLMProvider[] = ['gemini', 'qwen', 'claude', 'openai', 'xai', 'deepseek', 'glm'];
+
+  return (
+    <details className="bg-gray-900/50 border border-gray-700 rounded-lg">
+      <summary className="px-4 py-3 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-800/50">
+        AI Model Configuration
+      </summary>
+      <div className="p-4 border-t border-gray-700">
+        <label htmlFor="llm-selector" className="block text-xs font-medium text-gray-400 mb-1">
+          Analysis Provider
+        </label>
+        <select
+          id="llm-selector"
+          value={selectedLLM}
+          onChange={(e) => onSelectedLLMChange(e.target.value as LLMProvider)}
+          className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-sm text-gray-200 focus:ring-1 focus:ring-brand-blue focus:border-brand-blue"
+        >
+          {llmOptions.map((llm) => (
+            <option key={llm} value={llm}>
+              {llm.charAt(0).toUpperCase() + llm.slice(1)}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-gray-500 mt-2">
+          Select the AI model to perform the script analysis.
+        </p>
+      </div>
+    </details>
+  );
+};
 
 const RetrievalModeSwitch: React.FC<{
   mode: RetrievalMode;
@@ -156,9 +193,7 @@ const RetrievalModeSwitch: React.FC<{
 const StyleConfigPanel: React.FC<{
   config: EpisodeStyleConfig;
   setConfig: (config: EpisodeStyleConfig) => void;
-  useHierarchicalPrompts: boolean;
-  onUseHierarchicalPromptsChange: (value: boolean) => void;
-}> = ({ config, setConfig, useHierarchicalPrompts, onUseHierarchicalPromptsChange }) => {
+}> = ({ config, setConfig }) => {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         setConfig({ ...config, [e.target.name]: e.target.value });
     }
@@ -183,23 +218,6 @@ const StyleConfigPanel: React.FC<{
                         placeholder="e.g., flux1-dev-fp8"
                     />
                 </div>
-                {/* --- HIERARCHICAL PROMPTS FEATURE FLAG --- */}
-                <div className="pt-4 border-t border-gray-700">
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={useHierarchicalPrompts}
-                            onChange={(e) => onUseHierarchicalPromptsChange(e.target.checked)}
-                            className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-brand-blue focus:ring-brand-blue"
-                        />
-                        <span className="text-gray-300 font-semibold text-sm">
-                            Enable Hierarchical Prompts
-                            <p className="text-xs text-gray-500 font-normal">
-                                (Experimental) Use advanced, context-aware prompt generation.
-                            </p>
-                        </span>
-                    </label>
-                </div>
             </div>
         </details>
     )
@@ -222,11 +240,13 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   onToggleCollapse,
   styleConfig,
   setStyleConfig,
-  useHierarchicalPrompts,
-  onUseHierarchicalPromptsChange,
   onRestoreFromRedis,
   isRestoring,
-  restoreError
+  restoreError,
+      restoreSuccess,
+      saveSuccess,
+      selectedLLM,
+      onSelectedLLMChange
 }) => {
   const [isContextJsonValid, setIsContextJsonValid] = useState(true);
 
@@ -330,12 +350,13 @@ export const InputPanel: React.FC<InputPanelProps> = ({
             />
         </div>
 
+        {/* AI Model Config */}
+        <LLMProviderSelector selectedLLM={selectedLLM} onSelectedLLMChange={onSelectedLLMChange} />
+
         {/* Style Config */}
         <StyleConfigPanel 
           config={styleConfig} 
           setConfig={setStyleConfig} 
-          useHierarchicalPrompts={useHierarchicalPrompts}
-          onUseHierarchicalPromptsChange={onUseHierarchicalPromptsChange}
         />
 
         {/* Retrieval Mode Switch and Context Input */}
@@ -394,7 +415,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                             </label>
                              {isContextFetching ? (
                                 <div className="flex-grow flex items-center justify-center bg-gray-900 border border-gray-700 rounded-md p-3">
-                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="http://www.w3.org/2000/svg">
+                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
@@ -421,6 +442,11 @@ export const InputPanel: React.FC<InputPanelProps> = ({
 
       </div>
       <div className="mt-6 space-y-2">
+        {saveSuccess && (
+          <div className="mb-2 p-2 bg-green-900/20 border border-green-700 rounded-md">
+            <p className="text-xs text-center text-green-400">✅ Session saved successfully</p>
+          </div>
+        )}
         <button
           onClick={onAnalyze}
           disabled={isAnalyzeDisabled}
@@ -428,7 +454,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
         >
           {isLoading ? (
             <div className="flex items-center gap-3">
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="http://www.w3.org/2000/svg">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -451,12 +477,35 @@ export const InputPanel: React.FC<InputPanelProps> = ({
         <button
           onClick={onRestoreFromRedis}
           disabled={isRestoring || isLoading}
-          className="w-full text-sm text-center text-gray-400 hover:text-brand-blue disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`w-full text-sm text-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+            restoreSuccess 
+              ? 'text-green-400' 
+              : restoreError 
+                ? 'text-red-400' 
+                : 'text-gray-400 hover:text-brand-blue'
+          }`}
         >
-          {isRestoring ? 'Restoring from Redis...' : 'Restore Last Session'}
+          {isRestoring ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Restoring session...
+            </span>
+          ) : restoreSuccess ? (
+            '✅ Session restored successfully'
+          ) : (
+            'Restore Last Session'
+          )}
         </button>
         {restoreError && (
           <p className="text-xs text-center text-red-400 mt-1">{restoreError}</p>
+        )}
+        {restoreSuccess && !restoreError && (
+          <p className="text-xs text-center text-green-400 mt-1">
+            Session restored from {localStorage.getItem('last-restore-storage') || 'storage'}
+          </p>
         )}
       </div>
     </div>

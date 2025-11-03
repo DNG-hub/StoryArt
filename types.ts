@@ -210,3 +210,14 @@ export interface LocationOverrideMapping {
 
 // Retrieval mode type
 export type RetrievalMode = 'manual' | 'database';
+
+export interface SwarmUIExportData {
+  prompt: string;
+  model: string;
+  width: number;
+  height: number;
+  steps: number;
+  cfgscale: number;
+  seed: number;
+  narrative: string;
+}

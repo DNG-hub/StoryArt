@@ -92,7 +92,16 @@ const PromptTabs: React.FC<{ beat: BeatAnalysis }> = ({ beat }) => {
 };
 
 
-const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beatIndex: number }> = ({ beat, sceneNumber, beatIndex }) => (
+const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beatIndex: number }> = ({ beat, sceneNumber, beatIndex }) => {
+    if (!beat.imageDecision) {
+        return (
+            <div className="bg-gray-900/70 p-4 rounded-lg border border-gray-700">
+                <p className="text-gray-500 text-sm">Scene {sceneNumber} - Beat #{beatIndex + 1} - No image decision available</p>
+            </div>
+        );
+    }
+
+    return (
     <div className="bg-gray-900/70 p-4 rounded-lg border border-gray-700">
         <div className="flex justify-between items-start mb-2">
             <h4 className="font-bold text-gray-300">
@@ -104,11 +113,11 @@ const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beat
         </div>
 
         <blockquote className="border-l-4 border-gray-600 pl-4 text-gray-400 italic mb-4 whitespace-pre-wrap">
-            {beat.beat_script_text}
+            {beat.beat_script_text || 'No script text available'}
         </blockquote>
 
         <div className="space-y-3 text-sm">
-            {beat.locationAttributes && beat.locationAttributes.length > 0 && (
+            {beat.locationAttributes && Array.isArray(beat.locationAttributes) && beat.locationAttributes.length > 0 && (
                 <div className="pt-2">
                     <p className="text-gray-400 font-semibold mb-2">Location Attributes:</p>
                     <div className="flex flex-wrap gap-2">
@@ -120,7 +129,7 @@ const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beat
             )}
 
             <div className="pt-2 mt-2 border-t border-gray-700">
-                {beat.imageDecision.type === 'REUSE_IMAGE' && (
+                {beat.imageDecision.type === 'REUSE_IMAGE' && beat.imageDecision.reuseSourceBeatLabel && (
                     <div className="flex items-start gap-2 text-yellow-300 mb-2 p-2 bg-yellow-900/30 rounded-md">
                          <span className="text-yellow-400 mt-0.5 flex-shrink-0"><LinkIcon /></span>
                          <p><span className="font-semibold">Reuse instruction:</span> Reuse image from <span className="font-bold">{beat.imageDecision.reuseSourceBeatLabel}</span>.</p>
@@ -128,7 +137,7 @@ const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beat
                 )}
                 <div className="flex items-start gap-2">
                     <span className="text-brand-purple mt-0.5 flex-shrink-0"><LightbulbIcon /></span>
-                    <p className="text-gray-300"><span className="font-semibold text-gray-400">Reasoning:</span> {beat.imageDecision.reason}</p>
+                    <p className="text-gray-300"><span className="font-semibold text-gray-400">Reasoning:</span> {beat.imageDecision.reason || 'No reasoning provided'}</p>
                 </div>
             </div>
 
@@ -145,7 +154,8 @@ const BeatAnalysisCard: React.FC<{ beat: BeatAnalysis, sceneNumber: number, beat
         </div>
         {beat.imageDecision.type !== 'NO_IMAGE' && <PromptTabs beat={beat} />}
     </div>
-);
+    );
+};
 
 
 const analysisSteps = [
@@ -262,6 +272,19 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
     );
   }
 
+  if (!analysis.scenes || !Array.isArray(analysis.scenes) || analysis.scenes.length === 0) {
+    return (
+      <div className="bg-gray-800/50 p-6 rounded-lg shadow-lg h-full overflow-y-auto">
+        <div className="border-b-2 border-brand-purple/50 pb-4 mb-6">
+          <h2 className="text-3xl font-bold text-brand-blue">Episode {analysis.episodeNumber}: {analysis.title}</h2>
+        </div>
+        <div className="text-center text-gray-500 mt-8">
+          <p>No scenes found in analysis.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gray-800/50 p-6 rounded-lg shadow-lg h-full overflow-y-auto">
       <div className="border-b-2 border-brand-purple/50 pb-4 mb-6">
@@ -274,14 +297,18 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
               Scene {scene.sceneNumber}: {scene.title}
             </summary>
             <div className="mt-4 space-y-4">
-              {scene.beats.map((beat, beatIndex) => (
-                <BeatAnalysisCard 
-                  key={beat.beatId} 
-                  beat={beat} 
-                  sceneNumber={scene.sceneNumber} 
-                  beatIndex={beatIndex} 
-                />
-              ))}
+              {scene.beats && Array.isArray(scene.beats) && scene.beats.length > 0 ? (
+                scene.beats.map((beat, beatIndex) => (
+                  <BeatAnalysisCard 
+                    key={beat.beatId} 
+                    beat={beat} 
+                    sceneNumber={scene.sceneNumber} 
+                    beatIndex={beatIndex} 
+                  />
+                ))
+              ) : (
+                <p className="text-gray-500 text-sm">No beats found in this scene.</p>
+              )}
             </div>
           </details>
         ))}
