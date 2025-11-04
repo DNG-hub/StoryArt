@@ -563,13 +563,27 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
               <h3 className="text-lg font-semibold text-red-200 mb-2">
                 ❌ Pipeline Failed
               </h3>
-              <p className="text-sm text-red-200">{bulkError}</p>
+              <div className="text-sm text-red-200">
+                <p className="whitespace-pre-wrap">{bulkError}</p>
+              </div>
               {bulkResult?.errors && bulkResult.errors.length > 0 && (
-                <ul className="mt-2 text-sm text-red-200 list-disc list-inside">
-                  {bulkResult.errors.map((err, idx) => (
-                    <li key={idx}>{err}</li>
-                  ))}
-                </ul>
+                <div className="mt-2">
+                  <ul className="text-sm text-red-200 list-disc list-inside">
+                    {bulkResult.errors.map((err, idx) => (
+                      <li key={idx} className="whitespace-pre-wrap">{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {bulkResult && !bulkResult.success && (
+                <div className="mt-3">
+                  <button
+                    onClick={handleBulkProcess}
+                    className="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-md font-semibold transition-colors text-sm"
+                  >
+                    🔄 Retry Pipeline
+                  </button>
+                </div>
               )}
             </div>
           )}

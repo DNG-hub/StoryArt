@@ -100,7 +100,10 @@ export async function fetchPromptsFromRedis(
 
       // Check if prompts exist
       if (!beat.prompts) {
-        console.warn(`Beat ${beat.beatId} has NEW_IMAGE decision but no prompts. Skipping.`);
+        console.warn(
+          `[Pipeline] Beat ${beat.beatId} (Scene ${scene.sceneNumber}) has NEW_IMAGE decision but no prompts. Skipping.\n` +
+          `  Suggestion: Regenerate prompts for this beat to create image generation prompts.`
+        );
         continue;
       }
 
@@ -505,6 +508,24 @@ export async function processEpisodeCompletePipeline(
 
     const successfulGenerations = generationResults.filter(r => r.success).length;
     const failedGenerations = generationResults.filter(r => !r.success).length;
+    
+    // Log generation summary
+    if (failedGenerations > 0) {
+      const failedPrompts = generationResults
+        .filter(r => !r.success)
+        .map((r, i) => {
+          const promptIndex = generationResults.indexOf(r);
+          const prompt = prompts[promptIndex];
+          return `  ${i + 1}. Beat ${prompt?.beatId || 'unknown'} (Scene ${prompt?.sceneNumber || '?'}): ${r.error?.substring(0, 100) || 'Unknown error'}`;
+        });
+      
+      console.warn(
+        `[Pipeline] Generation completed with ${failedGenerations} failures out of ${prompts.length} prompts:\n` +
+        failedPrompts.join('\n')
+      );
+    } else {
+      console.log(`[Pipeline] All ${successfulGenerations} image generations succeeded`);
+    }
 
     // Organize assets in DaVinci
     let organizationResult: OrganizationResult | undefined;

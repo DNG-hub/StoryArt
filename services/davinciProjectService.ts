@@ -251,6 +251,21 @@ export async function organizeSwarmUIImages(
     }
   }
 
+  // Log organization summary
+  if (failedImages.length > 0) {
+    const failedSummary = failedImages.map((f, i) => {
+      const formatStr = f.format === 'cinematic' ? 'cinematic' : 'vertical';
+      return `  ${i + 1}. Scene ${f.sceneNumber}, Beat ${f.beatId} (${formatStr}): ${f.error}`;
+    });
+    
+    console.warn(
+      `[DaVinci] Organization completed with ${failedImages.length} failures out of ${images.length} images:\n` +
+      failedSummary.join('\n')
+    );
+  } else {
+    console.log(`[DaVinci] All ${organizedImages.length} images organized successfully`);
+  }
+
   return {
     success: failedImages.length === 0,
     episodeProjectPath: episodeProjectPath,

@@ -105,12 +105,12 @@
   - [x] 7.4 Add time estimation that tracks average generation time, calculates remaining time based on queue, and displays in progress modal
   - [x] 7.5 Add optional cancellation support with cancel token in pipeline service, stop processing on cancel, and show partial results
 
-- [ ] 8.0 Comprehensive Error Handling
-  - [ ] 8.1 Add SwarmUI API error handling: network failures with retry and exponential backoff, API errors logged and skipped, timeout with error display and retry option
-  - [ ] 8.2 Add image path error handling: path not found searches alternative folders, still not found logs error and marks failed, continues with other images
-  - [ ] 8.3 Add DaVinci organization error handling: folder creation failure logs and aborts operation, file copy failure logs and continues with others, shows summary of failures
-  - [ ] 8.4 Add Redis error handling: session not found shows clear error message, prompts missing suggests regeneration
-  - [ ] 8.5 Add user-friendly error messages: clear actionable error text, troubleshooting suggestions, retry options where appropriate
+- [x] 8.0 Comprehensive Error Handling
+  - [x] 8.1 Add SwarmUI API error handling: network failures with retry and exponential backoff, API errors logged and skipped, timeout with error display and retry option
+  - [x] 8.2 Add image path error handling: path not found searches alternative folders, still not found logs error and marks failed, continues with other images
+  - [x] 8.3 Add DaVinci organization error handling: folder creation failure logs and aborts operation, file copy failure logs and continues with others, shows summary of failures
+  - [x] 8.4 Add Redis error handling: session not found shows clear error message, prompts missing suggests regeneration
+  - [x] 8.5 Add user-friendly error messages: clear actionable error text, troubleshooting suggestions, retry options where appropriate
 
 - [ ] 9.0 Edge Case Handling
   - [ ] 9.1 Test and verify midnight rollover handling: overnight generation works correctly, yesterday's folder searched

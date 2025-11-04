@@ -58,25 +58,81 @@ export interface ImageGenerationResult {
  * @param initialDelay - Initial delay in milliseconds (default: 1000)
  * @returns The result of the function
  */
+/**
+ * Enhanced retry with exponential backoff and better error classification
+ */
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   maxRetries: number = 3,
   initialDelay: number = 1000
 ): Promise<T> {
   let lastError: Error | null = null;
+  const errors: Array<{ attempt: number; error: string; timestamp: Date }> = [];
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Unknown error');
+      const errorMessage = lastError.message;
       
-      if (attempt < maxRetries) {
+      // Log error with attempt number
+      errors.push({
+        attempt: attempt + 1,
+        error: errorMessage,
+        timestamp: new Date(),
+      });
+      
+      // Classify error type for better retry logic
+      const isNetworkError = errorMessage.includes('fetch') || 
+                            errorMessage.includes('network') ||
+                            errorMessage.includes('ECONNREFUSED') ||
+                            errorMessage.includes('Failed to fetch') ||
+                            errorMessage.includes('timeout');
+      
+      const isServerError = errorMessage.includes('500') || 
+                           errorMessage.includes('503') ||
+                           errorMessage.includes('502');
+      
+      const isClientError = errorMessage.includes('400') || 
+                           errorMessage.includes('401') ||
+                           errorMessage.includes('403');
+      
+      // Don't retry on client errors (4xx) - they won't succeed on retry
+      if (isClientError && attempt < maxRetries) {
+        console.warn(`Client error (${errorMessage.substring(0, 100)}), skipping retries`);
+        throw lastError;
+      }
+      
+      // Retry network and server errors
+      if (attempt < maxRetries && (isNetworkError || isServerError)) {
         const delay = initialDelay * Math.pow(2, attempt);
-        console.warn(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, lastError.message);
+        const errorType = isNetworkError ? 'network' : 'server';
+        console.warn(
+          `[SwarmUI] Attempt ${attempt + 1}/${maxRetries + 1} failed (${errorType} error), ` +
+          `retrying in ${delay}ms...\n` +
+          `Error: ${errorMessage.substring(0, 200)}`
+        );
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else if (attempt < maxRetries) {
+        // Retry other errors with warning
+        const delay = initialDelay * Math.pow(2, attempt);
+        console.warn(
+          `[SwarmUI] Attempt ${attempt + 1}/${maxRetries + 1} failed, ` +
+          `retrying in ${delay}ms...\n` +
+          `Error: ${errorMessage.substring(0, 200)}`
+        );
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
+  }
+  
+  // Log all retry attempts for debugging
+  if (errors.length > 1) {
+    console.error(`[SwarmUI] All ${errors.length} retry attempts failed:`);
+    errors.forEach((e, i) => {
+      console.error(`  Attempt ${e.attempt}: ${e.error.substring(0, 150)}`);
+    });
   }
   
   throw lastError || new Error('Retry failed');
