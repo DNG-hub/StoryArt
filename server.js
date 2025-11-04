@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { createClient } from 'redis';
 import dotenv from 'dotenv';
-import { processEpisodeCompletePipeline, processSingleBeat } from './services/pipelineService.js';
+import { processEpisodeCompletePipeline, processSingleBeat } from './services/pipelineService.ts';
 
 // Load environment variables
 dotenv.config();

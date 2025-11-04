@@ -5,8 +5,21 @@ const STORAGE_KEY = 'storyart-latest-session';
 
 // Use environment variable with fallback - check if Redis API is part of StoryTeller API or separate
 // Note: Base URL should NOT include /api/v1 - it's added per endpoint
-const REDIS_API_BASE_URL = import.meta.env.VITE_REDIS_API_URL || 
-                           import.meta.env.VITE_STORYTELLER_API_URL || 
+// Support both Vite (browser) and Node.js environments
+const getEnvVar = (key: string): string | undefined => {
+  if (typeof process !== 'undefined' && process.env) {
+    return process.env[key];
+  }
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env[key];
+  }
+  return undefined;
+};
+
+const REDIS_API_BASE_URL = getEnvVar('VITE_REDIS_API_URL') || 
+                           getEnvVar('REDIS_API_URL') ||
+                           getEnvVar('VITE_STORYTELLER_API_URL') || 
+                           getEnvVar('STORYTELLER_API_URL') ||
                            'http://localhost:7802';
 
 export interface RedisSessionResponse {

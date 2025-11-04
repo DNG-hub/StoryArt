@@ -10,8 +10,19 @@ import type {
 } from '../types';
 
 // SwarmUI API base URL - uses native API endpoints (not Stable Diffusion API)
-const SWARMUI_API_BASE_URL = import.meta.env.VITE_SWARMUI_API_URL || 
-                              import.meta.env.SWARMUI_API_URL || 
+// Support both Vite (browser) and Node.js environments
+const getEnvVar = (key: string): string | undefined => {
+  if (typeof process !== 'undefined' && process.env) {
+    return process.env[key];
+  }
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env[key];
+  }
+  return undefined;
+};
+
+const SWARMUI_API_BASE_URL = getEnvVar('VITE_SWARMUI_API_URL') || 
+                              getEnvVar('SWARMUI_API_URL') || 
                               "http://localhost:7801";
 
 // Legacy Stable Diffusion API endpoint (for backward compatibility)
