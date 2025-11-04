@@ -221,3 +221,14 @@ export interface SwarmUIExportData {
   seed: number;
   narrative: string;
 }
+
+// SwarmUI API interfaces
+export interface QueueStatus {
+  queue_length: number;
+  current_generation: string | null;
+}
+
+export interface GenerationStats {
+  total_generations: number;
+  average_generation_time: number;
+}

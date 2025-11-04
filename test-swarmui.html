@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwarmUI Service Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 {
+            color: #4a9eff;
+        }
+        .test-section {
+            background: #2a2a2a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border: 1px solid #3a3a3a;
+        }
+        button {
+            background: #4a9eff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #3a8eef;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #1a1a1a;
+            border-radius: 5px;
+            border-left: 3px solid #4a9eff;
+        }
+        .success {
+            border-left-color: #4caf50;
+        }
+        .error {
+            border-left-color: #f44336;
+        }
+        .loading {
+            color: #ffa726;
+        }
+        pre {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .status.success {
+            background: #4caf50;
+            color: white;
+        }
+        .status.error {
+            background: #f44336;
+            color: white;
+        }
+        .status.loading {
+            background: #ffa726;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 SwarmUI Service Test</h1>
+    <p>Test the enhanced SwarmUI service methods</p>
+
+    <div class="test-section">
+        <h2>1. Check SwarmUI Availability</h2>
+        <button id="testAvailability">Test Availability</button>
+        <div id="availabilityResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Initialize Session</h2>
+        <button id="testInitSession">Initialize Session</button>
+        <div id="initSessionResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Get Queue Status</h2>
+        <button id="testQueueStatus">Get Queue Status</button>
+        <div id="queueStatusResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Get Generation Statistics</h2>
+        <button id="testStats">Get Statistics</button>
+        <div id="statsResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>5. Generate Image (Test)</h2>
+        <p>⚠️ This will actually generate an image (may take 1-2 minutes)</p>
+        <button id="testGenerate" disabled>Generate Test Image</button>
+        <div id="generateResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Configuration</h2>
+        <p>SwarmUI API URL: <code id="apiUrl">http://localhost:7801</code></p>
+    </div>
+
+    <script type="module">
+        // Import the SwarmUI service
+        import { 
+            initializeSession, 
+            generateImages, 
+            getQueueStatus, 
+            getGenerationStatistics 
+        } from './services/swarmUIService.ts';
+
+        const SWARMUI_API_BASE_URL = import.meta.env.VITE_SWARMUI_API_URL || 
+                                      import.meta.env.SWARMUI_API_URL || 
+                                      "http://localhost:7801";
+
+        document.getElementById('apiUrl').textContent = SWARMUI_API_BASE_URL;
+
+        let sessionId = null;
+
+        function displayResult(elementId, success, message, data = null) {
+            const element = document.getElementById(elementId);
+            const className = success ? 'success' : 'error';
+            element.innerHTML = `
+                <div class="result ${className}">
+                    <strong>${success ? '✅' : '❌'} ${message}</strong>
+                    ${data ? `<pre>${JSON.stringify(data, null, 2)}</pre>` : ''}
+                </div>
+            `;
+        }
+
+        function displayLoading(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `
+                <div class="result loading">
+                    <span class="status loading">Loading...</span> ${message}
+                </div>
+            `;
+        }
+
+        // Test 1: Availability
+        document.getElementById('testAvailability').addEventListener('click', async () => {
+            displayLoading('availabilityResult', 'Checking SwarmUI availability...');
+            try {
+                const response = await fetch(`${SWARMUI_API_BASE_URL}/API/GetNewSession`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                
+                if (response.ok) {
+                    displayResult('availabilityResult', true, 'SwarmUI is accessible and responding');
+                } else {
+                    displayResult('availabilityResult', false, `SwarmUI returned status: ${response.status}`);
+                }
+            } catch (error) {
+                displayResult('availabilityResult', false, `SwarmUI is not accessible: ${error.message}`);
+            }
+        });
+
+        // Test 2: Initialize Session
+        document.getElementById('testInitSession').addEventListener('click', async () => {
+            displayLoading('initSessionResult', 'Initializing session...');
+            try {
+                const id = await initializeSession();
+                sessionId = id;
+                displayResult('initSessionResult', true, `Session initialized successfully`, { session_id: id });
+                document.getElementById('testGenerate').disabled = false;
+            } catch (error) {
+                displayResult('initSessionResult', false, `Failed to initialize session: ${error.message}`);
+            }
+        });
+
+        // Test 3: Queue Status
+        document.getElementById('testQueueStatus').addEventListener('click', async () => {
+            displayLoading('queueStatusResult', 'Getting queue status...');
+            try {
+                const status = await getQueueStatus();
+                displayResult('queueStatusResult', true, 'Queue status retrieved', status);
+            } catch (error) {
+                displayResult('queueStatusResult', false, `Failed to get queue status: ${error.message}`);
+            }
+        });
+
+        // Test 4: Statistics
+        document.getElementById('testStats').addEventListener('click', async () => {
+            displayLoading('statsResult', 'Getting generation statistics...');
+            try {
+                const stats = await getGenerationStatistics();
+                displayResult('statsResult', true, 'Generation statistics retrieved', stats);
+            } catch (error) {
+                displayResult('statsResult', false, `Failed to get statistics: ${error.message}`);
+            }
+        });
+
+        // Test 5: Generate Image
+        document.getElementById('testGenerate').addEventListener('click', async () => {
+            if (!sessionId) {
+                alert('Please initialize a session first');
+                return;
+            }
+
+            displayLoading('generateResult', 'Generating image... (this may take 1-2 minutes)');
+            try {
+                const testPrompt = "(Wide shot:1.3), (Cat walking:1.2), wide shot of a cat walking through debris, post-apocalyptic setting";
+                const result = await generateImages(testPrompt, 1, sessionId);
+                
+                if (result.success) {
+                    displayResult('generateResult', true, `Image generation successful!`, {
+                        imagePaths: result.imagePaths,
+                        pathsCount: result.imagePaths?.length || 0
+                    });
+                } else {
+                    displayResult('generateResult', false, `Image generation failed: ${result.error}`);
+                }
+            } catch (error) {
+                displayResult('generateResult', false, `Failed to generate images: ${error.message}`);
+            }
+        });
+    </script>
+</body>
+</html>
+
