@@ -159,34 +159,93 @@ VERTEX_AI_TEMPERATURE=0.7
 
 ### SwarmUI Connection
 ```env
-VITE_SWARMUI_API_URL=http://<host>:<port>
-SWARMUI_API_URL=http://<host>:<port>
-SWARMUI_API_KEY=<optional_api_key>
-SWARMUI_INSTANCE_PATH=<local_installation_path>
-SWARMUI_STARTUP_COMMAND=<startup_script_path>
+VITE_SWARMUI_API_URL=http://localhost:7801
+SWARMUI_API_URL=http://localhost:7801
 ```
 
-### SwarmUI Configuration
+**Default**: `http://localhost:7801`  
+**Purpose**: Base URL for SwarmUI API endpoints  
+**Required**: Yes (for pipeline functionality)
+
+### SwarmUI Output Path Configuration
+
+**Critical for Pipeline**: This path is required for the SwarmUI to DaVinci pipeline to locate generated images.
+
 ```env
-# Access Control
-SWARMUI_DEPLOYMENT_TYPE=local
-SWARMUI_ALLOWED_USERS=<comma_separated_usernames>
-SWARMUI_ALLOWED_ORGANIZATIONS=<organization_name>
-SWARMUI_LOCAL_NETWORK_ONLY=true
-SWARMUI_REQUIRES_PAYMENT=false
-
-# Performance Settings
-SWARMUI_CONNECTION_TIMEOUT=30
-SWARMUI_GENERATION_TIMEOUT=300
-SWARMUI_DOWNLOAD_TIMEOUT=60
-SWARMUI_MAX_RETRIES=3
-SWARMUI_RETRY_DELAY=1.0
-SWARMUI_RETRY_BACKOFF=2.0
-SWARMUI_MAX_CONCURRENT=2
-SWARMUI_POLL_INTERVAL=0.5
-SWARMUI_MAX_BATCH_SIZE=4
-SWARMUI_MAX_RESOLUTION=1024
+VITE_SWARMUI_OUTPUT_PATH=E:/FLUX_models_Auto_Downloaders_v7/SwarmUI/Output
+SWARMUI_OUTPUT_PATH=E:/FLUX_models_Auto_Downloaders_v7/SwarmUI/Output
 ```
+
+**Default**: `E:/FLUX_models_Auto_Downloaders_v7/SwarmUI/Output`  
+**Purpose**: Base directory where SwarmUI saves generated images  
+**Structure**: `{SWARMUI_OUTPUT_PATH}/local/raw/{YYYY-MM-DD}/image.png`  
+**Required**: Yes (for pipeline functionality)
+
+**Path Requirements**:
+- Must be an absolute path (Windows or Unix format)
+- Must be writable by the application
+- Should point to the SwarmUI `Output` directory
+- Images are organized in date-based subdirectories (`YYYY-MM-DD`)
+
+**Example Paths**:
+- Windows: `E:/FLUX_models_Auto_Downloaders_v7/SwarmUI/Output`
+- Unix: `/home/user/swarmui/Output`
+
+### DaVinci Resolve Projects Path Configuration
+
+**Critical for Pipeline**: This path is where organized project folders are created.
+
+```env
+VITE_DAVINCI_PROJECTS_PATH=E:/DaVinci_Projects
+DAVINCI_PROJECTS_PATH=E:/DaVinci_Projects
+```
+
+**Default**: `E:/DaVinci_Projects`  
+**Purpose**: Base directory for DaVinci Resolve project structures  
+**Structure**: `{DAVINCI_PROJECTS_PATH}/Episode_{N}_{Title}/01_Assets/Images/...`  
+**Required**: Yes (for pipeline functionality)
+
+**Path Requirements**:
+- Must be an absolute path
+- Must be writable by the application
+- Should be a dedicated directory for DaVinci projects
+- Will contain episode folders with organized assets
+
+**Project Structure Created**:
+```
+{DAVINCI_PROJECTS_PATH}/
+  Episode_01_The_Signal/
+    01_Assets/
+      Images/
+        LongForm/          # 16:9 cinematic
+          Scene_01/
+            s1-b1_16_9_cinematic_v01.png
+        ShortForm/         # 9:16 vertical
+          Scene_01/
+            s1-b1_9_16_vertical_v01.png
+      Audio/
+      Video/
+    02_Timelines/
+    03_Exports/
+```
+
+### SwarmUI Setup Requirements
+
+**Prerequisites**:
+1. SwarmUI must be installed and running
+2. SwarmUI API must be accessible at the configured URL
+3. SwarmUI should be configured to save images to the output path specified
+
+**Verification Steps**:
+1. Start SwarmUI service
+2. Verify API is accessible: `curl http://localhost:7801/API/GetNewSession`
+3. Check output directory exists and is writable
+4. Verify date-based folder structure is created automatically
+
+**Troubleshooting**:
+- If API is not accessible, check SwarmUI is running and port is correct
+- If images not found, verify output path matches SwarmUI's actual output location
+- If path errors occur, ensure absolute paths are used (not relative)
 
 ## 🔗 StoryTeller API Integration
 

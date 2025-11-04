@@ -11,10 +11,15 @@ const API_BASE_URL = import.meta.env.VITE_REDIS_API_URL ||
 
 /**
  * Process complete episode pipeline via API
+ * 
+ * @param sessionTimestamp - Session timestamp to process
+ * @param progressCallback - Optional callback for progress updates
+ * @param abortController - Optional AbortController for cancellation
  */
 export async function processEpisodeCompletePipeline(
   sessionTimestamp: number,
-  progressCallback?: ProgressCallback
+  progressCallback?: ProgressCallback,
+  abortController?: AbortController
 ): Promise<PipelineResult> {
   return new Promise((resolve, reject) => {
     // Use fetch with streaming for POST to support SSE
@@ -24,6 +29,7 @@ export async function processEpisodeCompletePipeline(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ sessionTimestamp }),
+      signal: abortController?.signal,
     })
       .then(async (response) => {
         if (!response.ok) {
@@ -98,12 +104,19 @@ export async function processEpisodeCompletePipeline(
 
 /**
  * Process single beat via API
+ * 
+ * @param beatId - Beat ID to process
+ * @param format - Format type ('cinematic' or 'vertical')
+ * @param sessionTimestamp - Optional session timestamp
+ * @param progressCallback - Optional callback for progress updates
+ * @param abortController - Optional AbortController for cancellation
  */
 export async function processSingleBeat(
   beatId: string,
   format: 'cinematic' | 'vertical',
   sessionTimestamp?: number,
-  progressCallback?: ProgressCallback
+  progressCallback?: ProgressCallback,
+  abortController?: AbortController
 ): Promise<BeatPipelineResult> {
   return new Promise((resolve, reject) => {
     fetch(`${API_BASE_URL}/api/v1/pipeline/process-beat`, {
@@ -112,6 +125,7 @@ export async function processSingleBeat(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ beatId, format, sessionTimestamp }),
+      signal: abortController?.signal,
     })
       .then(async (response) => {
         if (!response.ok) {

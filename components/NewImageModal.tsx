@@ -22,10 +22,11 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'cinematic' | 'vertical'>('cinematic');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [progress, setProgress] = useState<{ currentStep: number; totalSteps: number; currentStepName: string; progress: number } | null>(null);
+  const [progress, setProgress] = useState<{ currentStep: number; totalSteps: number; currentStepName: string; progress: number; estimatedTimeRemaining?: number } | null>(null);
   const [result, setResult] = useState<BeatPipelineResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedPath, setCopiedPath] = useState(false);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
 
   if (!isOpen || !beat) return null;
 
@@ -40,6 +41,8 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
     setIsGenerating(true);
     setError(null);
     setResult(null);
+    const abortCtrl = new AbortController();
+    setAbortController(abortCtrl);
     setProgress({ currentStep: 0, totalSteps: 3, currentStepName: 'Initializing...', progress: 0 });
 
     const progressCallback: ProgressCallback = (progressData) => {
@@ -48,6 +51,7 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
         totalSteps: progressData.totalSteps,
         currentStepName: progressData.currentStepName,
         progress: progressData.progress,
+        estimatedTimeRemaining: progressData.estimatedTimeRemaining,
       });
     };
 
@@ -56,7 +60,8 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
         beat.beatId,
         activeTab,
         sessionTimestamp,
-        progressCallback
+        progressCallback,
+        abortCtrl
       );
 
       setResult(pipelineResult);
@@ -65,12 +70,24 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
         setError(pipelineResult.error || 'Image generation failed');
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError(errorMessage);
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Operation cancelled by user');
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+        setError(errorMessage);
+      }
       setResult(null);
     } finally {
       setIsGenerating(false);
       setProgress(null);
+      setAbortController(null);
+    }
+  };
+
+  const handleCancel = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
     }
   };
 
@@ -82,6 +99,18 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
     } catch (err) {
       console.error('Failed to copy path:', err);
     }
+  };
+
+  const formatTime = (ms?: number): string => {
+    if (!ms) return 'Calculating...';
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    
+    if (minutes > 0) {
+      return `${minutes}m ${remainingSeconds}s`;
+    }
+    return `${seconds}s`;
   };
 
   const handleOpenInExplorer = (path: string) => {
@@ -177,11 +206,11 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
         )}
 
         {/* Generate Button */}
-        <div className="mb-4">
+        <div className="mb-4 flex gap-2">
           <button
             onClick={handleGenerate}
             disabled={!selectedPrompt || isGenerating}
-            className={`w-full py-3 px-4 rounded-md font-semibold transition-colors ${
+            className={`flex-1 py-3 px-4 rounded-md font-semibold transition-colors ${
               !selectedPrompt || isGenerating
                 ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
                 : 'bg-brand-blue hover:bg-brand-purple text-white'
@@ -199,6 +228,14 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
               'Generate Image'
             )}
           </button>
+          {isGenerating && (
+            <button
+              onClick={handleCancel}
+              className="px-4 py-3 bg-red-700 hover:bg-red-600 text-white rounded-md font-semibold transition-colors"
+            >
+              Cancel
+            </button>
+          )}
         </div>
 
         {/* Progress Display */}
@@ -214,6 +251,16 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
                 style={{ width: `${progress.progress}%` }}
               />
             </div>
+            {progress.estimatedTimeRemaining && (
+              <div className="flex items-center gap-2 text-xs text-gray-400 mt-2">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>
+                  Estimated time remaining: {formatTime(progress.estimatedTimeRemaining)}
+                </span>
+              </div>
+            )}
           </div>
         )}
 

@@ -98,12 +98,12 @@
   - [x] 6.6 Update `OutputPanel` to open modal on "New Image" click by updating `handleNavigateToRefine` or creating new handler, passing beat data, and managing modal state
   - [x] 6.7 Add modal state management in `App.tsx` or `App_updated.tsx`
 
-- [ ] 7.0 Progress Tracking and Status Updates
-  - [ ] 7.1 Add progress state management (current image index, total images, current status message, estimated time remaining)
-  - [ ] 7.2 Implement progress callback system in `PipelineService` that emits progress events
-  - [ ] 7.3 Update UI components (`OutputPanel` and `NewImageModal`) to subscribe to progress updates and update progress bar and status text
-  - [ ] 7.4 Add time estimation that tracks average generation time, calculates remaining time based on queue, and displays in progress modal
-  - [ ] 7.5 Add optional cancellation support with cancel token in pipeline service, stop processing on cancel, and show partial results
+- [x] 7.0 Progress Tracking and Status Updates
+  - [x] 7.1 Add progress state management (current image index, total images, current status message, estimated time remaining)
+  - [x] 7.2 Implement progress callback system in `PipelineService` that emits progress events
+  - [x] 7.3 Update UI components (`OutputPanel` and `NewImageModal`) to subscribe to progress updates and update progress bar and status text
+  - [x] 7.4 Add time estimation that tracks average generation time, calculates remaining time based on queue, and displays in progress modal
+  - [x] 7.5 Add optional cancellation support with cancel token in pipeline service, stop processing on cancel, and show partial results
 
 - [ ] 8.0 Comprehensive Error Handling
   - [ ] 8.1 Add SwarmUI API error handling: network failures with retry and exponential backoff, API errors logged and skipped, timeout with error display and retry option
@@ -131,11 +131,11 @@
   - [ ] 11.3 Test error scenarios: SwarmUI not running, Redis not available, invalid paths
   - [ ] 11.4 Test UI integration: button clicks, modal interactions, progress updates
 
-- [ ] 12.0 Environment Configuration
-  - [ ] 12.1 Update `.env.example` with new variables: `SWARMUI_API_URL`, `SWARMUI_OUTPUT_PATH`, `DAVINCI_PROJECTS_PATH`
-  - [ ] 12.2 Document SwarmUI setup requirements in `docs/ENVIRONMENT_CONFIGURATION.md`
-  - [ ] 12.3 Document DaVinci path requirements in `docs/ENVIRONMENT_CONFIGURATION.md`
-  - [ ] 12.4 Create setup validation script to check environment variables and paths
+- [x] 12.0 Environment Configuration
+  - [x] 12.1 Update `.env.example` with new variables: `SWARMUI_API_URL`, `SWARMUI_OUTPUT_PATH`, `DAVINCI_PROJECTS_PATH`
+  - [x] 12.2 Document SwarmUI setup requirements in `docs/ENVIRONMENT_CONFIGURATION.md`
+  - [x] 12.3 Document DaVinci path requirements in `docs/ENVIRONMENT_CONFIGURATION.md`
+  - [x] 12.4 Create setup validation script to check environment variables and paths
 
 - [ ] 13.0 Code Documentation
   - [ ] 13.1 Add JSDoc comments to all methods in new service files

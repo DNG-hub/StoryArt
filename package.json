@@ -14,7 +14,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:pipeline": "node test-pipeline-validation.js",
-    "test:all": "npm run test:run && npm run test:pipeline"
+    "test:all": "npm run test:run && npm run test:pipeline",
+    "validate:env": "node scripts/validate-environment.js"
   },
   "dependencies": {
     "@google/genai": "^1.27.0",

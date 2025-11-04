@@ -16,7 +16,7 @@ import type {
 } from '../types';
 
 import { getSessionByTimestamp, getLatestSession } from './redisService';
-import { initializeSession, generateImages } from './swarmUIService';
+import { initializeSession, generateImages, getQueueStatus, getGenerationStatistics } from './swarmUIService';
 import { normalizeImagePath, enhanceImagePathsWithMetadata } from './imagePathTracker';
 import { createEpisodeProject, organizeSwarmUIImages } from './davinciProjectService';
 
@@ -30,6 +30,27 @@ export type ProgressCallback = (progress: {
   progress: number;
   estimatedTimeRemaining?: number;
 }) => void;
+
+/**
+ * Cancellation token for pipeline operations
+ */
+export class CancellationToken {
+  private cancelled = false;
+  private reason?: string;
+
+  cancel(reason?: string): void {
+    this.cancelled = true;
+    this.reason = reason;
+  }
+
+  isCancelled(): boolean {
+    return this.cancelled;
+  }
+
+  getReason(): string | undefined {
+    return this.reason;
+  }
+}
 
 /**
  * Fetch prompts from Redis session data
@@ -106,15 +127,17 @@ export async function fetchPromptsFromRedis(
  * Generate images from prompts using SwarmUI
  * 
  * Initializes SwarmUI session, processes prompts sequentially with rate limiting,
- * tracks progress, handles errors per prompt
+ * tracks progress, handles errors per prompt, supports cancellation and time estimation
  * 
  * @param prompts - Array of beat prompts to generate
  * @param progressCallback - Optional callback for progress updates
+ * @param cancellationToken - Optional cancellation token to stop processing
  * @returns Promise that resolves to array of generation results
  */
 export async function generateImagesFromPrompts(
   prompts: BeatPrompt[],
-  progressCallback?: ProgressCallback
+  progressCallback?: ProgressCallback,
+  cancellationToken?: CancellationToken
 ): Promise<ImageGenerationResult[]> {
   if (prompts.length === 0) {
     return [];
@@ -122,6 +145,21 @@ export async function generateImagesFromPrompts(
 
   const results: ImageGenerationResult[] = [];
   const generationStartDate = new Date();
+  const generationTimes: number[] = []; // Track generation times for estimation
+
+  // Get initial statistics for time estimation
+  let averageGenerationTime = 0;
+  let queueLength = 0;
+  try {
+    const stats = await getGenerationStatistics();
+    averageGenerationTime = stats.average_generation_time || 0; // milliseconds
+    
+    const queueStatus = await getQueueStatus();
+    queueLength = queueStatus.queue_length || 0;
+  } catch (error) {
+    // If endpoints not available, we'll track our own times
+    console.log('SwarmUI statistics endpoints not available, will track generation times locally');
+  }
 
   // Initialize SwarmUI session
   progressCallback?.({
@@ -138,16 +176,42 @@ export async function generateImagesFromPrompts(
     throw new Error(`Failed to initialize SwarmUI session: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 
+  // Check for cancellation
+  if (cancellationToken?.isCancelled()) {
+    throw new Error(`Operation cancelled: ${cancellationToken.getReason() || 'User cancelled'}`);
+  }
+
   // Process prompts sequentially
   for (let i = 0; i < prompts.length; i++) {
+    // Check for cancellation before each prompt
+    if (cancellationToken?.isCancelled()) {
+      console.log(`Processing cancelled at prompt ${i + 1} of ${prompts.length}`);
+      break; // Stop processing but return partial results
+    }
+
     const prompt = prompts[i];
     const currentStep = i + 1;
+    const promptStartTime = Date.now();
+
+    // Calculate estimated time remaining
+    let estimatedTimeRemaining: number | undefined;
+    if (averageGenerationTime > 0 || generationTimes.length > 0) {
+      // Use tracked average if we have local data, otherwise use SwarmUI stats
+      const avgTime = generationTimes.length > 0
+        ? generationTimes.reduce((a, b) => a + b, 0) / generationTimes.length
+        : averageGenerationTime;
+      
+      const remainingPrompts = prompts.length - i;
+      const queueWaitTime = queueLength > 0 ? queueLength * avgTime : 0;
+      estimatedTimeRemaining = (remainingPrompts * avgTime) + queueWaitTime;
+    }
 
     progressCallback?.({
       currentStep: currentStep,
       totalSteps: prompts.length + 1,
       currentStepName: `Generating image ${currentStep} of ${prompts.length}...`,
       progress: Math.round((currentStep / (prompts.length + 1)) * 100),
+      estimatedTimeRemaining,
     });
 
     try {
@@ -158,6 +222,15 @@ export async function generateImagesFromPrompts(
         sessionId
       );
 
+      // Track generation time
+      const generationTime = Date.now() - promptStartTime;
+      generationTimes.push(generationTime);
+
+      // Update average if we have enough samples
+      if (generationTimes.length >= 3) {
+        averageGenerationTime = generationTimes.slice(-10).reduce((a, b) => a + b, 0) / Math.min(generationTimes.length, 10);
+      }
+
       // Add metadata about the beat
       if (result.success && result.metadata) {
         result.metadata.prompt = prompt.prompt.prompt;
@@ -165,6 +238,10 @@ export async function generateImagesFromPrompts(
 
       results.push(result);
     } catch (error) {
+      // Track time even for errors
+      const generationTime = Date.now() - promptStartTime;
+      generationTimes.push(generationTime);
+
       // Create error result
       results.push({
         success: false,
@@ -315,11 +392,13 @@ export async function organizeAssetsInDaVinci(
  * 
  * @param sessionTimestamp - Session timestamp to process
  * @param progressCallback - Optional callback for progress updates
+ * @param cancellationToken - Optional cancellation token to stop processing
  * @returns Promise that resolves to pipeline result
  */
 export async function processEpisodeCompletePipeline(
   sessionTimestamp: number,
-  progressCallback?: ProgressCallback
+  progressCallback?: ProgressCallback,
+  cancellationToken?: CancellationToken
 ): Promise<PipelineResult> {
   const startTime = Date.now();
 
@@ -361,6 +440,21 @@ export async function processEpisodeCompletePipeline(
       };
     }
 
+    // Check for cancellation
+    if (cancellationToken?.isCancelled()) {
+      return {
+        success: false,
+        sessionTimestamp: sessionTimestamp,
+        episodeNumber: analyzedEpisode.episodeNumber,
+        episodeTitle: analyzedEpisode.title,
+        totalPrompts: prompts.length,
+        successfulGenerations: 0,
+        failedGenerations: 0,
+        generationResults: [],
+        errors: [`Operation cancelled: ${cancellationToken.getReason() || 'User cancelled'}`],
+      };
+    }
+
     // Generate images
     const generationResults = await generateImagesFromPrompts(prompts, (progress) => {
       progressCallback?.({
@@ -368,8 +462,9 @@ export async function processEpisodeCompletePipeline(
         totalSteps: 5,
         currentStepName: progress.currentStepName,
         progress: Math.round((progress.currentStep / 5) * 20),
+        estimatedTimeRemaining: progress.estimatedTimeRemaining,
       });
-    });
+    }, cancellationToken);
 
     const successfulGenerations = generationResults.filter(r => r.success).length;
     const failedGenerations = generationResults.filter(r => !r.success).length;
@@ -431,13 +526,15 @@ export async function processEpisodeCompletePipeline(
  * @param format - Format type ('cinematic' or 'vertical')
  * @param sessionTimestamp - Optional session timestamp (uses latest if not provided)
  * @param progressCallback - Optional callback for progress updates
+ * @param cancellationToken - Optional cancellation token to stop processing
  * @returns Promise that resolves to beat pipeline result
  */
 export async function processSingleBeat(
   beatId: string,
   format: 'cinematic' | 'vertical',
   sessionTimestamp?: number,
-  progressCallback?: ProgressCallback
+  progressCallback?: ProgressCallback,
+  cancellationToken?: CancellationToken
 ): Promise<BeatPipelineResult> {
   try {
     // Get session (use provided timestamp or latest)
@@ -484,6 +581,17 @@ export async function processSingleBeat(
       throw new Error(`Beat ${beatId} has no ${format} prompt`);
     }
 
+    // Check for cancellation
+    if (cancellationToken?.isCancelled()) {
+      return {
+        success: false,
+        beatId: beatId,
+        format: format,
+        sceneNumber: sceneNumber,
+        error: `Operation cancelled: ${cancellationToken.getReason() || 'User cancelled'}`,
+      };
+    }
+
     // Initialize SwarmUI session
     progressCallback?.({
       currentStep: 0,
@@ -495,12 +603,35 @@ export async function processSingleBeat(
     const sessionId = await initializeSession();
     const generationStartDate = new Date();
 
+    // Check for cancellation after session init
+    if (cancellationToken?.isCancelled()) {
+      return {
+        success: false,
+        beatId: beatId,
+        format: format,
+        sceneNumber: sceneNumber,
+        error: `Operation cancelled: ${cancellationToken.getReason() || 'User cancelled'}`,
+      };
+    }
+
+    // Get time estimation for single beat
+    let estimatedTimeRemaining: number | undefined;
+    try {
+      const stats = await getGenerationStatistics();
+      if (stats.average_generation_time > 0) {
+        estimatedTimeRemaining = stats.average_generation_time;
+      }
+    } catch (error) {
+      // Ignore if stats not available
+    }
+
     // Generate image
     progressCallback?.({
       currentStep: 1,
       totalSteps: 3,
       currentStepName: 'Generating image...',
       progress: 33,
+      estimatedTimeRemaining,
     });
 
     const generationResult = await generateImages(

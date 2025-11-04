@@ -293,6 +293,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [selectedBeat, setSelectedBeat] = useState<{ beat: BeatAnalysis; sceneNumber: number } | null>(null);
   const [isNewImageModalOpen, setIsNewImageModalOpen] = useState(false);
+  const [bulkAbortController, setBulkAbortController] = useState<AbortController | null>(null);
 
   // Count prompts for bulk processing
   const hasPrompts = analysis?.scenes?.some(scene =>
@@ -311,6 +312,9 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
     setIsBulkProcessing(true);
     setBulkError(null);
     setBulkResult(null);
+    const abortController = new AbortController();
+    setBulkAbortController(abortController);
+    
     setBulkProgress({
       currentStep: 0,
       totalSteps: 1,
@@ -348,17 +352,41 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
         });
       };
 
-      const result = await processEpisodeCompletePipeline(timestamp, progressCallback);
+      const result = await processEpisodeCompletePipeline(timestamp, progressCallback, abortController);
       setBulkResult(result);
 
       if (!result.success) {
         setBulkError(result.errors?.join(', ') || 'Pipeline processing failed');
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setBulkError(errorMessage);
+      if (err instanceof Error && err.name === 'AbortError') {
+        setBulkError('Operation cancelled by user');
+        const finalTimestamp = sessionTimestamp || timestamp || 0;
+        setBulkResult({
+          success: false,
+          sessionTimestamp: finalTimestamp,
+          episodeNumber: analysis?.episodeNumber || 0,
+          episodeTitle: analysis?.title || '',
+          totalPrompts: 0,
+          successfulGenerations: 0,
+          failedGenerations: 0,
+          generationResults: [],
+          errors: ['Operation cancelled'],
+        });
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+        setBulkError(errorMessage);
+      }
     } finally {
       setIsBulkProcessing(false);
+      setBulkAbortController(null);
+    }
+  };
+
+  const handleBulkCancel = () => {
+    if (bulkAbortController) {
+      bulkAbortController.abort();
+      setBulkAbortController(null);
     }
   };
 
@@ -495,6 +523,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
           setBulkResult(null);
           setBulkError(null);
         }}
+        onCancel={isBulkProcessing ? handleBulkCancel : undefined}
       />
 
       {/* Bulk Processing Result Display */}
