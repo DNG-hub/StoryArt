@@ -143,7 +143,14 @@ export async function organizeSwarmUIImages(
     
     // Verify folder exists
     if (!(await folderExists(episodeProjectPath))) {
-      throw new Error(`Episode project folder not found: ${episodeProjectPath}. Create it first with createEpisodeProject().`);
+      throw new Error(
+        `Episode project folder not found: ${episodeProjectPath}\n\n` +
+        `Troubleshooting:\n` +
+        `1. Create the episode project folder first using createEpisodeProject()\n` +
+        `2. Verify DaVinci projects path is correct: ${basePath}\n` +
+        `3. Check folder permissions (must be writable)\n` +
+        `4. Ensure episode number and title match the expected format`
+      );
     }
   } else {
     // Find episode project folder by number
@@ -153,7 +160,15 @@ export async function organizeSwarmUIImages(
     );
 
     if (!episodeFolder) {
-      throw new Error(`Episode project folder not found for episode ${episodeNumber}. Create it first with createEpisodeProject().`);
+      throw new Error(
+        `Episode project folder not found for episode ${episodeNumber}\n\n` +
+        `Searched in: ${basePath}\n\n` +
+        `Troubleshooting:\n` +
+        `1. Create the episode project folder first using createEpisodeProject()\n` +
+        `2. Verify episode number is correct: ${episodeNumber}\n` +
+        `3. Check DaVinci projects path: ${basePath}\n` +
+        `4. Ensure folder naming follows format: Episode_${String(episodeNumber).padStart(2, '0')}_*`
+      );
     }
 
     episodeProjectPath = path.join(basePath, episodeFolder);

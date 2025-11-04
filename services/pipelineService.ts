@@ -68,7 +68,15 @@ export async function fetchPromptsFromRedis(
   const sessionResponse = await getSessionByTimestamp(sessionTimestamp);
   
   if (!sessionResponse.success || !sessionResponse.data) {
-    throw new Error(`Failed to fetch session ${sessionTimestamp}: ${sessionResponse.error || 'Unknown error'}`);
+    const errorMsg = sessionResponse.error || 'Unknown error';
+    throw new Error(
+      `Failed to fetch session ${sessionTimestamp} from Redis.\n\n` +
+      `Error: ${errorMsg}\n\n` +
+      `Troubleshooting:\n` +
+      `1. Verify session was saved successfully\n` +
+      `2. Check Redis API is accessible\n` +
+      `3. Try re-analyzing the episode to create a new session`
+    );
   }
 
   const sessionData = sessionResponse.data;
@@ -169,11 +177,16 @@ export async function generateImagesFromPrompts(
     progress: 0,
   });
 
-  let sessionId: string;
+    let sessionId: string;
   try {
     sessionId = await initializeSession();
   } catch (error) {
-    throw new Error(`Failed to initialize SwarmUI session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(
+      `Failed to initialize SwarmUI session.\n\n` +
+      `${errorMsg}\n\n` +
+      `This prevents image generation. Please resolve the SwarmUI connection issue before continuing.`
+    );
   }
 
   // Check for cancellation
@@ -292,7 +305,15 @@ export async function organizeAssetsInDaVinci(
   const sessionResponse = await getSessionByTimestamp(sessionTimestamp);
   
   if (!sessionResponse.success || !sessionResponse.data) {
-    throw new Error(`Failed to fetch session for organization: ${sessionResponse.error || 'Unknown error'}`);
+    const errorMsg = sessionResponse.error || 'Unknown error';
+    throw new Error(
+      `Failed to fetch session for asset organization.\n\n` +
+      `Error: ${errorMsg}\n\n` +
+      `Troubleshooting:\n` +
+      `1. Verify session was saved successfully\n` +
+      `2. Check Redis API is accessible\n` +
+      `3. Ensure session contains episode data`
+    );
   }
 
   const analyzedEpisode: AnalyzedEpisode = sessionResponse.data.analyzedEpisode;
@@ -407,13 +428,29 @@ export async function processEpisodeCompletePipeline(
     const sessionResponse = await getSessionByTimestamp(sessionTimestamp);
     
     if (!sessionResponse.success || !sessionResponse.data) {
-      throw new Error(`Failed to fetch session: ${sessionResponse.error || 'Unknown error'}`);
+      const errorMsg = sessionResponse.error || 'Unknown error';
+      throw new Error(
+        `Failed to fetch session data from Redis.\n\n` +
+        `Error: ${errorMsg}\n\n` +
+        `Troubleshooting:\n` +
+        `1. Verify session was saved successfully\n` +
+        `2. Check Redis API is accessible\n` +
+        `3. Verify session timestamp is correct: ${sessionTimestamp}\n` +
+        `4. Try re-analyzing the episode to create a new session`
+      );
     }
 
     const analyzedEpisode: AnalyzedEpisode = sessionResponse.data.analyzedEpisode;
     
     if (!analyzedEpisode) {
-      throw new Error('No analyzed episode data found');
+      throw new Error(
+        `No analyzed episode data found in session.\n\n` +
+        `Troubleshooting:\n` +
+        `1. Ensure episode was analyzed before running pipeline\n` +
+        `2. Verify session contains analyzed episode data\n` +
+        `3. Try re-analyzing the episode script\n` +
+        `4. Check session data structure in Redis`
+      );
     }
 
     // Fetch prompts from Redis
@@ -543,7 +580,15 @@ export async function processSingleBeat(
       : await getLatestSession();
 
     if (!sessionResponse.success || !sessionResponse.data) {
-      throw new Error(`Failed to fetch session: ${sessionResponse.error || 'Unknown error'}`);
+      const errorMsg = sessionResponse.error || 'Unknown error';
+      throw new Error(
+        `Failed to fetch session data.\n\n` +
+        `Error: ${errorMsg}\n\n` +
+        `Troubleshooting:\n` +
+        `1. Verify session was saved successfully\n` +
+        `2. Check Redis API is accessible\n` +
+        `3. Try re-analyzing the episode to create a new session`
+      );
     }
 
     const analyzedEpisode: AnalyzedEpisode = sessionResponse.data.analyzedEpisode;

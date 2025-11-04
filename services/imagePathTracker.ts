@@ -117,7 +117,28 @@ export async function normalizeImagePath(
     return foundPath;
   }
 
-  throw new Error(`Image not found: ${imagePath} (searched in date folders)`);
+  // Provide detailed error message with search paths
+  const rawOutputPath = getSwarmUIRawOutputPathConfig();
+  const todayDate = formatDate(new Date());
+  const startDateStr = formatDate(generationStartDate);
+  const yesterdayDate = getYesterdayDate(generationStartDate);
+  
+  const searchedPaths = [
+    path.join(rawOutputPath, todayDate, imagePath),
+    path.join(rawOutputPath, startDateStr, imagePath),
+    path.join(rawOutputPath, yesterdayDate, imagePath),
+  ].filter((p, i, arr) => arr.indexOf(p) === i); // Remove duplicates
+  
+  throw new Error(
+    `Image not found: ${imagePath}\n\n` +
+    `Searched in:\n${searchedPaths.map(p => `  - ${p}`).join('\n')}\n\n` +
+    `Troubleshooting:\n` +
+    `1. Verify image was generated successfully\n` +
+    `2. Check SwarmUI output path: ${getSwarmUIOutputPathConfig()}\n` +
+    `3. Verify date folder structure exists\n` +
+    `4. Check if generation completed (may still be processing)\n` +
+    `5. Verify image filename matches exactly (case-sensitive)`
+  );
 }
 
 /**

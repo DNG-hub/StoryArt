@@ -108,7 +108,32 @@ export const initializeSession = async (maxRetries: number = 3): Promise<string>
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`SwarmUI Session Error: ${response.status} - ${errorBody}`);
+        let errorMessage = `SwarmUI session initialization failed (HTTP ${response.status})`;
+        
+        // User-friendly error messages with actionable suggestions
+        if (response.status === 404) {
+          errorMessage = `SwarmUI API endpoint not found. Please verify:\n` +
+            `1. SwarmUI is running at ${SWARMUI_API_BASE_URL}\n` +
+            `2. The API URL is correct in your .env file\n` +
+            `3. SwarmUI version supports the /API/GetNewSession endpoint`;
+        } else if (response.status === 500) {
+          errorMessage = `SwarmUI server error. Please check:\n` +
+            `1. SwarmUI logs for errors\n` +
+            `2. SwarmUI service is fully started\n` +
+            `3. Try restarting SwarmUI`;
+        } else if (response.status === 503) {
+          errorMessage = `SwarmUI service unavailable. Please check:\n` +
+            `1. SwarmUI is running\n` +
+            `2. No other process is using the same port\n` +
+            `3. Try restarting SwarmUI`;
+        } else {
+          errorMessage += `\n\nDetails: ${errorBody}\n\nTroubleshooting:\n` +
+            `1. Verify SwarmUI is running: curl ${SWARMUI_API_BASE_URL}/API/GetNewSession\n` +
+            `2. Check SwarmUI logs for errors\n` +
+            `3. Verify network connectivity to ${SWARMUI_API_BASE_URL}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
@@ -122,7 +147,14 @@ export const initializeSession = async (maxRetries: number = 3): Promise<string>
       clearTimeout(timeoutId);
       
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('SwarmUI session initialization timed out after 30 seconds');
+        throw new Error(
+          `SwarmUI session initialization timed out after 30 seconds.\n\n` +
+          `Troubleshooting:\n` +
+          `1. Check if SwarmUI is running: ${SWARMUI_API_BASE_URL}\n` +
+          `2. Verify SwarmUI is not overloaded (check queue status)\n` +
+          `3. Check network connectivity and firewall settings\n` +
+          `4. Try restarting SwarmUI service`
+        );
       }
       
       throw error;
@@ -167,7 +199,35 @@ export const generateImages = async (
 
         if (!response.ok) {
           const errorBody = await response.text();
-          throw new Error(`SwarmUI Generation Error: ${response.status} - ${errorBody}`);
+          let errorMessage = `Image generation failed (HTTP ${response.status})`;
+          
+          // User-friendly error messages with actionable suggestions
+          if (response.status === 400) {
+            errorMessage = `Invalid generation request. Please check:\n` +
+              `1. Prompt is not empty\n` +
+              `2. Session ID is valid\n` +
+              `3. Request parameters are correct\n\n` +
+              `Details: ${errorBody}`;
+          } else if (response.status === 404) {
+            errorMessage = `Generation endpoint not found. Please verify:\n` +
+              `1. SwarmUI version supports /API/Generate endpoint\n` +
+              `2. API URL is correct: ${SWARMUI_API_BASE_URL}\n` +
+              `3. SwarmUI is fully started`;
+          } else if (response.status === 500 || response.status === 503) {
+            errorMessage = `SwarmUI server error during generation. Please check:\n` +
+              `1. SwarmUI logs for model loading errors\n` +
+              `2. GPU memory availability\n` +
+              `3. SwarmUI service health\n` +
+              `4. Try restarting SwarmUI if errors persist\n\n` +
+              `Details: ${errorBody}`;
+          } else {
+            errorMessage += `\n\nDetails: ${errorBody}\n\nTroubleshooting:\n` +
+              `1. Check SwarmUI logs\n` +
+              `2. Verify SwarmUI is running and healthy\n` +
+              `3. Try generating with a simpler prompt first`;
+          }
+          
+          throw new Error(errorMessage);
         }
 
         const result = await response.json();
@@ -197,7 +257,19 @@ export const generateImages = async (
         clearTimeout(timeoutId);
         
         if (error instanceof Error && error.name === 'AbortError') {
-          throw new Error('Image generation timed out after 5 minutes');
+          throw new Error(
+            `Image generation timed out after 5 minutes.\n\n` +
+            `Possible causes:\n` +
+            `1. SwarmUI queue is very long (check queue status)\n` +
+            `2. GPU is overloaded or out of memory\n` +
+            `3. Model is taking longer than expected\n` +
+            `4. Network connectivity issues\n\n` +
+            `Troubleshooting:\n` +
+            `1. Check SwarmUI queue: ${SWARMUI_API_BASE_URL}/API/GetQueueStatus\n` +
+            `2. Monitor GPU usage and memory\n` +
+            `3. Try generating fewer images per request\n` +
+            `4. Check SwarmUI logs for errors`
+          );
         }
         
         throw error;
@@ -205,9 +277,23 @@ export const generateImages = async (
     }, maxRetries);
   } catch (error) {
     console.error("Failed to generate images:", error);
+    
+    // Provide user-friendly error message
+    let errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    
+    // Add retry suggestion for network errors
+    if (error instanceof Error && (
+      error.message.includes('fetch') || 
+      error.message.includes('network') ||
+      error.message.includes('ECONNREFUSED') ||
+      error.message.includes('Failed to fetch')
+    )) {
+      errorMessage += `\n\nRetry suggestion: Check network connectivity and SwarmUI service status.`;
+    }
+    
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: errorMessage
     };
   }
 };
