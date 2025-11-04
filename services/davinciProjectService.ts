@@ -25,8 +25,16 @@ function getDaVinciProjectsPath(): string {
 /**
  * Sanitize a string for use in Windows filenames
  * Removes/replaces invalid characters: < > : " | ? * \ /
+ * 
+ * This function ensures Windows filename compatibility by:
+ * - Replacing invalid characters with underscores
+ * - Handling reserved Windows names (CON, PRN, etc.)
+ * - Limiting filename length to 200 characters
+ * 
+ * @param filename - The filename to sanitize
+ * @returns Sanitized filename safe for Windows filesystem
  */
-function sanitizeFilename(filename: string): string {
+export function sanitizeFilename(filename: string): string {
   // Replace invalid Windows filename characters
   let sanitized = filename
     .replace(/[<>:"|?*\\/]/g, '_')  // Replace invalid chars with underscore
