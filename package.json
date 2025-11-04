@@ -12,7 +12,9 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:pipeline": "node test-pipeline-validation.js",
+    "test:all": "npm run test:run && npm run test:pipeline"
   },
   "dependencies": {
     "@google/genai": "^1.27.0",

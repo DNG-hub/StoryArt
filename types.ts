@@ -252,3 +252,93 @@ export interface EnhancedImagePath {
   exists: boolean;
   metadata?: ImageMetadata;
 }
+
+// DaVinci Project Service interfaces
+export interface OrganizationResult {
+  success: boolean;
+  episodeProjectPath: string;
+  organizedImages: OrganizedImage[];
+  failedImages: FailedImage[];
+  summary: {
+    totalImages: number;
+    successfulCopies: number;
+    failedCopies: number;
+  };
+  error?: string;
+}
+
+export interface OrganizedImage {
+  originalPath: string;
+  destinationPath: string;
+  sceneNumber: number;
+  beatId: string;
+  format: 'cinematic' | 'vertical';
+  version: number;
+  filename: string;
+}
+
+export interface FailedImage {
+  originalPath: string;
+  error: string;
+  sceneNumber: number;
+  beatId: string;
+  format: 'cinematic' | 'vertical';
+}
+
+export interface ProjectStructure {
+  episodeProjectPath: string;
+  episodeNumber: number;
+  episodeTitle: string;
+  folders: ProjectFolder[];
+  isValid: boolean;
+  errors?: string[];
+}
+
+export interface ProjectFolder {
+  path: string;
+  name: string;
+  type: 'assets' | 'images' | 'longform' | 'shortform' | 'scene' | 'audio' | 'video' | 'timelines' | 'exports';
+  exists: boolean;
+  subfolders?: ProjectFolder[];
+}
+
+// Pipeline Orchestrator Service interfaces
+export interface BeatPrompt {
+  beatId: string;
+  sceneNumber: number;
+  format: 'cinematic' | 'vertical';
+  prompt: SwarmUIPrompt;
+  beat_script_text: string;
+}
+
+export interface PipelineResult {
+  success: boolean;
+  sessionTimestamp: number;
+  episodeNumber: number;
+  episodeTitle: string;
+  totalPrompts: number;
+  successfulGenerations: number;
+  failedGenerations: number;
+  organizationResult?: OrganizationResult;
+  generationResults: ImageGenerationResult[];
+  errors?: string[];
+  duration?: number; // Processing duration in milliseconds
+}
+
+export interface BeatPipelineResult {
+  success: boolean;
+  beatId: string;
+  format: 'cinematic' | 'vertical';
+  sceneNumber: number;
+  generationResult?: ImageGenerationResult;
+  organizationResult?: OrganizationResult;
+  error?: string;
+}
+
+export interface PipelineProgress {
+  currentStep: number;
+  totalSteps: number;
+  currentStepName: string;
+  progress: number; // 0-100
+  estimatedTimeRemaining?: number; // milliseconds
+}
