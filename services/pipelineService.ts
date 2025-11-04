@@ -53,13 +53,20 @@ export class CancellationToken {
 }
 
 /**
- * Fetch prompts from Redis session data
+ * Fetch prompts from Redis session for image generation.
  * 
- * Extracts prompts from analyzedEpisode.scenes[].beats[].prompts
- * Filters only NEW_IMAGE beats
+ * Extracts prompts from analyzed episode data, filters only beats with NEW_IMAGE decisions,
+ * and returns an array of BeatPrompt objects ready for image generation.
  * 
- * @param sessionTimestamp - Session timestamp to fetch from Redis
+ * @param sessionTimestamp - The session timestamp to fetch prompts from
  * @returns Promise that resolves to array of BeatPrompt objects
+ * @throws Error if session not found or episode data is missing
+ * 
+ * @example
+ * ```typescript
+ * const prompts = await fetchPromptsFromRedis(1234567890);
+ * // Returns: [{ beatId: 's1-b1', sceneNumber: 1, format: 'cinematic', prompt: {...}, ... }]
+ * ```
  */
 export async function fetchPromptsFromRedis(
   sessionTimestamp: number
@@ -289,15 +296,27 @@ export async function generateImagesFromPrompts(
 }
 
 /**
- * Organize assets in DaVinci project
+ * Organize assets in DaVinci project structure.
  * 
- * Extracts episode number, creates DaVinci project if needed,
- * normalizes image paths, and organizes images
+ * Takes image generation results, normalizes paths, enhances with metadata,
+ * creates DaVinci project folder structure if needed, and organizes images
+ * into appropriate folders by scene and format.
  * 
- * @param generationResults - Array of image generation results
- * @param sessionTimestamp - Session timestamp to get episode info
+ * @param generationResults - Array of image generation results from SwarmUI
+ * @param sessionTimestamp - Session timestamp to fetch episode info from Redis
  * @param progressCallback - Optional callback for progress updates
- * @returns Promise that resolves to organization result
+ * @returns Promise that resolves to OrganizationResult with success status and organized images
+ * @throws Error if session not found or episode data is missing
+ * 
+ * @example
+ * ```typescript
+ * const organizationResult = await organizeAssetsInDaVinci(
+ *   generationResults,
+ *   sessionTimestamp,
+ *   (progress) => console.log(`Progress: ${progress.progress}%`)
+ * );
+ * // Returns: { success: true, organizedImages: [...], failedImages: [...], ... }
+ * ```
  */
 export async function organizeAssetsInDaVinci(
   generationResults: ImageGenerationResult[],
@@ -408,16 +427,33 @@ export async function organizeAssetsInDaVinci(
 }
 
 /**
- * Process complete episode pipeline
+ * Process complete episode pipeline from Redis to SwarmUI to DaVinci.
  * 
- * Fetches prompts from Redis, filters NEW_IMAGE beats,
- * initializes SwarmUI session, generates images, normalizes paths,
- * and organizes assets in DaVinci
+ * Orchestrates the full pipeline workflow:
+ * 1. Fetches prompts from Redis session
+ * 2. Filters beats with NEW_IMAGE decisions
+ * 3. Initializes SwarmUI session
+ * 4. Generates images for all prompts
+ * 5. Normalizes and enhances image paths
+ * 6. Creates DaVinci project structure
+ * 7. Organizes images into DaVinci folders
  * 
- * @param sessionTimestamp - Session timestamp to process
- * @param progressCallback - Optional callback for progress updates
- * @param cancellationToken - Optional cancellation token to stop processing
- * @returns Promise that resolves to pipeline result
+ * @param sessionTimestamp - Session timestamp to process (from analyzed episode)
+ * @param progressCallback - Optional callback for real-time progress updates
+ * @param cancellationToken - Optional cancellation token to stop processing early
+ * @returns Promise that resolves to PipelineResult with success status, counts, and results
+ * 
+ * @example
+ * ```typescript
+ * const result = await processEpisodeCompletePipeline(
+ *   sessionTimestamp,
+ *   (progress) => updateUI(progress),
+ *   cancellationToken
+ * );
+ * if (result.success) {
+ *   console.log(`Generated ${result.successfulGenerations} images`);
+ * }
+ * ```
  */
 export async function processEpisodeCompletePipeline(
   sessionTimestamp: number,
@@ -575,17 +611,30 @@ export async function processEpisodeCompletePipeline(
 }
 
 /**
- * Process single beat image generation
+ * Process single beat image generation and organization.
  * 
- * Fetches prompt from analyzed episode, initializes/reuses SwarmUI session,
- * generates image, normalizes path, copies to DaVinci
+ * Generates images for a single beat in either cinematic or vertical format,
+ * normalizes paths, and organizes the result in DaVinci project structure.
  * 
- * @param beatId - Beat ID (e.g., "s1-b1")
- * @param format - Format type ('cinematic' or 'vertical')
+ * @param beatId - The beat ID to process (e.g., 's1-b1')
+ * @param format - Image format: 'cinematic' (16:9) or 'vertical' (9:16)
  * @param sessionTimestamp - Optional session timestamp (uses latest if not provided)
  * @param progressCallback - Optional callback for progress updates
  * @param cancellationToken - Optional cancellation token to stop processing
- * @returns Promise that resolves to beat pipeline result
+ * @returns Promise that resolves to BeatPipelineResult with success status and generation result
+ * 
+ * @example
+ * ```typescript
+ * const result = await processSingleBeat(
+ *   's1-b1',
+ *   'cinematic',
+ *   sessionTimestamp,
+ *   (progress) => console.log(progress.currentStepName)
+ * );
+ * if (result.success && result.generationResult?.imagePaths) {
+ *   console.log('Images:', result.generationResult.imagePaths);
+ * }
+ * ```
  */
 export async function processSingleBeat(
   beatId: string,

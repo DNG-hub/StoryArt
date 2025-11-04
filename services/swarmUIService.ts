@@ -221,10 +221,25 @@ export const initializeSession = async (maxRetries: number = 3): Promise<string>
 /**
  * Generate images using SwarmUI's native API endpoint.
  * 
+ * Sends generation request to SwarmUI with prompt text and session ID.
+ * Returns image paths in various formats (filename, relative, or absolute).
+ * Includes retry logic with exponential backoff for network/server errors.
+ * 
  * @param prompt - The prompt text (with stage directions intrinsic)
- * @param imagesCount - Number of images to generate (default: 3)
+ * @param imagesCount - Number of images to generate per prompt (default: 3)
  * @param sessionId - The SwarmUI session ID from initializeSession()
- * @returns A promise that resolves with image paths (filename, relative, or absolute)
+ * @param maxRetries - Maximum number of retry attempts (default: 3)
+ * @returns Promise that resolves to ImageGenerationResult with success status and image paths
+ * @throws Error if generation fails after all retries
+ * 
+ * @example
+ * ```typescript
+ * const sessionId = await initializeSession();
+ * const result = await generateImages('A beautiful sunset', 3, sessionId);
+ * if (result.success && result.imagePaths) {
+ *   console.log('Generated images:', result.imagePaths);
+ * }
+ * ```
  */
 export const generateImages = async (
   prompt: string,
