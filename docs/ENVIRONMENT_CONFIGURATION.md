@@ -52,15 +52,17 @@ POSTGRES_DB=<database_name>
 ### Redis Configuration (Shared Cache)
 ```env
 # Redis Connection to StoryTeller's Cache
-REDIS_URL=redis://<host>:<port>/<db_number>
+# StoryArt ALWAYS uses database 0 for stability
+REDIS_URL=redis://<host>:<port>/0
 REDIS_PORT=<port>
-REDIS_DB=<database_number>
+# Note: REDIS_DB is ignored - StoryArt always uses database 0
 ```
 
 **Cache Strategy:**
-- **Shared Instance**: Uses StoryTeller's Redis server
-- **Separate Database**: Different DB number to avoid conflicts
+- **Shared Instance**: Uses StoryTeller's Redis server (if configured)
+- **Fixed Database**: StoryArt ALWAYS uses database 0 (standardized for stability)
 - **Purpose**: API response caching, session storage, rate limiting
+- **Important**: StoryArt will override any database number in REDIS_URL to ensure database 0 is used
 
 ## 🤖 AI Provider Configuration
 

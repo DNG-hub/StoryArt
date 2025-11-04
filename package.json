@@ -15,7 +15,9 @@
     "test:coverage": "vitest run --coverage",
     "test:pipeline": "node test-pipeline-validation.js",
     "test:all": "npm run test:run && npm run test:pipeline",
-    "validate:env": "node scripts/validate-environment.js"
+    "validate:env": "node scripts/validate-environment.js",
+    "migrate:redis:1-to-0": "tsx scripts/migrate-redis-database-1-to-0.js",
+    "migrate:redis:1-to-0:dry-run": "DRY_RUN=true tsx scripts/migrate-redis-database-1-to-0.js"
   },
   "dependencies": {
     "@google/genai": "^1.27.0",

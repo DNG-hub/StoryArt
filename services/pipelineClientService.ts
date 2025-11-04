@@ -5,9 +5,51 @@
 import type { PipelineResult, BeatPipelineResult, PipelineProgress } from '../types';
 import type { ProgressCallback } from './pipelineService';
 
-const API_BASE_URL = import.meta.env.VITE_REDIS_API_URL || 
-                     import.meta.env.VITE_STORYTELLER_API_URL || 
-                     'http://localhost:7802';
+// Get base URL - should NOT include /api/v1 path
+// Normalize URLs - remove trailing slashes and /api/v1 if present
+const normalizeUrl = (url: string): string => {
+  let normalized = url.trim();
+  if (normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1);
+  }
+  // If it already includes /api/v1, remove it so we can add it consistently
+  if (normalized.endsWith('/api/v1')) {
+    normalized = normalized.slice(0, -7);
+  }
+  return normalized;
+};
+
+const getAPIBaseURL = (): string => {
+  let baseUrl = 'http://localhost:7802';
+  
+  // Try Node.js environment first
+  if (typeof process !== 'undefined' && process.env) {
+    baseUrl = process.env.VITE_REDIS_API_URL || 
+              process.env.REDIS_API_URL ||
+              process.env.VITE_STORYTELLER_API_URL || 
+              process.env.STORYTELLER_API_URL ||
+              baseUrl;
+  }
+  
+  // Try Vite/browser environment (with safe checks)
+  if (typeof import.meta !== 'undefined') {
+    try {
+      const env = import.meta.env;
+      if (env) {
+        baseUrl = env.VITE_REDIS_API_URL || 
+                  env.VITE_STORYTELLER_API_URL || 
+                  baseUrl;
+      }
+    } catch (e) {
+      // Ignore errors accessing import.meta.env
+      console.warn('Could not access import.meta.env:', e);
+    }
+  }
+  
+  return normalizeUrl(baseUrl);
+};
+
+const API_BASE_URL = getAPIBaseURL();
 
 /**
  * Process complete episode pipeline via API
@@ -33,8 +75,25 @@ export async function processEpisodeCompletePipeline(
     })
       .then(async (response) => {
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to process episode');
+          // Check content type before parsing
+          const contentType = response.headers.get('content-type');
+          let errorMessage = 'Failed to process episode';
+          
+          if (contentType && contentType.includes('application/json')) {
+            try {
+              const error = await response.json();
+              errorMessage = error.error || error.message || errorMessage;
+            } catch (e) {
+              // If JSON parsing fails, use status text
+              errorMessage = `${response.status} ${response.statusText}`;
+            }
+          } else {
+            // Try to get text for HTML error pages
+            const text = await response.text();
+            errorMessage = `Server error (${response.status}): ${text.substring(0, 200)}`;
+          }
+          
+          throw new Error(errorMessage);
         }
 
         // Read SSE stream
@@ -129,8 +188,25 @@ export async function processSingleBeat(
     })
       .then(async (response) => {
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to process beat');
+          // Check content type before parsing
+          const contentType = response.headers.get('content-type');
+          let errorMessage = 'Failed to process beat';
+          
+          if (contentType && contentType.includes('application/json')) {
+            try {
+              const error = await response.json();
+              errorMessage = error.error || error.message || errorMessage;
+            } catch (e) {
+              // If JSON parsing fails, use status text
+              errorMessage = `${response.status} ${response.statusText}`;
+            }
+          } else {
+            // Try to get text for HTML error pages
+            const text = await response.text();
+            errorMessage = `Server error (${response.status}): ${text.substring(0, 200)}`;
+          }
+          
+          throw new Error(errorMessage);
         }
 
         // Read SSE stream

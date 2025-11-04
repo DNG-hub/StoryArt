@@ -142,7 +142,7 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
       <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold text-brand-blue">
-            Generate Image - Scene {sceneNumber} Beat {beat.beatId}
+            Create Image - Scene {sceneNumber} Beat {beat.beatId}
           </h2>
           <button
             onClick={onClose}
@@ -222,10 +222,10 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Generating...
+                Creating...
               </span>
             ) : (
-              'Generate Image'
+              'Create Image'
             )}
           </button>
           {isGenerating && (
@@ -281,7 +281,7 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
         {result?.success && (
           <div className="mb-4 space-y-3">
             <div className="p-3 bg-green-900/50 border border-green-700 rounded-md">
-              <p className="text-green-200 text-sm font-semibold mb-2">✅ Image generated successfully!</p>
+              <p className="text-green-200 text-sm font-semibold mb-2">✅ Image created successfully!</p>
               
               {/* Organized Image Paths */}
               {getOrganizedPaths().length > 0 && (
@@ -311,7 +311,7 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
               {/* Original Image Paths (if no organized paths) */}
               {getOrganizedPaths().length === 0 && getResultImagePaths().length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs text-gray-400 font-semibold">Generated Image Paths:</p>
+                  <p className="text-xs text-gray-400 font-semibold">Created Image Paths:</p>
                   {getResultImagePaths().map((path, idx) => (
                     <div key={idx} className="bg-gray-800 p-2 rounded flex items-center gap-2">
                       <code className="text-xs text-gray-300 flex-1 truncate">{path}</code>

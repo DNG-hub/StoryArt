@@ -7,12 +7,23 @@ const STORAGE_KEY = 'storyart-latest-session';
 // Note: Base URL should NOT include /api/v1 - it's added per endpoint
 // Support both Vite (browser) and Node.js environments
 const getEnvVar = (key: string): string | undefined => {
+  // Try Node.js environment first
   if (typeof process !== 'undefined' && process.env) {
     return process.env[key];
   }
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    return import.meta.env[key];
+  
+  // Try Vite/browser environment (with safe checks)
+  if (typeof import.meta !== 'undefined') {
+    try {
+      const env = import.meta.env;
+      if (env) {
+        return env[key];
+      }
+    } catch (e) {
+      // Ignore errors accessing import.meta.env
+    }
   }
+  
   return undefined;
 };
 

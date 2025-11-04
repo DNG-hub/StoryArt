@@ -26,7 +26,36 @@ let redisClient = null;
 
 const initializeRedis = async () => {
   try {
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379/0';
+    // StoryArt uses Redis database 0 as standard for stability
+    // This ensures consistent behavior across all deployments
+    // If REDIS_URL is provided, it will be used, but database 0 is preferred
+    let redisUrl = process.env.REDIS_URL;
+    
+    // If REDIS_URL is provided, ensure it uses database 0
+    if (redisUrl) {
+      // Parse the URL and ensure database is 0
+      const urlMatch = redisUrl.match(/^(redis:\/\/[^\/]+)\/(\d+)$/);
+      if (urlMatch) {
+        // Force database 0 for consistency
+        redisUrl = `${urlMatch[1]}/0`;
+        if (parseInt(urlMatch[2], 10) !== 0) {
+          console.warn(`⚠️  REDIS_URL specified database ${urlMatch[2]}, but StoryArt uses database 0. Overriding to database 0 for stability.`);
+        }
+      } else if (!redisUrl.includes('/')) {
+        // URL doesn't have database number, add /0
+        redisUrl = `${redisUrl}/0`;
+      }
+    } else {
+      // Default to localhost:6379/database 0
+      redisUrl = 'redis://localhost:6379/0';
+    }
+    
+    // Log the database being used for transparency
+    const dbMatch = redisUrl.match(/\/(\d+)$/);
+    const dbNumber = dbMatch ? dbMatch[1] : '0';
+    console.log(`📊 StoryArt Redis Configuration: ${redisUrl}`);
+    console.log(`📊 Using Redis database ${dbNumber} (standard for StoryArt)`);
+    
     redisClient = createClient({
       url: redisUrl
     });
@@ -37,6 +66,7 @@ const initializeRedis = async () => {
 
     redisClient.on('connect', () => {
       console.log('✅ Redis connected successfully');
+      console.log(`✅ Redis database ${dbNumber} is active`);
     });
 
     await redisClient.connect();
@@ -280,9 +310,11 @@ app.post('/api/v1/pipeline/process-episode', async (req, res) => {
     }
 
     // Use Server-Sent Events (SSE) for progress updates
+    // Set headers BEFORE any writes to ensure SSE format
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for nginx
 
     const progressCallback = (progress) => {
       res.write(`data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`);
@@ -293,14 +325,39 @@ app.post('/api/v1/pipeline/process-episode', async (req, res) => {
       res.write(`data: ${JSON.stringify({ type: 'complete', data: result })}\n\n`);
       res.end();
     } catch (error) {
-      res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
-      res.end();
+      // Send error via SSE stream if headers are already set
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'Unknown error' })}\n\n`);
+        res.end();
+      } catch (writeError) {
+        // If we can't write to stream, send JSON error response
+        console.error('Failed to write SSE error:', writeError);
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to process episode pipeline'
+          });
+        }
+      }
     }
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to process episode pipeline'
-    });
+    // Handle errors before SSE headers are set
+    console.error('Error in process-episode endpoint:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to process episode pipeline'
+      });
+    } else {
+      // Headers already sent, try to send via SSE
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'Unknown error' })}\n\n`);
+        res.end();
+      } catch (writeError) {
+        console.error('Failed to write SSE error after headers sent:', writeError);
+        res.end();
+      }
+    }
   }
 });
 
@@ -316,9 +373,11 @@ app.post('/api/v1/pipeline/process-beat', async (req, res) => {
     }
 
     // Use Server-Sent Events (SSE) for progress updates
+    // Set headers BEFORE any writes to ensure SSE format
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for nginx
 
     const progressCallback = (progress) => {
       res.write(`data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`);
@@ -329,14 +388,39 @@ app.post('/api/v1/pipeline/process-beat', async (req, res) => {
       res.write(`data: ${JSON.stringify({ type: 'complete', data: result })}\n\n`);
       res.end();
     } catch (error) {
-      res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
-      res.end();
+      // Send error via SSE stream if headers are already set
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'Unknown error' })}\n\n`);
+        res.end();
+      } catch (writeError) {
+        // If we can't write to stream, send JSON error response
+        console.error('Failed to write SSE error:', writeError);
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to process beat pipeline'
+          });
+        }
+      }
     }
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to process beat pipeline'
-    });
+    // Handle errors before SSE headers are set
+    console.error('Error in process-beat endpoint:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to process beat pipeline'
+      });
+    } else {
+      // Headers already sent, try to send via SSE
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'Unknown error' })}\n\n`);
+        res.end();
+      } catch (writeError) {
+        console.error('Failed to write SSE error after headers sent:', writeError);
+        res.end();
+      }
+    }
   }
 });
 

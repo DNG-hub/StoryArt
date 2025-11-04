@@ -12,12 +12,23 @@ import type {
 // SwarmUI API base URL - uses native API endpoints (not Stable Diffusion API)
 // Support both Vite (browser) and Node.js environments
 const getEnvVar = (key: string): string | undefined => {
+  // Try Node.js environment first
   if (typeof process !== 'undefined' && process.env) {
     return process.env[key];
   }
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    return import.meta.env[key];
+  
+  // Try Vite/browser environment (with safe checks)
+  if (typeof import.meta !== 'undefined') {
+    try {
+      const env = import.meta.env;
+      if (env) {
+        return env[key];
+      }
+    } catch (e) {
+      // Ignore errors accessing import.meta.env
+    }
   }
+  
   return undefined;
 };
 
