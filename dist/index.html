@@ -5,7 +5,40 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StoryTeller SwarmUI Prompt Architect</title>
+    <!-- Tailwind CDN used for development - Replace with PostCSS plugin for production -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Suppress production warning in development
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        console.warn = (function(originalWarn) {
+          return function() {
+            if (arguments[0] && typeof arguments[0] === 'string' && arguments[0].includes('cdn.tailwindcss.com')) {
+              return; // Suppress Tailwind CDN warning in development
+            }
+            originalWarn.apply(console, arguments);
+          };
+        })(console.warn);
+      }
+
+      // Suppress expected network errors for session restore endpoints
+      // These 404s are expected when Redis API services aren't running
+      const originalError = console.error;
+      console.error = function() {
+        const message = arguments[0];
+        if (typeof message === 'string') {
+          // Suppress expected 404 errors from session restore endpoints
+          if (message.includes('/session/latest') && message.includes('404')) {
+            return; // Silently ignore expected 404s
+          }
+          if (message.includes('Failed to load resource') && 
+              (message.includes(':7802/api/v1/session') || 
+               message.includes(':8000/api/v1/session'))) {
+            return; // Silently ignore expected session API failures
+          }
+        }
+        originalError.apply(console, arguments);
+      };
+    </script>
     <script>
       tailwind.config = {
         theme: {
@@ -29,7 +62,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="/assets/index-6x6B8Dw9.js"></script>
+  <script type="module" crossorigin src="/assets/index-HpBzl-vy.js"></script>
 </head>
   <body class="bg-gray-900 text-gray-100 font-sans">
     <div id="root"></div>
