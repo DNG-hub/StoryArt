@@ -232,3 +232,23 @@ export interface GenerationStats {
   total_generations: number;
   average_generation_time: number;
 }
+
+// Image Path Tracker interfaces for SwarmUI to DaVinci pipeline
+export interface ImageMetadata {
+  sceneNumber: number;
+  beatId: string;
+  format: 'cinematic' | 'vertical';
+  prompt: string;
+  generationStartDate: Date;
+}
+
+export interface EnhancedImagePath {
+  originalPath: string;
+  normalizedPath: string;
+  sceneNumber: number;
+  beatId: string;
+  format: 'cinematic' | 'vertical';
+  filename: string;
+  exists: boolean;
+  metadata?: ImageMetadata;
+}
