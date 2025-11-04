@@ -159,6 +159,22 @@ const getSessionFromLocalStorage = (): SwarmUIExportData | null => {
 };
 
 /**
+ * Gets the session timestamp from localStorage
+ */
+export const getSessionTimestampFromLocalStorage = (): number | null => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+    
+    const parsed = JSON.parse(stored);
+    return parsed.timestamp || null;
+  } catch (error) {
+    console.warn('Failed to read session timestamp from localStorage:', error);
+    return null;
+  }
+};
+
+/**
  * Fetches the latest session data from the Redis API, with localStorage fallback.
  * 
  * @param skipApiCalls - If true, only check localStorage (avoids network calls and console errors)

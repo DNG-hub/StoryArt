@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { createClient } from 'redis';
 import dotenv from 'dotenv';
+import { processEpisodeCompletePipeline, processSingleBeat } from './services/pipelineService.js';
 
 // Load environment variables
 dotenv.config();
@@ -266,6 +267,79 @@ app.get('/api/v1/session/:timestamp', async (req, res) => {
   }
 });
 
+// Pipeline API endpoints
+app.post('/api/v1/pipeline/process-episode', async (req, res) => {
+  try {
+    const { sessionTimestamp } = req.body;
+
+    if (!sessionTimestamp) {
+      return res.status(400).json({
+        success: false,
+        error: 'sessionTimestamp is required'
+      });
+    }
+
+    // Use Server-Sent Events (SSE) for progress updates
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const progressCallback = (progress) => {
+      res.write(`data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`);
+    };
+
+    try {
+      const result = await processEpisodeCompletePipeline(sessionTimestamp, progressCallback);
+      res.write(`data: ${JSON.stringify({ type: 'complete', data: result })}\n\n`);
+      res.end();
+    } catch (error) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+      res.end();
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to process episode pipeline'
+    });
+  }
+});
+
+app.post('/api/v1/pipeline/process-beat', async (req, res) => {
+  try {
+    const { beatId, format, sessionTimestamp } = req.body;
+
+    if (!beatId || !format) {
+      return res.status(400).json({
+        success: false,
+        error: 'beatId and format are required'
+      });
+    }
+
+    // Use Server-Sent Events (SSE) for progress updates
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const progressCallback = (progress) => {
+      res.write(`data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`);
+    };
+
+    try {
+      const result = await processSingleBeat(beatId, format, sessionTimestamp, progressCallback);
+      res.write(`data: ${JSON.stringify({ type: 'complete', data: result })}\n\n`);
+      res.end();
+    } catch (error) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+      res.end();
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to process beat pipeline'
+    });
+  }
+});
+
 // Start server
 const startServer = async () => {
   // Try to initialize Redis (non-blocking)
@@ -280,6 +354,8 @@ const startServer = async () => {
     console.log(`   GET    /api/v1/session/latest  - Get latest session`);
     console.log(`   GET    /api/v1/session/list    - List all sessions`);
     console.log(`   GET    /api/v1/session/:timestamp - Get session by timestamp`);
+    console.log(`   POST   /api/v1/pipeline/process-episode - Process episode pipeline (SSE)`);
+    console.log(`   POST   /api/v1/pipeline/process-beat - Process single beat (SSE)`);
     console.log(`   GET    /health                 - Health check\n`);
   });
 };

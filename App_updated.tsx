@@ -456,6 +456,11 @@ function App() {
               isLoading={isLoading}
               loadingMessage={loadingMessage}
               error={error}
+              onReset={() => {
+                setAnalyzedEpisode(null);
+                setError(null);
+              }}
+              sessionTimestamp={undefined}
             />
           </div>
           {isInputCollapsed && (

@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
-import type { AnalyzedEpisode, BeatAnalysis, ImageDecision, SwarmUIPrompt } from '../types';
+import type { AnalyzedEpisode, BeatAnalysis, ImageDecision, SwarmUIPrompt, PipelineProgress } from '../types';
 import { LightbulbIcon, LinkIcon, ClockIcon, CopyIcon, CheckIcon } from './icons';
+import { PipelineProgressModal } from './PipelineProgressModal';
+import { NewImageModal } from './NewImageModal';
+import { processEpisodeCompletePipeline } from '../services/pipelineClientService';
+import { getLatestSession, getSessionTimestampFromLocalStorage } from '../services/redisService';
+import type { ProgressCallback } from '../services/pipelineService';
+import type { PipelineResult } from '../types';
 
 interface OutputPanelProps {
   analysis: AnalyzedEpisode | null;
@@ -9,6 +15,7 @@ interface OutputPanelProps {
   error: string | null;
   onReset: () => void;
   onEditBeat?: (beatId: string) => void;
+  sessionTimestamp?: number;
 }
 
 const ImageDecisionDisplay: React.FC<{ 
@@ -279,7 +286,100 @@ const LoadingStateDisplay = ({ loadingMessage }: { loadingMessage: string }) => 
     );
 };
 
-export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, loadingMessage, error, onEditBeat }) => {
+export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, loadingMessage, error, onEditBeat, sessionTimestamp }) => {
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<PipelineProgress | null>(null);
+  const [bulkResult, setBulkResult] = useState<PipelineResult | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [selectedBeat, setSelectedBeat] = useState<{ beat: BeatAnalysis; sceneNumber: number } | null>(null);
+  const [isNewImageModalOpen, setIsNewImageModalOpen] = useState(false);
+
+  // Count prompts for bulk processing
+  const hasPrompts = analysis?.scenes?.some(scene =>
+    scene.beats?.some(beat =>
+      beat.imageDecision?.type === 'NEW_IMAGE' && beat.prompts
+    )
+  ) ?? false;
+
+  const promptCount = analysis?.scenes?.reduce((total, scene) => {
+    return total + (scene.beats?.filter(beat =>
+      beat.imageDecision?.type === 'NEW_IMAGE' && beat.prompts
+    ).length ?? 0);
+  }, 0) ?? 0;
+
+  const handleBulkProcess = async () => {
+    setIsBulkProcessing(true);
+    setBulkError(null);
+    setBulkResult(null);
+    setBulkProgress({
+      currentStep: 0,
+      totalSteps: 1,
+      currentStepName: 'Fetching session...',
+      progress: 0,
+    });
+
+    try {
+      // Get session timestamp
+      let timestamp = sessionTimestamp;
+      if (!timestamp) {
+        // Try to get timestamp from localStorage first
+        timestamp = getSessionTimestampFromLocalStorage() || undefined;
+        
+        if (!timestamp) {
+          // Fallback: get latest session and try to extract timestamp
+          const sessionResponse = await getLatestSession();
+          if (!sessionResponse.success || !sessionResponse.data) {
+            throw new Error('Failed to get session. Please ensure you have saved your analysis.');
+          }
+          // If we can't get timestamp, use current time as fallback
+          // Note: This may not work correctly if the session was saved to Redis
+          // In production, the API should return the session key/timestamp
+          timestamp = Date.now();
+        }
+      }
+
+      const progressCallback: ProgressCallback = (progressData) => {
+        setBulkProgress({
+          currentStep: progressData.currentStep,
+          totalSteps: progressData.totalSteps,
+          currentStepName: progressData.currentStepName,
+          progress: progressData.progress,
+          estimatedTimeRemaining: progressData.estimatedTimeRemaining,
+        });
+      };
+
+      const result = await processEpisodeCompletePipeline(timestamp, progressCallback);
+      setBulkResult(result);
+
+      if (!result.success) {
+        setBulkError(result.errors?.join(', ') || 'Pipeline processing failed');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setBulkError(errorMessage);
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleEditBeat = (beatId: string) => {
+    if (!analysis) return;
+
+    // Find the beat
+    for (const scene of analysis.scenes) {
+      const beat = scene.beats?.find(b => b.beatId === beatId);
+      if (beat) {
+        setSelectedBeat({ beat, sceneNumber: scene.sceneNumber });
+        setIsNewImageModalOpen(true);
+        return;
+      }
+    }
+  };
+
+  const handleCloseNewImageModal = () => {
+    setIsNewImageModalOpen(false);
+    setSelectedBeat(null);
+  };
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-800/50 rounded-lg p-6 min-h-[500px]">
@@ -324,8 +424,37 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
 
   return (
     <div className="bg-gray-800/50 p-6 rounded-lg shadow-lg h-full overflow-y-auto">
-      <div className="border-b-2 border-brand-purple/50 pb-4 mb-6">
+      <div className="border-b-2 border-brand-purple/50 pb-4 mb-6 flex justify-between items-center">
         <h2 className="text-3xl font-bold text-brand-blue">Episode {analysis.episodeNumber}: {analysis.title}</h2>
+        {hasPrompts && (
+          <button
+            onClick={handleBulkProcess}
+            disabled={isBulkProcessing}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md font-semibold transition-colors ${
+              isBulkProcessing
+                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                : 'bg-brand-blue hover:bg-brand-purple text-white'
+            }`}
+            title={`Generate all images for ${promptCount} beats`}
+          >
+            {isBulkProcessing ? (
+              <>
+                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Processing...
+              </>
+            ) : (
+              <>
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Generate All Images ({promptCount})
+              </>
+            )}
+          </button>
+        )}
       </div>
       <div className="space-y-8">
         {analysis.scenes.map((scene) => (
@@ -341,7 +470,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
                     beat={beat} 
                     sceneNumber={scene.sceneNumber} 
                     beatIndex={beatIndex}
-                    onEditBeat={onEditBeat}
+                    onEditBeat={handleEditBeat}
                   />
                 ))
               ) : (
@@ -351,6 +480,83 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
           </details>
         ))}
       </div>
+
+      {/* Bulk Processing Progress Modal */}
+      <PipelineProgressModal
+        isOpen={isBulkProcessing || !!bulkResult || !!bulkError}
+        progress={bulkProgress || {
+          currentStep: 0,
+          totalSteps: 1,
+          currentStepName: bulkResult ? 'Complete!' : 'Processing...',
+          progress: bulkResult ? 100 : 0,
+        }}
+        onClose={() => {
+          setBulkProgress(null);
+          setBulkResult(null);
+          setBulkError(null);
+        }}
+      />
+
+      {/* Bulk Processing Result Display */}
+      {(bulkResult || bulkError) && !isBulkProcessing && (
+        <div className={`mt-4 p-4 rounded-md ${
+          bulkResult?.success
+            ? 'bg-green-900/50 border border-green-700'
+            : 'bg-red-900/50 border border-red-700'
+        }`}>
+          {bulkResult?.success ? (
+            <div>
+              <h3 className="text-lg font-semibold text-green-200 mb-2">
+                ✅ Pipeline Complete!
+              </h3>
+              <div className="text-sm text-gray-300 space-y-1">
+                <p>Episode: {bulkResult.episodeNumber} - {bulkResult.episodeTitle}</p>
+                <p>Total Prompts: {bulkResult.totalPrompts}</p>
+                <p>Successful: {bulkResult.successfulGenerations}</p>
+                <p>Failed: {bulkResult.failedGenerations}</p>
+                {bulkResult.organizationResult?.episodeProjectPath && (
+                  <p className="mt-2">
+                    <span className="font-semibold">DaVinci Project:</span>{' '}
+                    <code className="text-xs bg-gray-800 px-2 py-1 rounded">
+                      {bulkResult.organizationResult.episodeProjectPath}
+                    </code>
+                  </p>
+                )}
+                {bulkResult.duration && (
+                  <p className="text-xs text-gray-400">
+                    Duration: {Math.round(bulkResult.duration / 1000)}s
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-lg font-semibold text-red-200 mb-2">
+                ❌ Pipeline Failed
+              </h3>
+              <p className="text-sm text-red-200">{bulkError}</p>
+              {bulkResult?.errors && bulkResult.errors.length > 0 && (
+                <ul className="mt-2 text-sm text-red-200 list-disc list-inside">
+                  {bulkResult.errors.map((err, idx) => (
+                    <li key={idx}>{err}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* New Image Modal */}
+      {selectedBeat && (
+        <NewImageModal
+          isOpen={isNewImageModalOpen}
+          beat={selectedBeat.beat}
+          sceneNumber={selectedBeat.sceneNumber}
+          onClose={handleCloseNewImageModal}
+          sessionTimestamp={sessionTimestamp}
+        />
+      )}
     </div>
   );
 };

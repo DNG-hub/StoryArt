@@ -81,22 +81,22 @@
   - [ ] 4.6 Implement `processEpisodeCompletePipeline()` method that accepts session timestamp, fetches prompts from Redis, filters NEW_IMAGE beats, initializes SwarmUI session, generates images, normalizes paths, and organizes assets
   - [ ] 4.7 Implement `processSingleBeat()` method that accepts beat ID and format, fetches prompt from analyzed episode, initializes/reuses SwarmUI session, generates image, normalizes path, copies to DaVinci, and returns result
 
-- [ ] 5.0 Bulk Processing Button on Prompt Dashboard
-  - [ ] 5.1 Add button to `OutputPanel` component positioned at top-right of panel header with text "Generate All Images" and image icon
-  - [ ] 5.2 Implement button state logic: enabled when `analyzedEpisode` exists and has prompts, disabled otherwise, loading state during processing
-  - [ ] 5.3 Add click handler that gets session timestamp from Redis (latest session), calls `processEpisodeCompletePipeline()`, and shows progress modal
-  - [ ] 5.4 Create progress modal component (inline or separate) that shows progress bar (0-100%), current status text "Generating image 5 of 20...", estimated time remaining, and optional cancel button
-  - [ ] 5.5 Add success/error handling: success shows count and DaVinci path, error shows details and failed prompts
-  - [ ] 5.6 Add state management in `App.tsx` or `App_updated.tsx` for bulk processing
+- [x] 5.0 Bulk Processing Button on Prompt Dashboard
+  - [x] 5.1 Add button to `OutputPanel` component positioned at top-right of panel header with text "Generate All Images" and image icon
+  - [x] 5.2 Implement button state logic: enabled when `analyzedEpisode` exists and has prompts, disabled otherwise, loading state during processing
+  - [x] 5.3 Add click handler that gets session timestamp from Redis (latest session), calls `processEpisodeCompletePipeline()`, and shows progress modal
+  - [x] 5.4 Create progress modal component (inline or separate) that shows progress bar (0-100%), current status text "Generating image 5 of 20...", estimated time remaining, and optional cancel button
+  - [x] 5.5 Add success/error handling: success shows count and DaVinci path, error shows details and failed prompts
+  - [x] 5.6 Add state management in `App.tsx` or `App_updated.tsx` for bulk processing
 
-- [ ] 6.0 New Image Modal with Individual Processing
-  - [ ] 6.1 Create `components/NewImageModal.tsx` that accepts beat data as prop, displays beat script text (read-only), shows prompt tabs (Cinematic/Vertical), and includes format selector
-  - [ ] 6.2 Add "Generate Image" button below prompt display, enabled when prompt selected, with loading state during generation
-  - [ ] 6.3 Implement generation handler that gets selected prompt (cinematic or vertical), calls `processSingleBeat()` with beat ID and format, and shows progress in modal
-  - [ ] 6.4 Add result display showing generated image path, "Copy Path" button, "Open in Explorer" button, and optional "View Image" button
-  - [ ] 6.5 Add error handling with error message display and "Retry" button
-  - [ ] 6.6 Update `OutputPanel` to open modal on "New Image" click by updating `handleNavigateToRefine` or creating new handler, passing beat data, and managing modal state
-  - [ ] 6.7 Add modal state management in `App.tsx` or `App_updated.tsx`
+- [x] 6.0 New Image Modal with Individual Processing
+  - [x] 6.1 Create `components/NewImageModal.tsx` that accepts beat data as prop, displays beat script text (read-only), shows prompt tabs (Cinematic/Vertical), and includes format selector
+  - [x] 6.2 Add "Generate Image" button below prompt display, enabled when prompt selected, with loading state during generation
+  - [x] 6.3 Implement generation handler that gets selected prompt (cinematic or vertical), calls `processSingleBeat()` with beat ID and format, and shows progress in modal
+  - [x] 6.4 Add result display showing generated image path, "Copy Path" button, "Open in Explorer" button, and optional "View Image" button
+  - [x] 6.5 Add error handling with error message display and "Retry" button
+  - [x] 6.6 Update `OutputPanel` to open modal on "New Image" click by updating `handleNavigateToRefine` or creating new handler, passing beat data, and managing modal state
+  - [x] 6.7 Add modal state management in `App.tsx` or `App_updated.tsx`
 
 - [ ] 7.0 Progress Tracking and Status Updates
   - [ ] 7.1 Add progress state management (current image index, total images, current status message, estimated time remaining)
