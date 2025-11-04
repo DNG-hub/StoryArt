@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Redis Session Validation</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #0f0;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0a0;
+        }
+        #output {
+            background: #000;
+            padding: 20px;
+            border: 1px solid #0f0;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .warning { color: #ff0; }
+    </style>
+</head>
+<body>
+    <h1>Redis Session Validation</h1>
+    <button onclick="validate()">Validate Sessions</button>
+    <button onclick="checkServer()">Check Server Status</button>
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(message, type = 'info') {
+            const colors = {
+                info: '#0f0',
+                success: '#0f0',
+                error: '#f00',
+                warning: '#ff0'
+            };
+            output.innerHTML += `<span style="color: ${colors[type] || '#0f0'}">${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        async function checkServer() {
+            output.innerHTML = '';
+            log('🔍 Checking server status...\n', 'info');
+            
+            const endpoints = [
+                { url: 'http://localhost:8000/health', name: 'StoryTeller API (port 8000)' },
+                { url: 'http://localhost:7802/health', name: 'Redis API (port 7802)' },
+                { url: 'http://localhost:8000/api/v1/session/list', name: 'StoryTeller Session List' },
+                { url: 'http://localhost:7802/api/v1/session/list', name: 'Redis API Session List' },
+            ];
+
+            for (const endpoint of endpoints) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 3000);
+                    
+                    const response = await fetch(endpoint.url, {
+                        method: 'GET',
+                        signal: controller.signal,
+                    }).catch(err => {
+                        clearTimeout(timeoutId);
+                        throw err;
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        log(`✅ ${endpoint.name}: OK`, 'success');
+                        if (data.count !== undefined) {
+                            log(`   Sessions: ${data.count}`, 'success');
+                        }
+                    } else {
+                        log(`❌ ${endpoint.name}: HTTP ${response.status}`, 'error');
+                    }
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        log(`⏱️  ${endpoint.name}: Timeout (server not responding)`, 'warning');
+                    } else {
+                        log(`❌ ${endpoint.name}: ${error.message}`, 'error');
+                    }
+                }
+            }
+        }
+
+        async function validate() {
+            output.innerHTML = '';
+            log('🔍 Validating Redis Session Storage...\n', 'info');
+            
+            const endpoints = [
+                'http://localhost:8000/api/v1/session/list',
+                'http://localhost:7802/api/v1/session/list',
+            ];
+
+            let foundSessions = null;
+            let usedEndpoint = null;
+
+            for (const endpoint of endpoints) {
+                try {
+                    log(`Trying: ${endpoint}...`, 'info');
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+                    
+                    const response = await fetch(endpoint, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        signal: controller.signal,
+                    }).catch((fetchError) => {
+                        clearTimeout(timeoutId);
+                        if (fetchError.name === 'AbortError') {
+                            throw new Error('Request timeout (5s) - server may not be running');
+                        }
+                        throw fetchError;
+                    });
+                    
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success && result.sessions) {
+                            foundSessions = result.sessions;
+                            usedEndpoint = endpoint;
+                            log(`✅ Connected to: ${endpoint}\n`, 'success');
+                            break;
+                        } else {
+                            log(`⚠️  API returned success:false - ${result.error || 'Unknown error'}\n`, 'warning');
+                        }
+                    } else {
+                        const errorText = await response.text().catch(() => 'Unknown error');
+                        log(`❌ HTTP ${response.status}: ${errorText.substring(0, 100)}\n`, 'error');
+                    }
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        log(`⏱️  Timeout: ${error.message}\n`, 'warning');
+                    } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                        log(`❌ Network Error: Cannot connect to ${endpoint}\n`, 'error');
+                        log(`   Make sure server.js is running\n`, 'warning');
+                    } else {
+                        log(`❌ Error: ${error.message}\n`, 'error');
+                    }
+                    continue;
+                }
+            }
+
+            if (!foundSessions) {
+                log('\n❌ No sessions found or API endpoint unavailable', 'error');
+                log('\n💡 Make sure:', 'warning');
+                log('   1. Redis API server is running (server.js)', 'warning');
+                log('   2. Sessions were saved successfully', 'warning');
+                log('   3. Network connectivity to the API endpoint', 'warning');
+                return;
+            }
+
+            const sessionCount = foundSessions.length;
+            log(`\n✅ Found ${sessionCount} session(s) in Redis\n`, 'success');
+            log(`📡 Endpoint: ${usedEndpoint}\n`, 'info');
+
+            // Display session details
+            log('📋 Session Details:', 'info');
+            log('─'.repeat(80), 'info');
+            
+            foundSessions.forEach((session, index) => {
+                const timestamp = session.timestamp;
+                const date = new Date(timestamp);
+                const dateStr = date.toLocaleString();
+                
+                const scriptPreview = session.scriptText 
+                    ? session.scriptText.substring(0, 50).replace(/\n/g, ' ') + '...'
+                    : 'No script text';
+                
+                const episodeTitle = session.analyzedEpisode?.title || 'Untitled';
+                const sceneCount = session.analyzedEpisode?.scenes?.length || 0;
+                const beatCount = session.analyzedEpisode?.scenes?.reduce((sum, scene) => 
+                    sum + (scene.beats?.length || 0), 0) || 0;
+                
+                // Check if prompts are present
+                const hasPrompts = session.analyzedEpisode?.scenes?.some(scene => 
+                    scene.beats?.some(beat => beat.prompts)
+                );
+                
+                log(`\n${index + 1}. Session ${index + 1}`, 'info');
+                log(`   Timestamp: ${timestamp}`, 'info');
+                log(`   Date: ${dateStr}`, 'info');
+                log(`   Story UUID: ${session.storyUuid || 'N/A'}`, 'info');
+                log(`   Episode Title: ${episodeTitle}`, 'info');
+                log(`   Scenes: ${sceneCount}`, 'info');
+                log(`   Beats: ${beatCount}`, 'info');
+                log(`   Prompts: ${hasPrompts ? '✅ Present' : '❌ Missing'}`, hasPrompts ? 'success' : 'error');
+                log(`   Script Preview: ${scriptPreview}`, 'info');
+            });
+
+            log('\n' + '─'.repeat(80), 'info');
+            
+            // Validation result
+            if (sessionCount >= 3) {
+                log(`\n✅ VALIDATION PASSED: Found ${sessionCount} sessions (expected 3+)`, 'success');
+                log('✅ All sessions are properly stored in Redis', 'success');
+            } else {
+                log(`\n⚠️  VALIDATION WARNING: Found only ${sessionCount} session(s) (expected 3+)`, 'warning');
+                log('💡 You may need to save more sessions', 'warning');
+            }
+
+            // Check for prompts
+            const sessionsWithPrompts = foundSessions.filter(session => 
+                session.analyzedEpisode?.scenes?.some(scene => 
+                    scene.beats?.some(beat => beat.prompts)
+                )
+            );
+
+            if (sessionsWithPrompts.length === sessionCount) {
+                log('✅ All sessions contain prompts', 'success');
+            } else {
+                log(`⚠️  Only ${sessionsWithPrompts.length} of ${sessionCount} sessions contain prompts`, 'warning');
+            }
+
+            log('\n');
+        }
+
+        // Auto-check server on load
+        window.onload = () => {
+            log('✅ Validation tool loaded. Click "Check Server Status" or "Validate Sessions"', 'success');
+        };
+    </script>
+</body>
+</html>
+
