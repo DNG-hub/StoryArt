@@ -71,14 +71,16 @@ interface SwarmUIExportData {
   episodeContext: string;        // JSON string of episode context
   storyUuid: string;            // Story UUID from database
   analyzedEpisode: AnalyzedEpisode;  // Complete beat analysis
-  prompts?: BeatPrompts[];      // Generated SwarmUI prompts (optional, not currently saved)
+  // Note: prompts are stored in analyzedEpisode.scenes[].beats[].prompts (not as separate array)
 }
 ```
 
 **Current Implementation:**
-- `prompts` are **NOT currently saved** to Redis (they're generated on-demand)
-- The session contains the analysis data needed to regenerate prompts
-- This allows for re-generation with different providers or settings
+- `prompts` **ARE saved** to Redis as part of `analyzedEpisode.beats[].prompts`
+- Each beat contains a `prompts` object with `cinematic` and `vertical` SwarmUI prompts
+- Prompts are saved when you run analysis + prompt generation, then click "Save"
+- This allows StoryTeller to read prompts directly from Redis for image generation
+- If prompts are missing, they can be regenerated using the analysis data
 
 ### Field Descriptions
 
@@ -138,30 +140,104 @@ interface BeatAnalysis {
   locationAttributes: string[];
   cameraAngleSuggestion?: string;
   characterPositioning?: string;
+  prompts?: {                    // ✅ PROMPTS ARE SAVED HERE
+    cinematic: SwarmUIPrompt;    // 16:9 cinematic prompt
+    vertical: SwarmUIPrompt;     // 9:16 vertical prompt
+  };
 }
 ```
 
-#### 5. `prompts` (BeatPrompts[] - Optional)
+#### 5. `prompts` (Nested in BeatAnalysis - ✅ SAVED)
 - **Purpose:** Generated SwarmUI prompts for each beat
-- **Format:** Array of prompt objects
+- **Location:** `analyzedEpisode.scenes[].beats[].prompts`
+- **Format:** Object with cinematic and vertical prompts
 - **Structure:**
 ```typescript
-interface BeatPrompts {
-  beatId: string;
-  cinematic: SwarmUIPrompt;
-  vertical: SwarmUIPrompt;
+// Prompts are nested inside each beat:
+beat.prompts = {
+  cinematic: SwarmUIPrompt,  // 16:9 aspect ratio
+  vertical: SwarmUIPrompt    // 9:16 aspect ratio
 }
 
 interface SwarmUIPrompt {
-  prompt: string;      // The actual prompt text
+  prompt: string;      // The actual prompt text (e.g., "(facing camera:1.2), wide shot...")
   model: string;       // Model name (e.g., "flux1-dev")
-  width: number;       // Image width
-  height: number;     // Image height
-  steps: number;       // Generation steps
-  cfgscale: number;   // CFG scale
-  seed: number;        // Random seed
+  width: number;       // Image width (e.g., 1024)
+  height: number;      // Image height (e.g., 576 for 16:9)
+  steps: number;       // Generation steps (e.g., 28)
+  cfgscale: number;    // CFG scale (e.g., 7.0)
+  seed: number;        // Random seed (e.g., -1)
 }
 ```
+
+**Access Pattern for StoryTeller:**
+```typescript
+// To get prompts for all beats:
+const session = await getSessionFromRedis(timestamp);
+session.analyzedEpisode.scenes.forEach(scene => {
+  scene.beats.forEach(beat => {
+    if (beat.prompts) {
+      // Use beat.prompts.cinematic for 16:9 images
+      // Use beat.prompts.vertical for 9:16 images
+      generateImage(beat.prompts.cinematic);
+    }
+  });
+});
+```
+
+### How StoryTeller Uses Prompts for Image Generation
+
+**Why Prompts Are Saved:**
+1. **Direct Image Generation:** StoryTeller can read prompts directly from Redis and send them to SwarmUI without regeneration
+2. **Consistency:** Saved prompts ensure the same images are generated across sessions
+3. **Performance:** No need to regenerate prompts (which requires AI API calls) every time images are needed
+4. **Version Control:** Each saved session has its specific prompts, allowing StoryTeller to generate images from any version
+
+**Workflow:**
+1. **StoryArt** generates prompts and saves them to Redis (nested in `analyzedEpisode.beats[].prompts`)
+2. **StoryTeller** reads the session from Redis using the timestamp
+3. **StoryTeller** extracts prompts from each beat and sends them to SwarmUI for image generation
+4. **Result:** Images are generated using the exact prompts that were created during analysis
+
+**Example: StoryTeller Code to Extract Prompts:**
+```typescript
+// Get session from Redis
+const session = await redis.get(`storyart:session:${timestamp}`);
+const data = JSON.parse(session);
+
+// Extract all prompts for image generation
+const imageGenerationQueue = [];
+data.analyzedEpisode.scenes.forEach(scene => {
+  scene.beats.forEach(beat => {
+    if (beat.prompts && beat.prompts.cinematic) {
+      // Queue cinematic (16:9) image
+      imageGenerationQueue.push({
+        beatId: beat.beatId,
+        prompt: beat.prompts.cinematic,
+        aspectRatio: '16:9'
+      });
+    }
+    if (beat.prompts && beat.prompts.vertical) {
+      // Queue vertical (9:16) image
+      imageGenerationQueue.push({
+        beatId: beat.beatId,
+        prompt: beat.prompts.vertical,
+        aspectRatio: '9:16'
+      });
+    }
+  });
+});
+
+// Send to SwarmUI
+for (const item of imageGenerationQueue) {
+  await swarmUI.generateImage(item.prompt);
+}
+```
+
+**If Prompts Are Missing:**
+- StoryTeller can check if `beat.prompts` exists
+- If missing, StoryTeller can trigger prompt regeneration using the analysis data
+- The `analyzedEpisode` contains all the data needed to regenerate prompts (character info, locations, beat analysis)
 
 ### Episode Context Structure
 
