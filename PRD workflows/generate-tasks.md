@@ -42,6 +42,43 @@ The generated task list _must_ follow this structure:
 - Unit tests should typically be placed alongside the code files they are testing (e.g., `MyComponent.tsx` and `MyComponent.test.tsx` in the same directory).
 - Use `npx jest [optional/path/to/test/file]` to run tests. Running without a path executes all tests found by the Jest configuration.
 
+### Testing and Validation Workflow
+
+The task list **must** include testing checkpoints, documentation steps, and git commit steps at appropriate intervals:
+
+**Testing Checkpoints:**
+- Add a testing checkpoint after each major parent task section (e.g., after task 1.0, 2.0, etc.)
+- Testing checkpoint tasks should be marked clearly: `**X.Y TESTING CHECKPOINT**: [description]`
+- Testing checkpoints should verify:
+  - Code compiles/runs without errors
+  - Unit tests pass (if applicable)
+  - Integration tests pass (if applicable)
+  - Manual validation (if applicable)
+
+**Documentation Steps:**
+- Add a documentation step after each testing checkpoint
+- Documentation tasks should be marked: `**X.Y DOCUMENTATION**: [description]`
+- Documentation should capture:
+  - What was implemented
+  - Any changes from the original plan
+  - Test results and validation
+  - Fixes applied to make tests pass
+
+**Git Commit Steps:**
+- Add a commit step after each documentation step
+- Commit tasks should be marked: `**X.Y COMMIT**: [git command]`
+- Include the full git command: `git add -A && git commit -m "feat: [message]" && git push`
+
+**Example Structure:**
+```markdown
+- [ ] 1.0 Parent Task
+  - [ ] 1.1 Implementation task
+  - [ ] 1.2 Implementation task
+  - [ ] **1.3 TESTING CHECKPOINT**: Run tests, verify functionality
+  - [ ] **1.4 DOCUMENTATION**: Document implementation, test results, fixes
+  - [ ] **1.5 COMMIT**: `git add -A && git commit -m "feat: implement feature X" && git push`
+```
+
 ## Tasks
 
 - [ ] 1.0 Parent Task Title

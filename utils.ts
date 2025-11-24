@@ -103,7 +103,8 @@ function escapeRegExp(str: string): string {
 
 /**
  * Replaces occurrences of character names or aliases with their base trigger within a prompt string.
- * Handles quoted names, partial matches, and various quote styles.
+ * Each name occurrence is replaced only ONCE to prevent duplicate triggers.
+ * Triggers are never quoted and duplicate consecutive triggers are removed.
  * 
  * IMPORTANT: This function should ALWAYS substitute character names with triggers, even when
  * the name appears in an override. The override text may contain the character name, but
@@ -121,28 +122,57 @@ export function applyLoraTriggerSubstitution(
   let substituted = prompt;
   let totalReplacements = 0;
   
+  // Debug: Log what we're looking for
+  console.log(`🔍 LORA Substitution: Searching for ${characterContexts.length} character(s) in prompt`);
+  characterContexts.forEach(({ character_name, aliases, base_trigger }) => {
+    console.log(`   - "${character_name}" (aliases: ${aliases.join(', ')}) -> "${base_trigger}"`);
+  });
+  console.log(`   Prompt preview: "${prompt.substring(0, 100)}..."`);
+  
+  // Process each character context
   characterContexts.forEach(({ character_name, aliases = [], base_trigger }) => {
     if (!character_name || !base_trigger) {
       return; // Skip invalid entries
     }
     
-    // Capture aliases for use in inner loops
-    const characterAliases = aliases;
+    // Build list of all names to match, prioritizing full name over aliases
+    // This ensures "Catherine Mitchell" is replaced before "Cat" to avoid partial matches
+    const allNames = [character_name, ...aliases].filter(name => name && name.trim().length > 0);
     
-    // Build list of all names to match (full name + aliases)
-    const allNames = [character_name, ...characterAliases].filter(name => name && name.trim().length > 0);
-    
+    // Also split multi-word names into individual words for better matching
+    // This helps catch "Catherine" when the full name "Catherine Mitchell" doesn't match
+    const nameWords: string[] = [];
     allNames.forEach(name => {
+      nameWords.push(name); // Full name first
+      const words = name.split(/\s+/).filter(w => w.length > 2); // Individual words (length > 2 to avoid false positives)
+      words.forEach(word => {
+        if (!nameWords.includes(word)) {
+          nameWords.push(word);
+        }
+      });
+    });
+    
+    // Process names in order of specificity (longer names first to avoid partial matches)
+    const sortedNames = nameWords.sort((a, b) => b.length - a.length);
+    
+    // Track what we've already replaced to avoid double-replacement
+    const replacedPositions = new Set<string>();
+    
+    sortedNames.forEach(name => {
       const originalName = name;
-      // Remove quotes from the name for matching (we'll handle quotes in patterns)
       const nameWithoutQuotes = name.replace(/['"]/g, '');
       const escapedName = escapeRegExp(nameWithoutQuotes);
-      const escapedNameWithQuotes = escapeRegExp(name);
       
-      // Strategy: Try multiple patterns to catch all variations
+      // Check if this name appears in the prompt (case-insensitive)
+      const promptLower = substituted.toLowerCase();
+      const nameLower = nameWithoutQuotes.toLowerCase();
+      
+      if (!promptLower.includes(nameLower)) {
+        // Name doesn't appear in prompt, skip
+        return;
+      }
       
       // Pattern 1: Full name with word boundaries (handles "Catherine Mitchell" or "Cat")
-      // This catches names without quotes
       const pattern1 = `\\b${escapedName}\\b`;
       
       // Pattern 2: Name with quotes on both sides (handles "Catherine" or 'Cat')
@@ -151,106 +181,98 @@ export function applyLoraTriggerSubstitution(
       // Pattern 3: Name with quote on one side (handles "Catherine or Cat")
       const pattern3 = `["']${escapedName}\\b|\\b${escapedName}["']`;
       
-      // Pattern 4: Full name with embedded quotes (handles "Catherine 'Cat' Mitchell" or "Catherine "Cat" Mitchell")
-      // Match the name as-is with any quote style - create a pattern that allows either quote type
-      let pattern4 = '';
-      if (name.includes("'") || name.includes('"')) {
-        // Replace quotes with a regex character class pattern that matches either quote type
-        // We'll construct this as a regex pattern, not a string replacement
-        const nameParts = name.split(/(['"])/); // Split on quotes but keep them
-        const patternParts: string[] = [];
-        
-        for (let i = 0; i < nameParts.length; i++) {
-          const part = nameParts[i];
-          if (part === "'" || part === '"') {
-            // Quote character - use character class to match either quote type
-            patternParts.push("['\"]");
-          } else if (part.length > 0) {
-            // Text part - escape it
-            patternParts.push(escapeRegExp(part));
-          }
-        }
-        
-        pattern4 = patternParts.join('');
-      }
+      // Pattern 4: Case-insensitive match without word boundaries (more aggressive)
+      // This catches names that might be part of other words or have punctuation
+      const pattern4 = escapedName;
       
-      // Pattern 5: Direct match for "Catherine "Cat" Mitchell" style (quoted middle name)
-      // This specifically handles the case where the name appears as: "Catherine "Cat" Mitchell"
-      // by matching the pattern: Name "Alias" Surname
-      let pattern5 = '';
-      if (character_name.includes("'") || character_name.includes('"')) {
-        const parts = character_name.split(/['"]/).map(p => p.trim()).filter(p => p.length > 0);
-        if (parts.length >= 3) {
-          // Pattern: "Catherine "Cat" Mitchell" or 'Catherine 'Cat' Mitchell'
-          pattern5 = `${escapeRegExp(parts[0])}\\s*["']${escapeRegExp(parts[1])}["']\\s*${escapeRegExp(parts[2])}`;
-        }
-      }
+      // Try patterns in order
+      const patterns: Array<{ pattern: string; removeQuotes: boolean; description: string }> = [
+        { pattern: pattern1, removeQuotes: false, description: 'word boundary' },
+        { pattern: pattern2, removeQuotes: true, description: 'quoted' },
+        { pattern: pattern3, removeQuotes: true, description: 'partial quoted' },
+        { pattern: pattern4, removeQuotes: false, description: 'case-insensitive' },
+      ];
       
-      // Pattern 6: Match each word in a multi-word name individually, but only if it's a known alias
-      // This catches "Catherine", "Cat", "Mitchell" separately, but only if they're in the aliases list
-      // This prevents false positives (e.g., replacing "cat" the animal when we mean "Cat" the person)
-      const words = nameWithoutQuotes.split(/\s+/).filter(w => w.length > 1);
-      words.forEach(word => {
-        // Only replace if this word is either:
-        // 1. The full character name contains this word AND it's a substantial part (not just a common word)
-        // 2. It's explicitly in the aliases list
-        const isAlias = characterAliases.some(alias => alias.toLowerCase() === word.toLowerCase());
-        const isSubstantialPart = word.length > 3 || isAlias; // Only replace short words if they're aliases
-        
-        if (isAlias || isSubstantialPart) {
-          const escapedWord = escapeRegExp(word);
-          // Use word boundary but also check it's not part of another word
-          const wordPattern = `\\b${escapedWord}\\b`;
-          const regex = new RegExp(wordPattern, 'gi');
-          const before = substituted;
-          substituted = substituted.replace(regex, base_trigger);
-          if (before !== substituted) {
-            totalReplacements++;
-            console.log(`LORA Substitution: Replaced word "${word}" from "${originalName}" with "${base_trigger}"`);
-          }
-        }
-      });
-      
-      // Try full name patterns
-      const patterns: string[] = [pattern1, pattern2, pattern3];
-      if (pattern4 && pattern4 !== escapedName) {
-        patterns.push(pattern4);
-      }
-      if (pattern5) {
-        patterns.push(pattern5);
-      }
-      
-      patterns.forEach((pattern, idx) => {
+      patterns.forEach(({ pattern, removeQuotes, description }, idx) => {
         try {
           const regex = new RegExp(pattern, 'gi');
-          const before = substituted;
-          substituted = substituted.replace(regex, base_trigger);
-          if (before !== substituted) {
-            totalReplacements++;
-            console.log(`LORA Substitution: Replaced "${originalName}" with "${base_trigger}" (pattern ${idx + 1})`);
+          const matches = [...substituted.matchAll(regex)];
+          
+          // Process matches in reverse order to maintain positions
+          for (let i = matches.length - 1; i >= 0; i--) {
+            const match = matches[i];
+            const matchText = match[0];
+            const startPos = match.index!;
+            const endPos = startPos + matchText.length;
+            const positionKey = `${startPos}-${endPos}`;
+            
+            // Skip if already replaced
+            if (replacedPositions.has(positionKey)) {
+              continue;
+            }
+            
+            // Check if match still contains the character name (not already replaced with trigger)
+            const matchLower = matchText.toLowerCase();
+            const nameLower = nameWithoutQuotes.toLowerCase();
+            
+            // Only replace if the match contains the character name
+            // Also check it doesn't already contain the trigger
+            const containsName = matchLower.includes(nameLower);
+            const containsTrigger = matchLower.includes(base_trigger.toLowerCase());
+            
+            if (containsName && !containsTrigger) {
+              // Replace this match
+              const before = substituted;
+              substituted = substituted.substring(0, startPos) + base_trigger + substituted.substring(endPos);
+              
+              // Mark this position as replaced
+              replacedPositions.add(positionKey);
+              
+              totalReplacements++;
+              console.log(`✅ LORA Substitution: Replaced "${originalName}" (${matchText}) with "${base_trigger}" using ${description} pattern`);
+              
+              // Log the context around the replacement
+              const contextStart = Math.max(0, startPos - 30);
+              const contextEnd = Math.min(substituted.length, startPos + base_trigger.length + 30);
+              const context = substituted.substring(contextStart, contextEnd);
+              console.log(`   Context: "...${context}..."`);
+            }
           }
         } catch (e) {
-          console.warn(`LORA Substitution: Invalid pattern ${idx + 1} for "${originalName}": ${pattern}`, e);
+          console.warn(`LORA Substitution: Invalid pattern for "${originalName}": ${pattern}`, e);
         }
       });
     });
+  });
+  
+  // Step 2: Remove duplicate consecutive triggers
+  // This handles cases where a trigger might appear multiple times in a row
+  const allTriggers = characterContexts.map(c => c.base_trigger).filter(t => t && t.trim().length > 0);
+  allTriggers.forEach(trigger => {
+    // Escape the trigger for regex
+    const escapedTrigger = escapeRegExp(trigger);
+    // Match 2+ consecutive occurrences of the trigger (with optional whitespace/punctuation between)
+    const duplicatePattern = new RegExp(`(${escapedTrigger})(?:\\s*["']?\\s*${escapedTrigger})+`, 'gi');
     
-    // Special handling for character names with embedded quotes like "Catherine 'Cat' Mitchell"
-    // Split and match each part individually
-    if (character_name.includes("'") || character_name.includes('"')) {
-      const nameParts = character_name.split(/['"]/).map(part => part.trim()).filter(part => part.length > 1);
-      
-      nameParts.forEach(part => {
-        const escapedPart = escapeRegExp(part);
-        const partPattern = `\\b${escapedPart}\\b`;
-        const partRegex = new RegExp(partPattern, 'gi');
-        const before = substituted;
-        substituted = substituted.replace(partRegex, base_trigger);
-        if (before !== substituted) {
-          totalReplacements++;
-          console.log(`LORA Substitution: Replaced partial name "${part}" with "${base_trigger}"`);
-        }
-      });
+    const before = substituted;
+    substituted = substituted.replace(duplicatePattern, trigger);
+    
+    if (before !== substituted) {
+      console.log(`LORA Substitution: Removed duplicate consecutive triggers: "${trigger}"`);
+    }
+  });
+  
+  // Step 3: Remove quoted triggers (e.g., "JRUMLV woman" should be just JRUMLV woman)
+  allTriggers.forEach(trigger => {
+    const escapedTrigger = escapeRegExp(trigger);
+    // Match trigger with quotes around it
+    const quotedPattern = new RegExp(`["']${escapedTrigger}["']`, 'gi');
+    
+    const before = substituted;
+    substituted = substituted.replace(quotedPattern, trigger);
+    
+    if (before !== substituted) {
+      console.log(`LORA Substitution: Removed quotes around trigger: "${trigger}"`);
     }
   });
   

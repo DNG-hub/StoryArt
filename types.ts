@@ -38,7 +38,8 @@ export interface SwarmUIPrompt {
 export interface BeatPrompts {
   beatId: string;
   cinematic: SwarmUIPrompt;
-  vertical: SwarmUIPrompt;
+  vertical: SwarmUIPrompt; // Vertical (9:16) prompts for long-form storytelling based on beat analysis
+  marketingVertical?: SwarmUIPrompt; // Vertical (9:16) prompts specifically for marketing, based on full episode analysis
 }
 
 export interface BeatAnalysis {
@@ -52,9 +53,31 @@ export interface BeatAnalysis {
   resolvedLocationId?: string; // The UUID of the specific sub-location from the hierarchy table.
   prompts?: {
     cinematic: SwarmUIPrompt;
-    vertical: SwarmUIPrompt;
+    vertical: SwarmUIPrompt; // For long-form storytelling based on beat analysis
+    marketingVertical?: SwarmUIPrompt; // For marketing based on full episode analysis
   };
   hookNarrative?: string; // For Phase 1.4
+}
+
+// Video Short Marketing Types
+export interface VideoShortMoment {
+  momentId: string;
+  title: string;
+  description: string;          // Why this moment is compelling for marketing
+  storyArcConnection: string;   // How it relates to overall story
+  emotionalHook: string;        // Emotional appeal for marketing
+  visualPrompt: SwarmUIPrompt;  // 9:16 marketing-optimized prompt
+  beatReference?: string;       // Optional reference to original beat if applicable
+  buzzScore: number;            // 0-10 score for marketing potential
+}
+
+export interface VideoShortEpisode {
+  episodeNumber: number;
+  episodeTitle: string;
+  moments: VideoShortMoment[];  // 3-5 key marketing moments
+  storyContext: string;         // Overall story connection for marketing
+  marketingAngle: string;       // Primary marketing hook for the episode
+  generatedAt: Date;
 }
 
 
@@ -74,7 +97,7 @@ export interface AnalyzedEpisode {
 export interface EpisodeStyleConfig {
   model: string;
   cinematicAspectRatio: string;
-  verticalAspectRatio: string;
+  verticalAspectRatio: string; // Now included for both long-form and marketing use cases
 }
 
 // Database-driven interfaces for enhanced episode context

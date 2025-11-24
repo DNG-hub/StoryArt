@@ -87,29 +87,17 @@ const PromptDisplay: React.FC<{ promptData: SwarmUIPrompt; title: string }> = ({
 
 
 const PromptTabs: React.FC<{ beat: BeatAnalysis }> = ({ beat }) => {
-    const [activeTab, setActiveTab] = useState<'cinematic' | 'vertical'>('cinematic');
-
+    // Vertical (9:16) prompts are generated separately for video short marketing content
+    // Only cinematic (16:9) prompts are part of beat-based analysis
     if (!beat.prompts) return null;
 
     return (
         <div className="mt-4 pt-4 border-t border-brand-purple/20">
-            <div className="flex border-b border-gray-700 mb-3">
-                <button
-                    onClick={() => setActiveTab('cinematic')}
-                    className={`px-4 py-2 text-sm font-semibold transition-colors ${activeTab === 'cinematic' ? 'border-b-2 border-brand-blue text-white' : 'text-gray-400 hover:bg-gray-800'}`}
-                >
-                    Cinematic (16:9)
-                </button>
-                <button
-                    onClick={() => setActiveTab('vertical')}
-                    className={`px-4 py-2 text-sm font-semibold transition-colors ${activeTab === 'vertical' ? 'border-b-2 border-brand-blue text-white' : 'text-gray-400 hover:bg-gray-800'}`}
-                >
-                    Vertical (9:16)
-                </button>
+            <div className="mb-3">
+                <span className="text-sm font-semibold text-gray-400">Prompt (Cinematic 16:9)</span>
             </div>
             <div>
-                {activeTab === 'cinematic' && <PromptDisplay promptData={beat.prompts.cinematic} title="Cinematic (16:9)" />}
-                {activeTab === 'vertical' && <PromptDisplay promptData={beat.prompts.vertical} title="Vertical (9:16)" />}
+                <PromptDisplay promptData={beat.prompts.cinematic} title="Cinematic (16:9)" />
             </div>
         </div>
     );

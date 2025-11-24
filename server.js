@@ -28,8 +28,21 @@ const initializeRedis = async () => {
   try {
     // StoryArt uses Redis database 0 as standard for stability
     // This ensures consistent behavior across all deployments
-    // If REDIS_URL is provided, it will be used, but database 0 is preferred
+    
+    // Priority: REDIS_URL > REDIS_HOST + REDIS_PORT > defaults
     let redisUrl = process.env.REDIS_URL;
+    
+    // If REDIS_URL is not provided, build it from individual components
+    if (!redisUrl) {
+      const redisHost = process.env.REDIS_HOST || 'localhost';
+      const redisPort = process.env.REDIS_PORT || '6379';
+      
+      // Build Redis URL from components
+      redisUrl = `redis://${redisHost}:${redisPort}/0`;
+      console.log(`📊 Building Redis URL from environment variables:`);
+      console.log(`   REDIS_HOST: ${redisHost}`);
+      console.log(`   REDIS_PORT: ${redisPort}`);
+    }
     
     // If REDIS_URL is provided, ensure it uses database 0
     if (redisUrl) {
@@ -46,7 +59,7 @@ const initializeRedis = async () => {
         redisUrl = `${redisUrl}/0`;
       }
     } else {
-      // Default to localhost:6379/database 0
+      // Fallback default (should not reach here with new logic above)
       redisUrl = 'redis://localhost:6379/0';
     }
     

@@ -14,6 +14,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:pipeline": "node test-pipeline-validation.js",
+    "test:redis": "tsx test-redis-connection-strategy.js",
     "test:all": "npm run test:run && npm run test:pipeline",
     "validate:env": "node scripts/validate-environment.js",
     "migrate:redis:1-to-0": "tsx scripts/migrate-redis-database-1-to-0.js",

@@ -20,7 +20,8 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
   onClose,
   sessionTimestamp,
 }) => {
-  const [activeTab, setActiveTab] = useState<'cinematic' | 'vertical'>('cinematic');
+  // Vertical prompts are now auto-generated from cinematic, so we only need cinematic
+  const [activeTab] = useState<'cinematic' | 'vertical'>('cinematic');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<{ currentStep: number; totalSteps: number; currentStepName: string; progress: number; estimatedTimeRemaining?: number } | null>(null);
   const [result, setResult] = useState<BeatPipelineResult | null>(null);
@@ -30,10 +31,9 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
 
   if (!isOpen || !beat) return null;
 
-  const hasPrompts = beat.prompts && (beat.prompts.cinematic || beat.prompts.vertical);
-  const selectedPrompt: SwarmUIPrompt | null = activeTab === 'cinematic' 
-    ? (beat.prompts?.cinematic || null)
-    : (beat.prompts?.vertical || null);
+  const hasPrompts = beat.prompts && beat.prompts.cinematic;
+  // Vertical prompts are auto-generated from cinematic, so we only use cinematic
+  const selectedPrompt: SwarmUIPrompt | null = beat.prompts?.cinematic || null;
 
   const handleGenerate = async () => {
     if (!selectedPrompt || !beat.beatId) return;
@@ -56,9 +56,10 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
     };
 
     try {
+      // Always use 'cinematic' since vertical is auto-generated from cinematic
       const pipelineResult = await processSingleBeat(
         beat.beatId,
-        activeTab,
+        'cinematic',
         sessionTimestamp,
         progressCallback,
         abortCtrl
@@ -160,48 +161,24 @@ export const NewImageModal: React.FC<NewImageModalProps> = ({
           </blockquote>
         </div>
 
-        {/* Prompt Tabs */}
-        {hasPrompts && (
+        {/* Prompt Display */}
+        {hasPrompts && beat.prompts?.cinematic && (
           <div className="mb-4">
-            <div className="flex border-b border-gray-700 mb-3">
-              {beat.prompts?.cinematic && (
-                <button
-                  onClick={() => setActiveTab('cinematic')}
-                  className={`px-4 py-2 text-sm font-semibold transition-colors ${
-                    activeTab === 'cinematic'
-                      ? 'border-b-2 border-brand-blue text-white'
-                      : 'text-gray-400 hover:bg-gray-700'
-                  }`}
-                >
-                  Cinematic (16:9)
-                </button>
-              )}
-              {beat.prompts?.vertical && (
-                <button
-                  onClick={() => setActiveTab('vertical')}
-                  className={`px-4 py-2 text-sm font-semibold transition-colors ${
-                    activeTab === 'vertical'
-                      ? 'border-b-2 border-brand-blue text-white'
-                      : 'text-gray-400 hover:bg-gray-700'
-                  }`}
-                >
-                  Vertical (9:16)
-                </button>
-              )}
+            <div className="mb-2">
+              <span className="text-sm font-semibold text-gray-400">Prompt (Cinematic 16:9)</span>
+              <span className="text-xs text-gray-500 ml-2">(Vertical 9:16 prompts generated separately for video shorts)</span>
             </div>
-            {selectedPrompt && (
-              <div className="bg-gray-900 p-3 rounded-md border border-gray-700">
-                <p className="text-sm text-gray-200 font-mono whitespace-pre-wrap">
-                  {selectedPrompt.prompt}
-                </p>
-                <div className="text-xs text-gray-400 grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-1 mt-2">
-                  <span><span className="font-semibold">Model:</span> {selectedPrompt.model}</span>
-                  <span><span className="font-semibold">Size:</span> {selectedPrompt.width}x{selectedPrompt.height}</span>
-                  <span><span className="font-semibold">Steps:</span> {selectedPrompt.steps}</span>
-                  <span><span className="font-semibold">CFG:</span> {selectedPrompt.cfgscale}</span>
-                </div>
+            <div className="bg-gray-900 p-3 rounded-md border border-gray-700">
+              <p className="text-sm text-gray-200 font-mono whitespace-pre-wrap">
+                {beat.prompts.cinematic.prompt}
+              </p>
+              <div className="text-xs text-gray-400 grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-1 mt-2">
+                <span><span className="font-semibold">Model:</span> {beat.prompts.cinematic.model}</span>
+                <span><span className="font-semibold">Size:</span> {beat.prompts.cinematic.width}x{beat.prompts.cinematic.height}</span>
+                <span><span className="font-semibold">Steps:</span> {beat.prompts.cinematic.steps}</span>
+                <span><span className="font-semibold">CFG:</span> {beat.prompts.cinematic.cfgscale}</span>
               </div>
-            )}
+            </div>
           </div>
         )}
 

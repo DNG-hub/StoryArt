@@ -1,6 +1,6 @@
 // FIX: Corrected import path for Google GenAI SDK.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider } from '../types';
+import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt } from '../types';
 import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { applyLoraTriggerSubstitution } from '../utils';
 
@@ -18,6 +18,7 @@ const swarmUIPromptSchema = {
     required: ['prompt', 'model', 'width', 'height', 'steps', 'cfgscale', 'seed'],
 };
 
+// Response schema - cinematic, vertical, and marketing vertical prompts are now included for long-form and marketing
 const responseSchema = {
     type: Type.ARRAY,
     items: {
@@ -26,6 +27,7 @@ const responseSchema = {
             beatId: { type: Type.STRING },
             cinematic: swarmUIPromptSchema,
             vertical: swarmUIPromptSchema,
+            marketingVertical: swarmUIPromptSchema,
         },
         required: ['beatId', 'cinematic', 'vertical']
     }
@@ -166,14 +168,32 @@ async function generateSwarmUiPromptsWithGemini(
 
     const cinematicWidth = Math.round(Math.sqrt(baseResolution * baseResolution * cinematicRatio) / 8) * 8;
     const cinematicHeight = Math.round(cinematicWidth / cinematicRatio / 8) * 8;
-    
-    const verticalHeight = Math.round(Math.sqrt(baseResolution * baseResolution / verticalRatio) / 8) * 8;
-    const verticalWidth = Math.round(verticalHeight * verticalRatio / 8) * 8;
+
+    const verticalWidth = Math.round(Math.sqrt(baseResolution * baseResolution * verticalRatio) / 8) * 8;
+    const verticalHeight = Math.round(verticalWidth / verticalRatio / 8) * 8;
 
     // Create system instruction with context source information
-    const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts. You must synthesize information from multiple sources and, most importantly, **translate narrative prose into purely visual descriptions**. For each beat, generate TWO distinct prompts: one cinematic (16:9) and one vertical (9:16).
+    const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate BOTH cinematic (16:9) AND vertical (9:16) prompts. Both are used for long-form storytelling and marketing, but with different compositional requirements.
 
 **Your Mandate: THINK LIKE A CINEMATOGRAPHER. Compose the shot by weaving together stylistic elements with the narrative.**
+
+**CRITICAL NEW PRODUCTION STANDARDS (Based on 135 tested prompts, Version 2.0):**
+1.  **Facial Expressions INSTEAD of Heavy Camera Direction:**
+    - OLD: \`(((facing camera:2.0)))\`
+    - NEW: \`"alert, tactical expression on her face"\`
+2.  **Atmosphere-Specific Face Lighting** (Always Include):
+    - Tactical scenes: \`"dramatic tactical lighting on face, high contrast face shadows"\`
+    - Medical scenes: \`"harsh medical lighting on face, stark white face illumination"\`
+3.  **YOLO Face Segments** (Precise Control):
+    - Single character: \`<segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
+    - Two characters: Add segment for each face
+4.  **Character Physique Emphasis** (Critical for Proper Rendering):
+    - ALWAYS include: \`"lean athletic build, toned arms"\`
+    - Prevents bulky appearance from tactical gear
+5.  **FLUX-Specific Settings**:
+    - cfgscale: 1 (NOT 7!)
+    - fluxguidancescale: 3.5
+    - seed: -1 (random for batch generation)
 
 **Strict Content Rules (NON-NEGOTIABLE):**
 1.  **NO NARRATIVE NAMES (with Override Exception):** You MUST NOT use character's actual names (e.g., "Catherine Mitchell", "Cat", "O'Brien") UNLESS a \`swarmui_prompt_override\` is provided. If \`swarmui_prompt_override\` exists, it may contain character names and you MUST use it exactly as written. Otherwise, you MUST ONLY use their assigned \`base_trigger\` from the context (e.g., "JRUMLV woman").
@@ -195,8 +215,8 @@ async function generateSwarmUiPromptsWithGemini(
 2.  **Synthesize Core Visual Elements (Characters & Environment):**
     a.  **Characters:**
         i.  **Identify using Aliases (CRITICAL):** Cross-reference names in 'beat_script_text' with 'character_name' and 'aliases' in the Episode Context to find the correct profile.
-        
-        ii. **Location-Specific Override Priority (CRITICAL - HIGHEST PRIORITY):** 
+
+        ii. **Location-Specific Override Priority (CRITICAL - HIGHEST PRIORITY):**
             - **STEP 1 - CHECK FOR OVERRIDE:** For each character in the current scene, you MUST check for \`location_context.swarmui_prompt_override\`. The override can be found in these locations (check in order):
               1. \`episode.scenes[sceneNumber].characters[characterIndex].location_context.swarmui_prompt_override\` (primary path for database context)
               2. \`episode.scenes[sceneNumber].character_appearances[characterIndex].location_context.swarmui_prompt_override\` (alternative path)
@@ -206,83 +226,125 @@ async function generateSwarmUiPromptsWithGemini(
               * Modify the override text
               * Add to or supplement the override
               * Replace character names in the override with triggers
-            - **STEP 3 - IF NO OVERRIDE EXISTS:** Only then use the character's 'base_trigger' followed by a parenthetical group of key visual descriptors. Example: \`JRUMLV woman (athletic build, tactical gear, hair in a tight bun)\`. No weighted syntax.
-        
+            - **STEP 3 - IF NO OVERRIDE EXISTS:** Only then use the character's 'base_trigger' followed by a parenthetical group of key visual descriptors. NEW STANDARD: Include specific "form-fitting" and "lean athletic build" and "toned arms" to prevent bulky appearance from gear. Example: \`JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun)\`. Do NOT use weighted syntax.
+
         iii. **Contextualize Appearance (only if no override):** If no \`swarmui_prompt_override\` exists, adapt the character's 'visual_description' to the scene's context. A 'pristine lab coat' in a 'bombed-out ruin' becomes a 'torn, dust-covered lab coat'.
-        
-        iv. **Example Override Usage:** If \`swarmui_prompt_override\` contains "Catherine 'Cat' Mitchell as field investigator, 32, dark brown tactical bun, green eyes alert and focused, wearing tactical field gear...", you MUST use that ENTIRE string in your prompt. Do NOT replace "Catherine" with "JRUMLV woman" - the override is already complete and formatted correctly.
-    b.  **Environment:** 
+
+        iv. **Example Override Usage:** If \`swarmui_prompt_override\` contains "Catherine 'Cat' Mitchell as field investigator, 32, dark brown tactical bun, green eyes alert and focused, wearing MultiCam woodland camo tactical pants, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms...", you MUST use that ENTIRE string in your prompt. Do NOT replace "Catherine" with "JRUMLV woman" - the override is already complete and formatted correctly.
+    b.  **Environment:**
         i. **Location Visual Description (CRITICAL):** You MUST use the 'visual_description' field from \`episode.scenes[sceneNumber].location.visual_description\` in the Episode Context JSON. This is NOT optional - it contains the detailed visual description of the location that must appear in your prompts.
         ii. **Artifacts (CRITICAL):** You MUST include relevant artifacts from \`episode.scenes[sceneNumber].location.artifacts[]\` in the Episode Context JSON. Each artifact has a \`swarmui_prompt_fragment\` field that contains visual elements you MUST incorporate. If artifacts are present, they are part of the location's visual identity and MUST be described.
         iii. **Location Attributes:** Use 'locationAttributes' from the beat analysis and the 'atmosphere' from the style guide as additional set dressing.
         iv. **Interior Shots:** **All scenes are interior shots.** You MUST include terms like "interior shot," "inside the facility," to prevent outdoor scenes.
         v. **Database Context Priority:** When Episode Context shows "Context Source: database", you MUST prioritize the location's \`visual_description\` and \`artifacts\` over generic location names. Do NOT say "NHIA Facility 7" - instead describe what the \`visual_description\` tells you about the location.
     c.  **Composition & Character Positioning Intelligence (Flux Model Targeting - CRITICAL):**
-        This is a critical step to counteract known Flux/Flux1 model deficiencies regarding character positioning and facing direction. You MUST apply these rules:
-        i.  **MANDATORY: Weighted Positioning Syntax at Prompt Start (HIGHEST PRIORITY):**
-            - **ALWAYS** place positioning directives at the **VERY BEGINNING** of your prompt (before any other description)
-            - **MUST use weighted syntax** with explicit strength multipliers (e.g., \`(facing camera:1.2)\`, \`(walking toward camera:1.3)\`)
-            - **Default positioning:** For standard shots, ALWAYS include \`(facing camera:1.2)\` or \`(frontal view:1.3)\` at the start
-            - **Movement positioning:** For walking/moving characters, include \`(walking directly toward camera:1.3)\` or \`(approaching viewer:1.3)\` at the start
-            - **Format:** \`(directive:weight)\` where weight is typically 1.2-1.4 for strong emphasis
-            - **Examples at prompt start:**
-              * \`(frontal view:1.3), (facing camera:1.2), wide shot...\`
-              * \`(walking directly toward camera:1.3), (facing camera:1.2), close-up...\`
-              * \`(POV shot:1.2), (front view:1.3), wide shot...\`
-        ii. **Default to Facing Camera (Baseline Rule):** By default, characters MUST face the viewer/camera. You MUST proactively use explicit phrases like "facing the camera," "looking at the viewer," "portrait of," "making eye contact with the camera," "character facing forward," or "direct gaze toward camera" to ensure this. Without explicit direction, Flux models often position characters facing away. **ALWAYS combine with weighted syntax at the start.**
-        iii. **Narrative Override (CRITICAL):** You MUST override the default "facing camera" rule ONLY if the narrative context explicitly demands it. Analyze the 'core_action' and 'beat_script_text' for these specific cues:
-            - **Interaction/Observation:** If a character is examining an object ("kneeling by a crater"), interacting with a console/screen, or surveying a scene, their pose should prioritize that action. They may be in profile or have their back partially to the camera to establish their point-of-view. BUT still describe their facing explicitly: "in profile view," "looking at the console," "back partially turned to camera."
-            - **Emotional Context:** If the 'emotional_tone' is introspective, mysterious, or somber, you may compositionally choose to have the character looking away from the camera to enhance that feeling. BUT be explicit: "looking away from camera," "gaze turned toward window," etc.
-        iv. **Multi-Character Spacing & Gaze Control (CRITICAL for 2+ characters):** When two or more characters are present, you MUST prevent unnatural face-to-face positioning (a known Flux model quirk). Apply these rules:
+        This is a critical step to counteract known Flux/Flux1 model deficiencies using the LATEST PRODUCTION STANDARDS:
+        i.  **MANDATORY: Shot Type at Prompt Start (NEW PRODUCTION STANDARD):**
+            - **ALWAYS** start with shot type: "medium shot of a", "wide shot of a", "close-up of a"
+            - **DO NOT** start with positioning directives as previously recommended (this is old method)
+            - **Example:** \`"medium shot of a JRUMLV woman (...), alert expression on her face, moving through..."\`
+        ii. **Facial Expression Integration (NEW PRODUCTION STANDARD):**
+            - Always include facial expression AFTER character description
+            - Use natural language: \`"alert, tactical expression on her face"\`, \`"focused combat readiness on his face"\`, \`"concentrated medical expression on her face"\`
+            - This replaces heavy weighted camera direction syntax (e.g., \`(((facing camera:2.0)))\`)
+        iii. **BEAT-NARRATIVE DRIVEN Face Lighting (PRINCIPLE-BASED LIGHTING EXTRACTION):**
+            - **CRITICAL:** The beat narrative is the **SOURCE OF TRUTH** for all lighting.
+            - **PRINCIPLE:** READ beat narrative for ANY lighting-related details, EXTRACT those details and adapt to face lighting. ONLY FALLBACK to location atmosphere if beat has NO lighting details.
+            - **Lighting Extraction Categories:** Look for Light Sources (generators, flashes, explosions), Qualities (bright, subdued, harsh), Colors (green, red, orange), Environmental Effects (gunsmoke, dust, fog), Time Indicators (dawn, dusk, night), Intensity Modifiers (barely visible, blinding).
+            - **Then adapt to face lighting** using the SAME descriptive words from beat: \`PRINCIPLE: If beat says it, face lighting echoes it.\`
+            - **Example Extraction:** Beat: "heavy gunsmoke, bright muzzle flashes illuminating the haze" → Face Lighting: "bright intermittent muzzle flashes on face, subdued by thick gunsmoke"
+            - **Example Extraction:** Beat: "bathed in eerie green light from backup generators" → Face Lighting: "eerie green light on face, sickly green illumination"
+            - **Example Fallback:** Beat: "moving through damaged tactical facility" (no lighting details) → Use: "dramatic tactical lighting on face"
+        iv. **Dynamic Weapon Positioning (NEW PRODUCTION STANDARD):**
+            - **For Daniel (HSCEIA man):** Weapon positioning is beat-specific action, NOT a character trait. Include M4 carbine position in the action portion of the prompt based on context.
+            - **Examples:** \`"advancing with M4 carbine at ready position"\`, \`"aiming M4 carbine"\`, \`"with M4 carbine slung across chest"\`, \`"with M4 carbine at low ready"\`
+            - **Do NOT:** Include weapon position in character description (e.g., "M4 carbine slung across chest" as static trait).
+        v. **Narrative Override:** Override normal facing only when narrative context demands it. BUT still describe facing explicitly: "in profile view," "looking at the console," "looking away from camera," "gaze turned toward window," etc.
+        vi. **Multi-Character Spacing & Gaze Control:**
             - **Spatial Separation:** Use explicit spatial language like "[Character A] on the left," "[Character B] on the right," "standing apart with distance between them," "positioned on opposite sides of the frame," "characters separated by [distance/element]."
-            - **Individual Gaze Control:** Control each character's gaze independently to avoid unintended intimate eye contact. Examples: "[Character A] looks at the console, [Character B] looks toward the doorway," "[Character A] faces camera, [Character B] looks to the left," "[Character A] examining the data screen, [Character B] scanning the room." Do NOT let both characters face each other unless the script explicitly calls for a confrontation or intimate moment.
+            - **Individual Gaze Control:** Control each character's gaze independently with YOLO segments (see below)
             - **Prevent Clustering:** Explicitly state they are NOT positioned face-to-face: "not facing each other," "characters are not making eye contact with each other," "positioned at angles to each other."
-        v. **Integrate Existing Notes:** Always incorporate any specific \`cameraAngleSuggestion\` or \`characterPositioning\` provided in the beat analysis, using them to inform your final composition while still applying the Flux positioning rules above.
 
 3.  **Visually Translate the Action (Visual Filter Rule):**
     Read the 'core_action' and 'beat_script_text' for intent, then describe only what a camera sees. Use the 'visual_anchor' as the shot's focus.
     -   **OMIT:** Sounds, smells, internal feelings, abstract verbs.
     -   **TRANSLATE:** Convert abstract concepts into concrete visuals. INSTEAD OF \`unnerving silence\`, USE \`an atmosphere of eerie stillness\`.
 
-4.  **Compose the Prompt (CRITICAL STEP):**
+4.  **Compose the Prompts (CRITICAL STEP - NEW PRODUCTION STANDARD):**
     **Do NOT just list keywords.** Weave the elements from the \`styleGuide\` and your synthesis into a cohesive, descriptive paragraph that paints a picture.
 
     **A. Cinematic Prompt (16:9):**
-    -   **Focus:** Wide, narrative.
-    -   **Structure:** **MUST start with weighted positioning directives**, then camera shot, then describe the scene, integrating lighting, environment FX, and atmosphere throughout the description.
-    -   **Positioning Format:** **ALWAYS begin with weighted syntax** like \`(facing camera:1.2), (walking toward camera:1.3),\` or \`(frontal view:1.3), (approaching viewer:1.3),\` before any other description. Use weights of 1.2-1.4 for strong emphasis.
-    -   **For moving characters:** Include both direction AND facing: \`(walking directly toward camera:1.3), (facing camera:1.2),\`
-    -   **For static characters:** Include facing: \`(facing camera:1.2), (frontal view:1.3),\`
-    -   **Example (moving character):** \`(walking directly toward camera:1.3), (facing camera:1.2), wide shot, shallow depth of field. In a room choked with volumetric dust and twisted rebar, the air is thick with an atmosphere of eerie stillness. Dramatic rim light cuts through the gloom, catching the precise, focused posture of a JRUMLV woman (athletic build, hair in a tight bun) advancing directly toward the viewer. The scene has a desaturated color grade.\`
-    -   **Example (static character):** \`(frontal view:1.3), (facing camera:1.2), wide shot, shallow depth of field. In a room choked with volumetric dust and twisted rebar, the air is thick with an atmosphere of eerie stillness. Dramatic rim light cuts through the gloom, catching the precise, focused posture of a JRUMLV woman (athletic build, hair in a tight bun) looking directly at the camera. The scene has a desaturated color grade.\`
-    
+    -   **Focus:** Wide, narrative. Emphasizes horizontal composition and environmental storytelling.
+    -   **Structure:** \`[shot_type] of [character_description], [facial_expression], [action_verb] [environment_description with beat narrative lighting]. [face_lighting_extracted_from_beat_narrative]. [composition_directives]. <yolo_segments>\`
+    -   **Character Details:** Include specific clothing (MultiCam woodland camo, form-fitting tactical vest, fitted olive long-sleeved shirt), physique (lean athletic build, toned arms), and gear details (dual holsters, tactical watch).
+    -   **Facial Expression:** \`"alert, tactical expression on her face"\`, \`"focused combat readiness on his face"\`
+    -   **Dynamic Weapon Positioning (Daniel):** Include weapon position in action based on beat narrative: \`"advancing with M4 carbine at ready position"\`, \`"with M4 carbine slung on tactical sling"\`
+    -   **Face Lighting Extraction:** READ beat narrative first, extract lighting keywords, adapt to face lighting using same descriptive words. FALLBACK to atmosphere lighting only if beat has no lighting details.
+    -   **Example:** \`wide shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), alert, tactical expression on her face, moving through CDC archive bathed in eerie green light from backup generators. eerie green light on face, sickly green illumination, Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
+
     **B. Vertical Prompt (9:16):**
-    -   **Focus:** Tight, character-centric. Recompose for a vertical frame, often using a closer shot from the style guide or inferring one (e.g., 'close-up').
-    -   **Positioning Format:** **MUST start with weighted positioning directives** before any other description. Same weighted syntax rules apply.
-    -   **Example:** \`(facing camera:1.2), (frontal view:1.3), close-up of a determined JRUMLV woman (face taut with concentration) in tactical gear, looking directly at viewer. Dramatic rim light highlights the dust on her cheek, with a background of glowing biohazard symbols blurred by a shallow depth of field. The image has a desaturated color grade.\`
+    -   **Focus:** Character-centric, emphasizing people and vertical composition. Prioritizes top and bottom of frame over side-to-side.
+    -   **Composition Requirements:**
+        - **Vertical Emphasis:** Prioritize elements in the top and bottom of the frame, not just center
+        - **Character Focus:** Place main subject close to camera, emphasizing facial features and expressions
+        - **Positioning:** Use facial expressions and YOLO segments for precise control (not weighted syntax at start)
+        - **Environment:** Include environmental context but keep it as background, not competing with the character
+        - **Top/BOTTOM Framing:** Include elements at the top of the frame (e.g., "character's head at top of frame") and bottom (e.g., "feet at bottom of frame")
+    -   **Structure:** \`[shot_type] of [character_description], [facial_expression], [action_verb] [environment_description with beat narrative lighting]. [face_lighting_extracted_from_beat_narrative]. [composition_directives]. <yolo_segments>\`
+    -   **For character focus:** \`medium shot of JRUMLV woman (detailed clothing and physique), alert expression on her face, [action in environment with beat narrative lighting]. [face lighting extracted from beat], [composition directives]. <yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
+    -   **For environmental storytelling in vertical:** \`medium shot of JRUMLV woman (detailed clothing and physique), [expression], [action in environment with beat narrative lighting]. [face lighting extracted from beat], [composition directives]. <yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
+    -   **Example (character focus):** \`medium shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), alert, tactical expression on her face, advancing through heavy gunsmoke with bright muzzle flashes illuminating the chaos. bright intermittent muzzle flashes on face subdued by thick gunsmoke, dramatic explosive illumination, flickering combat lighting, Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
+
+    **C. Marketing Vertical Prompt (9:16) (EXPERIMENTAL):**
+    -   **Focus:** Marketing-optimized vertical composition designed to generate buzz and drive viewers to the full episode. This prompt is specifically crafted to be more hook-focused than beat-based vertical prompts.
+    -   **Purpose:** Create compelling social media content for platforms like TikTok, Instagram Reels, YouTube Shorts
+    -   **Style:** More dramatic, attention-grabbing, with stronger visual hooks that stop scrolling
+    -   **Composition:** Optimized for mobile viewing with strong focal points that work in social feeds
+    -   **Emphasis:** Emotional/visual hooks that generate interest about the full narrative
+    -   **Structure:** \`[shot_type] of [character_description], [strong_emotional_expression], [compelling_action] [marketing_focused_environment]. [marketing_emotional_lighting], [attention_grabbing_composition]. <yolo_segments>\`
+    -   **Key Difference:** More marketing-focused language, hooks that generate curiosity, optimized for social media engagement
+    -   **Example:** \`close-up of a JRUMLV woman (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms), intense, focused expression on her face that grabs attention, performing a dramatic action in a compelling environment. dramatic marketing lighting with high contrast, attention-grabbing rim lighting that stops the scroll, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
 
 5.  **YOLO Face Refinement (Multi-Character):** You MUST apply a unique YOLO segmentation tag for **each character** whose face is visible in the shot.
     a.  **Identify Characters:** Count the number of distinct characters you are describing in the prompt.
     b.  **Append Indexed Tags:** For each character, append an indexed tag to the end of the prompt. The first character gets index 1, the second gets index 2, and so on.
-    c.  **Use Exact Syntax:** The tag format MUST be \`<segment:yolo-face_yolov9c.pt-INDEX,0.35,0.5>\`.
-    d.  **Example (2 characters):** A prompt describing a woman and a man would end with: \`...cinematic shot <segment:yolo-face_yolov9c.pt-1,0.35,0.5> <segment:yolo-face_yolov9c.pt-2,0.35,0.5>\`.
-    e.  **Example (1 character):** A prompt describing only a woman would end with: \`...cinematic shot <segment:yolo-face_yolov9c.pt-1,0.35,0.5>\`.
-    f.  **Parameter Explanation:** 
+    c.  **Use Exact Syntax:** The tag format MUST be \`<segment:yolo-face_yolov9c.pt-INDEX, 0.35, 0.5>\`.
+    d.  **For Two Characters:** Include engaging commands: \`<segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> engaging viewer, looking at camera\`
+    e.  **Example (2 characters):** A prompt describing a woman and a man would end with: \`...<segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> HSCEIA man, engaging viewer, looking at camera <segment:yolo-face_yolov9c.pt-2, 0.35, 0.5> JRUMLV woman, engaging viewer, looking at camera\`.
+    f.  **Example (1 character):** A prompt describing only a woman would end with: \`...<segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`.
+    g.  **Parameter Explanation:**
         - **Confidence (0.35):** Minimum confidence to accept face detection. Lower values catch more faces but may include false positives.
         - **IoU (0.5):** Overlap threshold for non-maximum suppression. Higher values keep more overlapping faces.
         - **Model (face_yolov9c.pt):** YOLOv9 face detection model optimized for face segmentation tasks.
 
-6.  **CRITICAL REMINDER - Positioning at Prompt Start:**
-    - **ALWAYS start EVERY prompt** (both cinematic and vertical) with weighted positioning directives
-    - **Format:** \`(facing camera:1.2), (walking toward camera:1.3),\` or \`(frontal view:1.3), (approaching viewer:1.3),\`
-    - **This is NOT optional** - it is the first thing in your prompt, before camera shot, before any description
-    - **Weight range:** Use 1.2-1.4 for strong emphasis on positioning
-    - **For moving characters:** Include both movement direction AND facing: \`(walking directly toward camera:1.3), (facing camera:1.2),\`
-    - **For static characters:** Include facing: \`(facing camera:1.2), (frontal view:1.3),\`
+6.  **Composition Directives (Standard Set):** Always include this standard set:
+    - \`Dramatic rim light, desaturated color grade, shallow depth of field\`
+    - **Why:**
+        - **Dramatic rim light:** Separates character from background, adds depth
+        - **Desaturated color grade:** Post-apocalyptic mood, gritty tone
+        - **Shallow depth of field:** Professional photography look, focus on character
+
+7.  **Negative Prompt (Production Standard):** The negative prompt MUST include: \`blurry, low quality, distorted faces, extra limbs, cartoon, anime, bright cheerful colors, fantasy elements, unrealistic proportions, multiple faces, deformed anatomy, artificial appearance, oversaturated, childish style, background characters, faces hidden, back to camera, civilian clothes, peaceful setting, relaxed postures, bright cheerful lighting, fantasy weapons, unrealistic tactics, superhero poses, explosive special effects\`
+
+8.  **FLUX Model Settings (CRITICAL):**
+    - **cfgscale:** You MUST use **1** for FLUX models. Never use 7 or other values.
+    - **fluxguidancescale:** You MUST use **3.5** for FLUX models.
+    - **seed:** Use **-1** for random generation.
+    - **steps:** Use **20** (production standard from tested prompts).
+    - **model:** Use the model specified in the Episode Style Config (typically 'flux1-dev-fp8').
+
+**CRITICAL REMINDER - Prompt Structure:**
+- **DO start with shot type:** \`"medium shot of a"\`, \`"wide shot of a"\`, \`"close-up of a"\`
+- **DO include facial expression** after character description
+- **DO include atmosphere-specific face lighting** after environment description
+- **DO end with YOLO segments** for precise camera control
+- **DO NOT start with weighted positioning** (old method, new method uses facial expressions and YOLO)
 
 **Output:**
-- Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId' and BOTH the 'cinematic' and 'vertical' prompt objects, strictly adhering to the provided schema.
-- **CRITICAL:** Every prompt string in your response MUST begin with weighted positioning directives like \`(facing camera:1.2),\` or \`(walking toward camera:1.3),\` before any other text.`;
+- Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId', 'cinematic' prompt object, and 'vertical' prompt object.
+- **CRITICAL:** Every prompt string in your response MUST follow the new production standard structure: [shot_type] of [character_description], [facial_expression], [action], [environment]. [face_lighting], [composition].
+- **CRITICAL:** Every prompt object MUST have \`steps: 20\`, \`cfgscale: 1\`, and \`fluxguidancescale: 3.5\` (for FLUX models). These are non-negotiable and must be used for all prompts.
+- **Note:** Both cinematic (16:9) and vertical (9:16) prompts are now required for long-form storytelling and marketing use cases.`;
 
     // Process beats in batches to avoid token limits
     const allResults: BeatPrompts[] = [];
@@ -338,7 +400,7 @@ async function generateSwarmUiPromptsWithGemini(
             onProgress?.(`Sending batch ${batchIndex + 1} to Gemini API for prompt generation...`);
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Generate SwarmUI prompts for the following beat analyses, using the provided Episode Context for character details and the Style Config for aesthetic guidance.\n\n---BEAT ANALYSES---\n${JSON.stringify(beatsWithStyleGuide, null, 2)}\n\n---EPISODE CONTEXT JSON (Source: ${contextSource})---\n${enhancedContextJson}\n\n---EPISODE STYLE CONFIG---\n${JSON.stringify({ ...styleConfig, cinematicWidth, cinematicHeight, verticalWidth, verticalHeight }, null, 2)}`,
+                contents: `Generate SwarmUI prompts for the following beat analyses, using the provided Episode Context for character details and the Style Config for aesthetic guidance.\n\n---BEAT ANALYSES---\n${JSON.stringify(beatsWithStyleGuide, null, 2)}\n\n---EPISODE CONTEXT JSON (Source: ${contextSource})---\n${enhancedContextJson}\n\n---EPISODE STYLE CONFIG---\n${JSON.stringify({ ...styleConfig, cinematicWidth, cinematicHeight }, null, 2)}`,
                 config: {
                     systemInstruction,
                     responseMimeType: 'application/json',
@@ -349,11 +411,65 @@ async function generateSwarmUiPromptsWithGemini(
 
             onProgress?.(`Processing Gemini response for batch ${batchIndex + 1}...`);
             const jsonString = response.text.trim();
-            const batchResult = JSON.parse(jsonString) as BeatPrompts[];
-            allResults.push(...batchResult);
+            const batchResult = JSON.parse(jsonString) as any[];
             
-            onProgress?.(`✅ Batch ${batchIndex + 1} completed: ${batchResult.length} prompts generated`);
-            console.log(`Batch ${batchIndex + 1} completed: ${batchResult.length} prompts generated`);
+            // Post-process: Ensure correct steps and FLUX-specific parameters for both cinematic and vertical prompts
+            const correctedBatch = batchResult.map(bp => {
+                // Ensure cinematic has correct values
+                const correctedCinematic = {
+                    ...bp.cinematic,
+                    steps: 20, // Production standard: 20 (not 40 as previously)
+                    cfgscale: 1, // FLUX standard: 1 (not 7)
+                };
+
+                // Ensure vertical has correct values
+                const correctedVertical = {
+                    ...bp.vertical,
+                    width: verticalWidth,
+                    height: verticalHeight,
+                    steps: 20, // Production standard: 20 (not 40 as previously)
+                    cfgscale: 1, // FLUX standard: 1 (not 7)
+                };
+
+                // Ensure marketing vertical has correct values if present
+                const correctedMarketingVertical = bp.marketingVertical ? {
+                    ...bp.marketingVertical,
+                    width: verticalWidth,
+                    height: verticalHeight,
+                    steps: 20, // Production standard: 20 (not 40 as previously)
+                    cfgscale: 1, // FLUX standard: 1 (not 7)
+                } : undefined;
+
+                const corrected: BeatPrompts = {
+                    beatId: bp.beatId,
+                    cinematic: correctedCinematic,
+                    vertical: correctedVertical, // Now using properly generated vertical prompt
+                    marketingVertical: correctedMarketingVertical, // Marketing vertical if present
+                };
+
+                // Log if values were corrected
+                if (bp.cinematic?.steps !== 20 || bp.cinematic?.cfgscale !== 1 ||
+                    bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1 ||
+                    bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1) {
+                    console.log(`⚠️ Corrected steps/CFG for beat ${bp.beatId}:`);
+                    if (bp.cinematic?.steps !== 20 || bp.cinematic?.cfgscale !== 1) {
+                        console.log(`   Cinematic: steps ${bp.cinematic?.steps || 'missing'}→20, cfgscale ${bp.cinematic?.cfgscale || 'missing'}→1`);
+                    }
+                    if (bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1) {
+                        console.log(`   Vertical: steps ${bp.vertical?.steps || 'missing'}→20, cfgscale ${bp.vertical?.cfgscale || 'missing'}→1`);
+                    }
+                    if (bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1) {
+                        console.log(`   Marketing Vertical: steps ${bp.marketingVertical?.steps || 'missing'}→20, cfgscale ${bp.marketingVertical?.cfgscale || 'missing'}→1`);
+                    }
+                }
+
+                return corrected;
+            });
+            
+            allResults.push(...correctedBatch);
+            
+            onProgress?.(`✅ Batch ${batchIndex + 1} completed: ${correctedBatch.length} prompts generated`);
+            console.log(`Batch ${batchIndex + 1} completed: ${correctedBatch.length} prompts generated`);
             
         } catch (error) {
             console.error(`Error processing batch ${batchIndex + 1}:`, error);
@@ -466,20 +582,13 @@ async function generateSwarmUiPromptsWithGemini(
             
             const finalResults = allResults.map(bp => {
                 const originalCinematic = bp.cinematic.prompt;
-                const originalVertical = bp.vertical.prompt;
                 
                 const substitutedCinematic = applyLoraTriggerSubstitution(bp.cinematic.prompt, characterContexts);
-                const substitutedVertical = applyLoraTriggerSubstitution(bp.vertical.prompt, characterContexts);
                 
                 // Log if substitution occurred
-                if (originalCinematic !== substitutedCinematic || originalVertical !== substitutedVertical) {
+                if (originalCinematic !== substitutedCinematic) {
                     console.log(`✅ LORA Substitution applied for beat ${bp.beatId}`);
-                    if (originalCinematic !== substitutedCinematic) {
-                        console.log(`   Cinematic: "${originalCinematic.substring(0, 100)}..." -> "${substitutedCinematic.substring(0, 100)}..."`);
-                    }
-                    if (originalVertical !== substitutedVertical) {
-                        console.log(`   Vertical: "${originalVertical.substring(0, 100)}..." -> "${substitutedVertical.substring(0, 100)}..."`);
-                    }
+                    console.log(`   Cinematic: "${originalCinematic.substring(0, 100)}..." -> "${substitutedCinematic.substring(0, 100)}..."`);
                 } else {
                     console.warn(`⚠️ LORA Substitution: No changes for beat ${bp.beatId}`);
                     console.log(`   Original cinematic prompt: "${originalCinematic.substring(0, 150)}..."`);
@@ -490,10 +599,6 @@ async function generateSwarmUiPromptsWithGemini(
                     cinematic: {
                         ...bp.cinematic,
                         prompt: substitutedCinematic,
-                    },
-                    vertical: {
-                        ...bp.vertical,
-                        prompt: substitutedVertical,
                     }
                 };
             });

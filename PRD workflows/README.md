@@ -79,6 +79,12 @@ As the AI completes each task, you review the changes.
 * If the changes are good, simply reply with "yes" (or a similar affirmative) to instruct the AI to mark the task complete and move to the next one.
 * If changes are needed, provide feedback to the AI to correct the current task before moving on.
 
+**Testing Checkpoints:** At logical intervals (after major task sections), the AI will pause to run tests, document results, and commit validated work to git. This ensures code quality throughout development.
+
+**Documentation:** After each testing checkpoint, the AI documents what was implemented, any changes from the plan, test results, and fixes applied.
+
+**Git Workflow:** After validation, the AI commits and pushes changes with descriptive messages, keeping your work synchronized and backed up.
+
 You'll see a satisfying list of completed items grow, providing a clear visual of your feature coming to life!
 
 ![Example of a progressing task list with completed items](https://pbs.twimg.com/media/Go6KrXZWkAA_UuX?format=jpg&name=medium)
@@ -104,6 +110,9 @@ If you'd like to see this in action, I demonstrated it on [Claire Vo's "How I AI
 * **Manages Complexity:** Breaks down large features into smaller, digestible tasks for the AI, reducing the chance of it getting lost or generating overly complex, incorrect code.
 * **Improved Reliability:** Offers a more dependable approach to leveraging AI for significant development work compared to single, large prompts.
 * **Clear Progress Tracking:** Provides a visual representation of completed tasks, making it easy to see how much has been done and what's next.
+* **Built-in Quality Gates:** Testing checkpoints ensure code works before moving forward.
+* **Change Documentation:** Automatic tracking of what changed and why during implementation.
+* **Version Control Integration:** Regular commits and pushes keep work synchronized and backed up.
 
 ## 🛠️ How to Use
 
@@ -180,6 +189,56 @@ For other AI-powered IDEs or CLIs:
 * **MAX Mode for PRDs:** As mentioned, using MAX mode in Cursor for PRD creation (`create-prd.mdc`) can yield more thorough and higher-quality results if your budget supports it.
 * **Correct File Tagging:** Always ensure you're accurately tagging the PRD filename (e.g., `@MyFeature-PRD.md`) when generating tasks.
 * **Patience and Iteration:** AI is a powerful tool, but it's not magic. Be prepared to guide, correct, and iterate. This workflow is designed to make that iteration process smoother.
+
+## 🧪 Testing, Documentation, and Git Workflow
+
+This workflow includes built-in quality gates to ensure code reliability and maintainability:
+
+### Testing Checkpoints
+
+The task list includes **testing checkpoints** at logical intervals (after major task sections). At these checkpoints:
+
+1. **Run Tests:** Execute the appropriate test suite (e.g., `pytest`, `npm test`)
+2. **Verify Results:** Ensure all tests pass before proceeding
+3. **Fix Issues:** If tests fail, document what was wrong and fix it
+4. **Document:** Record test results, coverage metrics, and any fixes applied
+
+### Documentation Requirements
+
+After each testing checkpoint, the AI must document:
+
+- **What was implemented:** Summary of the completed work
+- **Changes from plan:** Any deviations from the original task description
+- **Test results:** Success/failure status, coverage metrics
+- **Fixes applied:** What was changed to make tests pass
+- **Validation:** How the feature was validated (manual testing, automated tests, etc.)
+
+Documentation can be:
+- Inline code comments
+- Separate test log files
+- Markdown documentation files
+- Commit messages (for significant changes)
+
+### Git Workflow
+
+After validation and documentation:
+
+1. **Stage Changes:** `git add -A` (or `git add .` for current directory)
+2. **Commit:** Use conventional commit format with descriptive message:
+   ```bash
+   git commit -m "feat: [brief summary]" -m "- [detailed change 1]" -m "- [detailed change 2]"
+   ```
+3. **Push:** `git push` to sync with remote repository
+
+**Commit Frequency:**
+- After each major task section (when all subtasks complete)
+- After testing checkpoints (when validated)
+- Before switching to a new major feature area
+
+**Commit Message Format:**
+- Use conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`
+- Include task number reference when applicable
+- List key changes in bullet points using `-m` flags
 
 ## 🤝 Contributing
 
