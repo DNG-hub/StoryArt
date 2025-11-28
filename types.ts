@@ -226,6 +226,16 @@ export interface DatabaseStoryData {
   core_themes: string;
 }
 
+/**
+ * Story context data for Episode Context Enhancement (Phase B)
+ * Contains high-level story intelligence used to enrich AI prompt generation
+ */
+export interface StoryContextData {
+  story_context: string;  // Overarching narrative framework (300-700 chars recommended)
+  narrative_tone: string;  // Tone guidance for atmosphere and mood (150-350 chars recommended)
+  core_themes: string;     // Thematic elements for visual symbolism (150-300 chars recommended)
+}
+
 // Location override mapping for tactical appearances
 export interface LocationOverrideMapping {
   [locationName: string]: string;
