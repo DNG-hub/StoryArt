@@ -1,8 +1,9 @@
 // services/databaseContextService.ts
-import { 
-  DatabaseLocationData, 
-  DatabaseArtifactData, 
-  DatabaseCharacterLocationData, 
+import { Pool } from 'pg';
+import {
+  DatabaseLocationData,
+  DatabaseArtifactData,
+  DatabaseCharacterLocationData,
   DatabaseStoryData,
   LocationOverrideMapping,
   EnhancedEpisodeContext,
@@ -45,12 +46,19 @@ const locationOverrideMapping: LocationOverrideMapping = {
 
 // Database connection configuration
 // Support both Vite (import.meta.env) and Node.js (process.env) environments
-const DATABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DATABASE_URL) ||
-                     process.env.VITE_DATABASE_URL ||
-                     'postgresql+asyncpg://username:password@localhost:5432/storyteller_dev';
+// Convert Python-style connection string to pg format
+let DATABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DATABASE_URL) ||
+                   process.env.VITE_DATABASE_URL ||
+                   process.env.DATABASE_URL ||
+                   'postgresql://username:password@localhost:5432/storyteller_dev';
+DATABASE_URL = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://');
+
 const CAT_DANIEL_STORY_ID = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CAT_DANIEL_STORY_ID) ||
                             process.env.VITE_CAT_DANIEL_STORY_ID ||
                             '59f64b1e-726a-439d-a6bc-0dfefcababdb';
+
+// Database connection pool
+const pool = new Pool({ connectionString: DATABASE_URL });
 
 // Cache for database queries to improve performance
 const cache = new Map<string, any>();
@@ -74,147 +82,18 @@ function setCachedData(key: string, data: any): void {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
-// Database query functions
+// Database query functions - now using real PostgreSQL
 async function queryDatabase(query: string, params: any[] = []): Promise<any[]> {
   try {
-    // For now, we'll simulate database queries since we don't have direct PostgreSQL access
-    // In a real implementation, this would use a PostgreSQL client like pg or pg-promise
     console.log('Database query:', query, params);
-    
-    // Simulate database response based on the schema
-    // This would be replaced with actual database calls
-    return await simulateDatabaseQuery(query, params);
+
+    // Execute real PostgreSQL query
+    const result = await pool.query(query, params);
+    return result.rows;
   } catch (error) {
     console.error('Database query failed:', error);
     throw new Error(`Database query failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-}
-
-// Simulate database queries for development
-async function simulateDatabaseQuery(query: string, params: any[]): Promise<any[]> {
-  // This is a placeholder - in production, this would be replaced with actual PostgreSQL queries
-  // For now, return empty arrays to avoid errors
-  console.log('Simulating database query:', query, 'with params:', params);
-  
-  // Return mock data structure to match expected interfaces
-  if (query.includes('stories')) {
-    return [{
-      id: CAT_DANIEL_STORY_ID,
-      title: "Cat & Daniel Story",
-      story_context: "Post-apocalyptic medical thriller with supernatural elements",
-      narrative_tone: "Gritty, tense, with moments of vulnerability",
-      core_themes: "Survival, trust, supernatural mystery, medical ethics"
-    }];
-  }
-  
-  if (query.includes('location_arcs')) {
-    return [
-      {
-        id: "6fb2e29b-5b6e-4a91-990b-b6ce489afdea",
-        name: "NHIA Facility 7",
-        description: "CDC archive and data center, post-downfall destruction",
-        location_type: "SPECIFIC",
-        atmosphere_category: "TENSE",
-        geographical_location: "Atlanta, Georgia",
-        time_period: "POST_COLLAPSE",
-        cultural_context: "Abandoned government facility",
-        atmosphere: "Eerie silence, emergency lighting, destruction",
-        visual_description: "A sprawling CDC archive and data center, now a ghost town of sterile server rooms and data storage units. Emergency lights cast long shadows down silent corridors, with abandoned computer terminals and data drives hinting at the chaos of its evacuation.",
-        key_features: '["server_rooms", "data_storage", "emergency_lighting", "abandoned_equipment"]',
-        visual_reference_url: "",
-        significance_level: "primary",
-        notes: "Primary location for Episode 1"
-      },
-      {
-        id: "7a6b282a-f048-43ee-9f0c-2e4d1be2b597",
-        name: "Mobile Medical Base",
-        description: "Converted semi-trailer mobile medical facility",
-        location_type: "SPECIFIC",
-        atmosphere_category: "professional",
-        geographical_location: "Mobile",
-        time_period: "POST_COLLAPSE",
-        cultural_context: "Mobile medical facility",
-        atmosphere: "Clinical, cramped, functional",
-        visual_description: "The converted semi-trailer interior maximizes every inch: medical monitors line reinforced walls, IV bags hang from ceiling-mounted tracks, and modular storage units secure supplies during transport. LED strip lighting provides clinical brightness while the exterior remains armored and nondescript.",
-        key_features: '["medical_monitors", "iv_bags", "storage_units", "led_lighting"]',
-        visual_reference_url: "",
-        significance_level: "secondary",
-        notes: "Cat's mobile lab"
-      }
-    ];
-  }
-  
-  if (query.includes('location_artifacts')) {
-    return [
-      {
-        id: "1",
-        artifact_name: "concrete_rubble",
-        artifact_type: "STRUCTURAL",
-        description: "Pulverized concrete debris from the explosion",
-        always_present: true,
-        scene_specific: false,
-        swarmui_prompt_fragment: "pulverized concrete debris, scattered construction materials",
-        location_arc_id: "6fb2e29b-5b6e-4a91-990b-b6ce489afdea"
-      },
-      {
-        id: "2",
-        artifact_name: "Emergency Biohazard Warnings",
-        artifact_type: "LIGHTING",
-        description: "Flickering red emergency lights and biohazard symbols",
-        always_present: true,
-        scene_specific: false,
-        swarmui_prompt_fragment: "flickering red emergency lights and glowing biohazard symbols on the walls",
-        location_arc_id: "6fb2e29b-5b6e-4a91-990b-b6ce489afdea"
-      },
-      {
-        id: "3",
-        artifact_name: "server_racks",
-        artifact_type: "TECHNOLOGY",
-        description: "Rows of server racks with blinking status lights",
-        always_present: true,
-        scene_specific: false,
-        swarmui_prompt_fragment: "rows of server racks, blinking status lights",
-        location_arc_id: "6fb2e29b-5b6e-4a91-990b-b6ce489afdea"
-      }
-    ];
-  }
-  
-  if (query.includes('character_location_contexts')) {
-    return [
-      {
-        id: "1",
-        character_id: "cat-id",
-        character_name: "Catherine \"Cat\" Mitchell",
-        location_arc_id: "6fb2e29b-5b6e-4a91-990b-b6ce489afdea",
-        location_name: "NHIA Facility 7",
-        temporal_context: "POST_COLLAPSE",
-        age_at_context: 32,
-        physical_description: "Athletic build, focused expression, tactical gear",
-        clothing_description: "Tactical field gear, tactical vest, combat boots",
-        hair_description: "Dark brown tactical bun",
-        demeanor_description: "Alert and focused, investigating with determination",
-        swarmui_prompt_override: "Catherine 'Cat' Mitchell as field investigator, 32, dark brown tactical bun, green eyes alert and focused, wearing tactical field gear, tactical vest, combat boots, emergency zone background, tactical stance, burn marks on forearms, investigating with focused determination.",
-        lora_weight_adjustment: 1.0
-      },
-      {
-        id: "2",
-        character_id: "daniel-id",
-        character_name: "Daniel O'Brien",
-        location_arc_id: "6fb2e29b-5b6e-4a91-990b-b6ce489afdea",
-        location_name: "NHIA Facility 7",
-        temporal_context: "POST_COLLAPSE",
-        age_at_context: 35,
-        physical_description: "Lean, powerful build, gray eyes scanning",
-        clothing_description: "Full tactical gear, plate carrier, weapons systems",
-        hair_description: "Stark white hair",
-        demeanor_description: "Silent predator, protective stance",
-        swarmui_prompt_override: "Daniel O'Brien in full tactical mode, 35, 6'2\", stark white hair, green eyes scanning threats, wearing complete tactical gear, plate carrier, weapons systems, protective stance in chaotic Atlanta emergency zone, urban decay background, command presence, military precision.",
-        lora_weight_adjustment: 1.0
-      }
-    ];
-  }
-  
-  return [];
 }
 
 // Main database context service functions
