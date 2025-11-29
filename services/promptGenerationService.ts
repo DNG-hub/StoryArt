@@ -2,6 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt } from '../types';
 import { generateEnhancedEpisodeContext } from './databaseContextService';
+import { getStoryContext } from './storyContextService';
 import { applyLoraTriggerSubstitution } from '../utils';
 
 const swarmUIPromptSchema = {
@@ -74,10 +75,12 @@ async function generateSwarmUiPromptsWithGemini(
     onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> {
     onProgress?.('Verifying Gemini API key...');
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || 
-                   import.meta.env.GEMINI_API_KEY || 
-                   (process.env as any).API_KEY ||
-                   (process.env as any).GEMINI_API_KEY;
+    // Support both Vite (import.meta.env) and Node.js (process.env) environments
+    const apiKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+                   (typeof import.meta !== 'undefined' && import.meta.env?.GEMINI_API_KEY) ||
+                   process.env.VITE_GEMINI_API_KEY ||
+                   process.env.GEMINI_API_KEY ||
+                   process.env.API_KEY;
     
     if (!apiKey) {
         throw new Error("VITE_GEMINI_API_KEY is not configured in .env file. Please set it and restart the dev server.");
@@ -172,7 +175,79 @@ async function generateSwarmUiPromptsWithGemini(
     const verticalWidth = Math.round(Math.sqrt(baseResolution * baseResolution * verticalRatio) / 8) * 8;
     const verticalHeight = Math.round(verticalWidth / verticalRatio / 8) * 8;
 
+    // Phase B Enhancement: Fetch story context for episode-wide intelligence
+    // Token tracking: Track impact of story context on prompt size
+    const tokenMetrics = {
+        storyContextChars: 0,
+        storyContextTokensEstimate: 0,
+        baseSystemInstructionChars: 0,
+        baseSystemInstructionTokensEstimate: 0,
+        enhancedSystemInstructionChars: 0,
+        enhancedSystemInstructionTokensEstimate: 0,
+        deltaChars: 0,
+        deltaTokensEstimate: 0,
+        totalPromptChars: 0,
+        totalPromptTokensEstimate: 0
+    };
+
+    let episodeContextSection = '';
+    let storyContextAvailable = false;
+    if (storyId) {
+        try {
+            onProgress?.('Fetching story context...');
+            const storyContext = await getStoryContext(storyId);
+            if (storyContext) {
+                storyContextAvailable = true;
+                const contextLength = storyContext.story_context.length + storyContext.narrative_tone.length + storyContext.core_themes.length;
+                console.log(`[Phase B] Story context retrieved: ${contextLength} chars total`);
+
+                episodeContextSection = `
+
+**EPISODE-WIDE STORY CONTEXT (Phase B Enhancement):**
+
+You now have access to high-level story intelligence to enrich your prompts:
+
+**Story Framework:** ${storyContext.story_context}
+
+**Narrative Tone:** ${storyContext.narrative_tone}
+
+**Core Themes:** ${storyContext.core_themes}
+
+**Use this context to:**
+- Align visual composition with thematic elements (e.g., if themes mention "truth vs. survival", emphasize visual elements suggesting investigation or moral tension)
+- Apply tone guidance to lighting and atmosphere (e.g., "tense thriller" suggests dramatic shadows, high contrast)
+- Ensure character emotional states reflect story framework (e.g., "professional boundaries" suggests controlled postures, suppressed emotion)
+- This is episode-level intelligence that applies to ALL beats, complementing the beat-specific context from the beat analysis
+
+`;
+
+                // Track story context metrics
+                tokenMetrics.storyContextChars = episodeContextSection.length;
+                tokenMetrics.storyContextTokensEstimate = Math.ceil(episodeContextSection.length / 4); // ~4 chars per token
+
+                onProgress?.('✅ Story context integrated into prompt generation');
+                console.log(`[Phase B Token Tracking] Story context section: ${tokenMetrics.storyContextChars} chars (~${tokenMetrics.storyContextTokensEstimate} tokens)`);
+            } else {
+                console.log('[Phase B] Story context not available, proceeding without episode enhancement');
+            }
+        } catch (error) {
+            console.warn('[Phase B] Failed to fetch story context, proceeding without enhancement:', error);
+        }
+    } else {
+        console.log('[Phase B] No storyId provided, skipping story context enhancement');
+    }
+
     // Create system instruction with context source information
+    const systemInstructionLength = storyContextAvailable ? '[with episode context]' : '[without episode context]';
+    console.log(`[Phase B] Building system instruction ${systemInstructionLength}`);
+
+    // Build base system instruction (without episodeContextSection) for comparison
+    const baseSystemInstructionStart = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate BOTH cinematic (16:9) AND vertical (9:16) prompts. Both are used for long-form storytelling and marketing, but with different compositional requirements.
+
+**Your Mandate: THINK LIKE A CINEMATOGRAPHER. Compose the shot by weaving together stylistic elements with the narrative.**
+
+**CRITICAL NEW PRODUCTION STANDARDS (Based on 135 tested prompts, Version 2.0):**`;
+
     const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate BOTH cinematic (16:9) AND vertical (9:16) prompts. Both are used for long-form storytelling and marketing, but with different compositional requirements.
 
 **Your Mandate: THINK LIKE A CINEMATOGRAPHER. Compose the shot by weaving together stylistic elements with the narrative.**
@@ -194,7 +269,7 @@ async function generateSwarmUiPromptsWithGemini(
     - cfgscale: 1 (NOT 7!)
     - fluxguidancescale: 3.5
     - seed: -1 (random for batch generation)
-
+${episodeContextSection}
 **Strict Content Rules (NON-NEGOTIABLE):**
 1.  **NO NARRATIVE NAMES (with Override Exception):** You MUST NOT use character's actual names (e.g., "Catherine Mitchell", "Cat", "O'Brien") UNLESS a \`swarmui_prompt_override\` is provided. If \`swarmui_prompt_override\` exists, it may contain character names and you MUST use it exactly as written. Otherwise, you MUST ONLY use their assigned \`base_trigger\` from the context (e.g., "JRUMLV woman").
 2.  **NO LOCATION NAMES:** You MUST NOT use the proper name of a location (e.g., "NHIA Facility 7"). Instead, you MUST visually describe the environment based on its \`visual_description\`, \`locationAttributes\`, and \`artifacts\` from the context. Translate the *idea* of the location into what a camera would see.
@@ -346,6 +421,30 @@ async function generateSwarmUiPromptsWithGemini(
 - **CRITICAL:** Every prompt object MUST have \`steps: 20\`, \`cfgscale: 1\`, and \`fluxguidancescale: 3.5\` (for FLUX models). These are non-negotiable and must be used for all prompts.
 - **Note:** Both cinematic (16:9) and vertical (9:16) prompts are now required for long-form storytelling and marketing use cases.`;
 
+    // Token tracking: Measure system instruction size impact
+    // Calculate base system instruction size (without episode context section)
+    const baseSystemInstructionWithoutContext = systemInstruction.replace(episodeContextSection, '');
+    tokenMetrics.baseSystemInstructionChars = baseSystemInstructionWithoutContext.length;
+    tokenMetrics.baseSystemInstructionTokensEstimate = Math.ceil(baseSystemInstructionWithoutContext.length / 4);
+
+    // Calculate enhanced system instruction size (with episode context section)
+    tokenMetrics.enhancedSystemInstructionChars = systemInstruction.length;
+    tokenMetrics.enhancedSystemInstructionTokensEstimate = Math.ceil(systemInstruction.length / 4);
+
+    // Calculate delta (impact of adding story context)
+    tokenMetrics.deltaChars = tokenMetrics.enhancedSystemInstructionChars - tokenMetrics.baseSystemInstructionChars;
+    tokenMetrics.deltaTokensEstimate = tokenMetrics.enhancedSystemInstructionTokensEstimate - tokenMetrics.baseSystemInstructionTokensEstimate;
+
+    // Log system instruction metrics
+    console.log('\n[Phase B Token Tracking] System Instruction Metrics:');
+    console.log(`  Base (without story context): ${tokenMetrics.baseSystemInstructionChars} chars (~${tokenMetrics.baseSystemInstructionTokensEstimate} tokens)`);
+    console.log(`  Enhanced (with story context): ${tokenMetrics.enhancedSystemInstructionChars} chars (~${tokenMetrics.enhancedSystemInstructionTokensEstimate} tokens)`);
+    console.log(`  Delta (impact of story context): +${tokenMetrics.deltaChars} chars (+~${tokenMetrics.deltaTokensEstimate} tokens)`);
+    if (storyContextAvailable) {
+        const percentageIncrease = ((tokenMetrics.deltaChars / tokenMetrics.baseSystemInstructionChars) * 100).toFixed(1);
+        console.log(`  Percentage increase: +${percentageIncrease}%`);
+    }
+
     // Process beats in batches to avoid token limits
     const allResults: BeatPrompts[] = [];
     
@@ -397,10 +496,27 @@ async function generateSwarmUiPromptsWithGemini(
         });
 
         try {
+            // Token tracking: Measure total prompt size for this batch
+            const batchContents = `Generate SwarmUI prompts for the following beat analyses, using the provided Episode Context for character details and the Style Config for aesthetic guidance.\n\n---BEAT ANALYSES---\n${JSON.stringify(beatsWithStyleGuide, null, 2)}\n\n---EPISODE CONTEXT JSON (Source: ${contextSource})---\n${enhancedContextJson}\n\n---EPISODE STYLE CONFIG---\n${JSON.stringify({ ...styleConfig, cinematicWidth, cinematicHeight }, null, 2)}`;
+
+            const batchPromptChars = batchContents.length + systemInstruction.length;
+            const batchPromptTokensEstimate = Math.ceil(batchPromptChars / 4);
+
+            console.log(`\n[Phase B Token Tracking] Batch ${batchIndex + 1} Total Prompt Size:`);
+            console.log(`  Contents: ${batchContents.length} chars (~${Math.ceil(batchContents.length / 4)} tokens)`);
+            console.log(`  System Instruction: ${systemInstruction.length} chars (~${Math.ceil(systemInstruction.length / 4)} tokens)`);
+            console.log(`  Total: ${batchPromptChars} chars (~${batchPromptTokensEstimate} tokens)`);
+
+            // Track for final summary (only track first batch for representative metrics)
+            if (batchIndex === 0) {
+                tokenMetrics.totalPromptChars = batchPromptChars;
+                tokenMetrics.totalPromptTokensEstimate = batchPromptTokensEstimate;
+            }
+
             onProgress?.(`Sending batch ${batchIndex + 1} to Gemini API for prompt generation...`);
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Generate SwarmUI prompts for the following beat analyses, using the provided Episode Context for character details and the Style Config for aesthetic guidance.\n\n---BEAT ANALYSES---\n${JSON.stringify(beatsWithStyleGuide, null, 2)}\n\n---EPISODE CONTEXT JSON (Source: ${contextSource})---\n${enhancedContextJson}\n\n---EPISODE STYLE CONFIG---\n${JSON.stringify({ ...styleConfig, cinematicWidth, cinematicHeight }, null, 2)}`,
+                contents: batchContents,
                 config: {
                     systemInstruction,
                     responseMimeType: 'application/json',
@@ -602,9 +718,41 @@ async function generateSwarmUiPromptsWithGemini(
                     }
                 };
             });
+
+            // Token tracking: Final summary
+            console.log('\n╔═══════════════════════════════════════════════════════════════╗');
+            console.log('║     [Phase B Token Tracking] FINAL SUMMARY                    ║');
+            console.log('╚═══════════════════════════════════════════════════════════════╝');
+            console.log('\n📊 Story Context Impact:');
+            console.log(`   Story context section: ${tokenMetrics.storyContextChars} chars (~${tokenMetrics.storyContextTokensEstimate} tokens)`);
+            console.log('\n📊 System Instruction:');
+            console.log(`   Base (without story context): ${tokenMetrics.baseSystemInstructionChars} chars (~${tokenMetrics.baseSystemInstructionTokensEstimate} tokens)`);
+            console.log(`   Enhanced (with story context): ${tokenMetrics.enhancedSystemInstructionChars} chars (~${tokenMetrics.enhancedSystemInstructionTokensEstimate} tokens)`);
+            console.log(`   Delta: +${tokenMetrics.deltaChars} chars (+~${tokenMetrics.deltaTokensEstimate} tokens)`);
+            if (storyContextAvailable) {
+                const percentageIncrease = ((tokenMetrics.deltaChars / tokenMetrics.baseSystemInstructionChars) * 100).toFixed(1);
+                console.log(`   Percentage increase: +${percentageIncrease}%`);
+            }
+            console.log('\n📊 Total Prompt (Batch 1 representative):');
+            console.log(`   Total: ${tokenMetrics.totalPromptChars} chars (~${tokenMetrics.totalPromptTokensEstimate} tokens)`);
+            console.log('\n✅ Prompt generation complete!');
+            console.log('═══════════════════════════════════════════════════════════════\n');
+
             onProgress?.(`✅ Prompt generation complete! Generated ${finalResults.length} prompt pairs.`);
             return finalResults;
         } else {
+            // Token tracking: Final summary (no story context case)
+            console.log('\n╔═══════════════════════════════════════════════════════════════╗');
+            console.log('║     [Phase B Token Tracking] FINAL SUMMARY                    ║');
+            console.log('╚═══════════════════════════════════════════════════════════════╝');
+            console.log('\n⚠️  No story context available for this generation');
+            console.log('\n📊 System Instruction:');
+            console.log(`   Base: ${tokenMetrics.baseSystemInstructionChars} chars (~${tokenMetrics.baseSystemInstructionTokensEstimate} tokens)`);
+            console.log('\n📊 Total Prompt (Batch 1 representative):');
+            console.log(`   Total: ${tokenMetrics.totalPromptChars} chars (~${tokenMetrics.totalPromptTokensEstimate} tokens)`);
+            console.log('\n✅ Prompt generation complete (without story context enhancement)');
+            console.log('═══════════════════════════════════════════════════════════════\n');
+
             // No character contexts found - return prompts without substitution
             onProgress?.(`⚠️ No character contexts found for LORA substitution. Generated ${allResults.length} prompt pairs.`);
             return allResults;

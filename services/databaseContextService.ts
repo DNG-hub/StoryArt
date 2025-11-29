@@ -44,8 +44,13 @@ const locationOverrideMapping: LocationOverrideMapping = {
 };
 
 // Database connection configuration
-const DATABASE_URL = import.meta.env.VITE_DATABASE_URL || 'postgresql+asyncpg://username:password@localhost:5432/storyteller_dev';
-const CAT_DANIEL_STORY_ID = import.meta.env.VITE_CAT_DANIEL_STORY_ID || '59f64b1e-726a-439d-a6bc-0dfefcababdb';
+// Support both Vite (import.meta.env) and Node.js (process.env) environments
+const DATABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DATABASE_URL) ||
+                     process.env.VITE_DATABASE_URL ||
+                     'postgresql+asyncpg://username:password@localhost:5432/storyteller_dev';
+const CAT_DANIEL_STORY_ID = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CAT_DANIEL_STORY_ID) ||
+                            process.env.VITE_CAT_DANIEL_STORY_ID ||
+                            '59f64b1e-726a-439d-a6bc-0dfefcababdb';
 
 // Cache for database queries to improve performance
 const cache = new Map<string, any>();
