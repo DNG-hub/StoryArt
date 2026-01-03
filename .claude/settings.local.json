@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PGPASSWORD='3pLs4V9?zPN>JV5' psql:*)",
+      "Bash(docker exec:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
