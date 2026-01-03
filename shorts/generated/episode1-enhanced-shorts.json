@@ -1,0 +1,119 @@
+{
+  "episode": {
+    "number": 1,
+    "title": "The Signal",
+    "scene": 1,
+    "scene_title": "INT. NHIA FACILITY 7 - DAY"
+  },
+  "generated_at": "2025-11-29T11:55:14.430Z",
+  "enhancement_method": "formatted_existing_shorts",
+  "total_shorts": 4,
+  "format": {
+    "aspect_ratio": "9:16",
+    "width": 768,
+    "height": 1344,
+    "purpose": "viral_social_media_marketing"
+  },
+  "moments": [
+    {
+      "id": "enhanced_short_1",
+      "sequence": 1,
+      "title": "Physics Don't Lie",
+      "viral_hook_overlay": "They said it was a terrorist attack. The math says otherwise.",
+      "script": "(Sound of wind howling through hollow ruins. Crunching of boots on glass.)\nCat (V.O.): \"The official report called it retaliation. A messy, chaotic bomb by the Radical Unity Front.\"\n(Sound of a scanner pinging. High-pitched, clinical.)\nCat: \"But look at the rebar. Molten. Curled inward. No shrapnel scatter. No chaos.\"\n(Beat. Low bass thrum.)\nCat: \"This wasn't a sledgehammer. It was a scalpel. They didn't want to destroy the building... they wanted to bury the server room.\"",
+      "image_prompts": [
+        "Cinematic close-up, low angle, Cat Mitchell's boots stepping on shattered glass and powdered drywall, dystopian lighting, dust motes dancing in sunbeams.",
+        "Macro shot of twisted steel rebar, molten and glowing faintly with heat, hyper-realistic texture, smoke rising.",
+        "Cat kneeling in a blast crater, holding a high-tech scanner device emitting a blue laser grid over the debris, intense focus in her eyes, grime on face.",
+        "Wide shot of a ruined Atlanta skyline, skeletal building remains, listening silence, volumetric fog."
+      ],
+      "buzz_score": 9,
+      "emotional_hook": "They said it was a terrorist attack. The math says otherwise.",
+      "story_connection": "Scene 1: Discovery at NHIA Facility 7",
+      "description": "Cat's forensic analysis of the bombing proving the government narrative is false.",
+      "primary_prompt": "Cinematic close-up, low angle, Cat Mitchell's boots stepping on shattered glass and powdered drywall, dystopian lighting, dust motes dancing in sunbeams.",
+      "width": 768,
+      "height": 1344,
+      "model": "flux1-dev-fp8.safetensors",
+      "steps": 40,
+      "cfg_scale": 1,
+      "sampler": "euler",
+      "seed": -1
+    },
+    {
+      "id": "enhanced_short_2",
+      "sequence": 2,
+      "title": "The Shepherd",
+      "viral_hook_overlay": "He was sent to protect her. She thinks he was sent to silence her.",
+      "script": "(Sound of a gun cocking. Sharp. Loud.)\nCat: \"You're late.\"\nDaniel: \"I was securing the perimeter. Three hostiles. Neutralized.\"\n(Tense silence. Heartbeat sound effect.)\nCat: \"Preacher sent you because I'm valuable. Not because you care.\"\nDaniel: \"I care about the mission.\"\nCat: \"Which mission? Saving lives? Or making sure I don't find the bodies?\"",
+      "image_prompts": [
+        "Silhouette of a broad-shouldered soldier (Daniel) standing in a destroyed doorway, backlit by harsh sunlight, holding a tactical rifle, intimidating stance.",
+        "POV from Daniel looking down the barrel of a pistol held by a woman (Cat), her hand steady, eyes fierce and distrusting.",
+        "Close-up of Daniel's face, scarred, gray eyes unreadable, jaw tightening, tactical gear detailed with dust and wear.",
+        "Two-shot, side profile, Cat and Daniel standing amidst rubble, tension thick in the air, contrasting The Medic vs The Soldier aesthetics."
+      ],
+      "buzz_score": 8,
+      "emotional_hook": "He was sent to protect her. She thinks he was sent to silence her.",
+      "story_connection": "Scene 1: Discovery at NHIA Facility 7",
+      "description": "The tense first meeting between Cat and Daniel. Gunpoint standoff.",
+      "primary_prompt": "Silhouette of a broad-shouldered soldier (Daniel) standing in a destroyed doorway, backlit by harsh sunlight, holding a tactical rifle, intimidating stance.",
+      "width": 768,
+      "height": 1344,
+      "model": "flux1-dev-fp8.safetensors",
+      "steps": 40,
+      "cfg_scale": 1,
+      "sampler": "euler",
+      "seed": -1
+    },
+    {
+      "id": "enhanced_short_3",
+      "sequence": 3,
+      "title": "You Are Not Alone",
+      "viral_hook_overlay": "This computer has been unplugged for 3 years. It just sent a message.",
+      "script": "(Hum of servers powering up. A glitch sound effect.)\nCat (Whisper): \"It's encrypted. Triple layer. Military grade.\"\n(Sound of a chime. A monitor flickers to life.)\nCat: \"Wait. That server is air-gapped. No power. No network.\"\n(Sound of typing, but no one is typing.)\nComputer Voice (distorted): \"You. Are. Not. Alone.\"\nDaniel: \"Ghost was a rumor. A myth from the Audit Crisis.\"\nCat: \"Myths don't type, Daniel. Myths don't bleed data.\"",
+      "image_prompts": [
+        "Dark, cavernous server room, rows of black monoliths, one single amber light pulsing like a heartbeat.",
+        "Close-up of an old CRT monitor flickering to life, dust on the screen, displaying the text YOU ARE NOT ALONE in crisp white font.",
+        "Cat's face illuminated by the glow of the screen, expression of pure shock and terror, pupils dilated.",
+        "Daniel's hand gripping his pistol, veins popping, looking around the empty room for an invisible enemy."
+      ],
+      "buzz_score": 10,
+      "emotional_hook": "This computer has been unplugged for 3 years. It just sent a message.",
+      "story_connection": "Scene 1: Discovery at NHIA Facility 7",
+      "description": "The first contact with Ghost/AEGIS.ECHO_7.",
+      "primary_prompt": "Dark, cavernous server room, rows of black monoliths, one single amber light pulsing like a heartbeat.",
+      "width": 768,
+      "height": 1344,
+      "model": "flux1-dev-fp8.safetensors",
+      "steps": 40,
+      "cfg_scale": 1,
+      "sampler": "euler",
+      "seed": -1
+    },
+    {
+      "id": "enhanced_short_4",
+      "sequence": 4,
+      "title": "Farming",
+      "viral_hook_overlay": "The hospitals weren't saving us. They were harvesting us.",
+      "script": "(Static noise. Then a rasping, terrified voice.)\nElias Voss (Audio): \"Can't feel my legs... God, it burns. They said it was treatment.\"\n(Sound of medical machines beeping erratically.)\nElias Voss (Audio): \"It's not care. It's farming. I reported the fraud. The false positives. Now I'm here. No windows. Cold floors.\"\nCat: \"I know this voice. He was declared KIA weeks before the collapse.\"\nDaniel: \"Then how is he speaking to us right now?\"",
+      "image_prompts": [
+        "Audio waveform visualization on a futuristic datapad, the waves looking jagged and corrupted red.",
+        "Flashback overlay (glitch effect): A sterile white hospital room, a patient strapped to a bed, screaming silently, blurred motion.",
+        "Cat hunched over a console in a cramped mobile base, hands covering her mouth in horror.",
+        "Daniel staring at the speaker, a look of realization and disgust dawning on his face."
+      ],
+      "buzz_score": 10,
+      "emotional_hook": "The hospitals weren't saving us. They were harvesting us.",
+      "story_connection": "Scene 1: Discovery at NHIA Facility 7",
+      "description": "The audio log from Elias Voss. The darkest secret.",
+      "primary_prompt": "Audio waveform visualization on a futuristic datapad, the waves looking jagged and corrupted red.",
+      "width": 768,
+      "height": 1344,
+      "model": "flux1-dev-fp8.safetensors",
+      "steps": 40,
+      "cfg_scale": 1,
+      "sampler": "euler",
+      "seed": -1
+    }
+  ]
+}

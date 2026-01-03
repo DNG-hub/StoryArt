@@ -19,7 +19,7 @@ const swarmUIPromptSchema = {
     required: ['prompt', 'model', 'width', 'height', 'steps', 'cfgscale', 'seed'],
 };
 
-// Response schema - cinematic, vertical, and marketing vertical prompts are all required (Phase B enhancement)
+// Response schema - only cinematic prompts are required for standard beat analysis (Phase C optimization)
 const responseSchema = {
     type: Type.ARRAY,
     items: {
@@ -30,7 +30,7 @@ const responseSchema = {
             vertical: swarmUIPromptSchema,
             marketingVertical: swarmUIPromptSchema,
         },
-        required: ['beatId', 'cinematic', 'vertical', 'marketingVertical']
+        required: ['beatId', 'cinematic']
     }
 };
 
@@ -243,13 +243,13 @@ You now have access to high-level story intelligence to enrich your prompts:
     console.log(`[Phase B] Building system instruction ${systemInstructionLength}`);
 
     // Build base system instruction (without episodeContextSection) for comparison
-    const baseSystemInstructionStart = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate BOTH cinematic (16:9) AND vertical (9:16) prompts. Both are used for long-form storytelling and marketing, but with different compositional requirements.
+    const baseSystemInstructionStart = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate a cinematic (16:9) prompt. This is used for long-form storytelling.
 
 **Your Mandate: THINK LIKE A CINEMATOGRAPHER. Compose the shot by weaving together stylistic elements with the narrative.**
 
 **CRITICAL NEW PRODUCTION STANDARDS (Based on 135 tested prompts, Version 2.0):**`;
 
-    const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate BOTH cinematic (16:9) AND vertical (9:16) prompts. Both are used for long-form storytelling and marketing, but with different compositional requirements.
+    const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate a cinematic (16:9) prompt. This is used for long-form storytelling.
 
 **Your Mandate: THINK LIKE A CINEMATOGRAPHER. Compose the shot by weaving together stylistic elements with the narrative.**
 
@@ -358,53 +358,6 @@ ${episodeContextSection}
     -   **Face Lighting Extraction:** READ beat narrative first, extract lighting keywords, adapt to face lighting using same descriptive words. FALLBACK to atmosphere lighting only if beat has no lighting details.
     -   **Example:** \`wide shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), alert, tactical expression on her face, moving through CDC archive bathed in eerie green light from backup generators. eerie green light on face, sickly green illumination, Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
 
-    **B. Vertical Prompt (9:16):**
-    -   **Focus:** Character-centric, emphasizing people and vertical composition. Prioritizes top and bottom of frame over side-to-side.
-    -   **Composition Requirements:**
-        - **Vertical Emphasis:** Prioritize elements in the top and bottom of the frame, not just center
-        - **Character Focus:** Place main subject close to camera, emphasizing facial features and expressions
-        - **Positioning:** Use facial expressions and YOLO segments for precise control (not weighted syntax at start)
-        - **Environment:** Include environmental context but keep it as background, not competing with the character
-        - **Top/BOTTOM Framing:** Include elements at the top of the frame (e.g., "character's head at top of frame") and bottom (e.g., "feet at bottom of frame")
-    -   **Structure:** \`[shot_type] of [character_description], [facial_expression], [action_verb] [environment_description with beat narrative lighting]. [face_lighting_extracted_from_beat_narrative]. [composition_directives]. <yolo_segments>\`
-    -   **For character focus:** \`medium shot of JRUMLV woman (detailed clothing and physique), alert expression on her face, [action in environment with beat narrative lighting]. [face lighting extracted from beat], [composition directives]. <yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
-    -   **For environmental storytelling in vertical:** \`medium shot of JRUMLV woman (detailed clothing and physique), [expression], [action in environment with beat narrative lighting]. [face lighting extracted from beat], [composition directives]. <yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
-    -   **Example (character focus):** \`medium shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), alert, tactical expression on her face, advancing through heavy gunsmoke with bright muzzle flashes illuminating the chaos. bright intermittent muzzle flashes on face subdued by thick gunsmoke, dramatic explosive illumination, flickering combat lighting, Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
-
-    **C. Marketing Vertical Prompt (9:16) (Phase B Enhanced):**
-    -   **Focus:** Marketing-optimized vertical composition designed to stop the scroll and drive viewers to the full episode. Leverages episode-wide story intelligence (Core Themes) to create hooks that resonate with narrative themes.
-    -   **Purpose:** Create compelling social media content for TikTok, Instagram Reels, YouTube Shorts
-    -   **Style:** Dramatic, attention-grabbing, with stronger visual hooks that stop scrolling and generate curiosity
-    -   **Phase B Enhancement:** When story context is available, use Core Themes to inform the visual hook. Extract theme keywords and translate them into visual elements that hint at the narrative without spoiling it.
-    -
-    -   **Marketing Composition Optimization Keywords (Required):**
-    -   **a. Dramatic Composition Techniques:**
-        -   **Rule of Thirds:** Position subject off-center for dynamic energy (e.g., "positioned in right third of frame")
-        -   **Leading Lines:** Use environmental elements to draw eye to subject (e.g., "corridor walls converge toward character")
-        -   **Depth Layering:** Foreground, subject, background separation (e.g., "debris in foreground, character mid-ground, facility depth behind")
-        -   **Negative Space:** Strategic empty space to emphasize subject (e.g., "dramatic negative space above character suggesting isolation")
-    -   **b. Visual Drama & Hooks:**
-        -   **Emotional Intensity:** Amplify facial expressions and body language (e.g., "intensely focused expression radiating determination")
-        -   **Thumbnail-Worthy Framing:** Composition that reads clearly even as tiny thumbnail (e.g., "clear silhouette against high-contrast background")
-        -   **High Contrast:** Strong light/dark separation (e.g., "stark contrast between illuminated face and shadow environment")
-        -   **Clear Focal Point:** One obvious subject with visual hierarchy (e.g., "eyes as primary focal point, sharp against soft background")
-    -   **c. Lighting for Social Media Impact:**
-        -   **Rim Lighting:** Edge lighting that separates subject from background
-        -   **Dramatic Shadows:** Strong shadow play for visual interest
-        -   **Color Contrast:** Strategic use of color to grab attention (while maintaining desaturated base)
-        -   **Eye Light:** Catch light in eyes to draw viewer attention
-    -   **d. Theme-Driven Visual Hooks (Phase B):**
-        -   **When Core Themes available:** Extract theme keywords (e.g., "truth vs. survival" → visual elements suggesting investigation, moral tension, danger)
-        -   **Translate to visuals:** Don't state the theme, SHOW it (e.g., "survival" → tattered gear, defensive posture, alert eyes scanning for threats)
-        -   **Create curiosity gap:** Hint at narrative without revealing plot (e.g., show tension without explaining why)
-    -
-    -   **Structure:** \`[shot_type with Rule of Thirds positioning] of [character_description with theme-informed details], [amplified_emotional_expression that hints at Core Theme], [compelling_action with leading lines/depth] [marketing_environment with thumbnail-worthy contrast]. [dramatic marketing lighting with rim/eye light], [Rule of Thirds placement], [high contrast focal point], [theme-driven visual hook]. <yolo_segments>\`
-    -
-    -   **Example (with Core Themes = "truth vs. survival, professional boundaries tested"):**
-    -   \`close-up positioned in right third of frame of a JRUMLV woman (MultiCam woodland camo tactical pants showing wear, form-fitting tactical vest with investigation badge visible, lean athletic build, toned arms, tactical bun with loose strands suggesting extended operation), intensely focused expression radiating moral determination mixed with exhaustion, investigating evidence with hands that suggest both professional precision and personal stakes, in damaged facility with dramatic negative space and converging wall lines. dramatic rim lighting separating character from shadow environment, strong eye light showing determination, high contrast between illuminated investigation and dark facility suggesting hidden truths, visual tension between professional gear and personal involvement, Rule of Thirds positioning with eyes as primary focal point. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
-    -
-    -   **Key Difference from Standard Vertical:** More aggressive composition techniques, theme-driven visual storytelling, optimized for thumbnail impact and social media scroll-stopping power
-
 5.  **YOLO Face Refinement (Multi-Character):** You MUST apply a unique YOLO segmentation tag for **each character** whose face is visible in the shot.
     a.  **Identify Characters:** Count the number of distinct characters you are describing in the prompt.
     b.  **Append Indexed Tags:** For each character, append an indexed tag to the end of the prompt. The first character gets index 1, the second gets index 2, and so on.
@@ -441,14 +394,12 @@ ${episodeContextSection}
 - **DO NOT start with weighted positioning** (old method, new method uses facial expressions and YOLO)
 
 **Output:**
-- Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId', 'cinematic' prompt object, 'vertical' prompt object, and 'marketingVertical' prompt object.
+- Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId' and the 'cinematic' prompt object.
 - **CRITICAL:** Every prompt string in your response MUST follow the new production standard structure: [shot_type] of [character_description], [facial_expression], [action], [environment]. [face_lighting], [composition].
 - **CRITICAL:** Every prompt object MUST have \`steps: 20\`, \`cfgscale: 1\`, and \`fluxguidancescale: 3.5\` (for FLUX models). These are non-negotiable and must be used for all prompts.
-- **REQUIRED PROMPTS (all three must be generated):**
+- **REQUIRED PROMPTS:**
   - **cinematic (16:9):** Long-form narrative storytelling with wide composition
-  - **vertical (9:16):** Long-form narrative storytelling with vertical composition
-  - **marketingVertical (9:16):** Marketing-optimized with Phase B enhancements (Rule of Thirds, theme-driven hooks, dramatic composition)
-- **Note:** All three prompt types serve different purposes but are generated for every beat to provide maximum flexibility.`;
+- **Note:** Vertical (9:16) prompts are NO LONGER generated per beat as they are now handled by a separate marketing-specific process.`;
 
     // Token tracking: Measure system instruction size impact
     // Calculate base system instruction size (without episode context section)
@@ -558,7 +509,7 @@ ${episodeContextSection}
             const jsonString = response.text.trim();
             const batchResult = JSON.parse(jsonString) as any[];
             
-            // Post-process: Ensure correct steps and FLUX-specific parameters for both cinematic and vertical prompts
+            // Post-process: Ensure correct steps and FLUX-specific parameters (Phase C optimization)
             const correctedBatch = batchResult.map(bp => {
                 // Ensure cinematic has correct values
                 const correctedCinematic = {
@@ -567,43 +518,43 @@ ${episodeContextSection}
                     cfgscale: 1, // FLUX standard: 1 (not 7)
                 };
 
-                // Ensure vertical has correct values
-                const correctedVertical = {
+                // Handle optional vertical prompt (now optional in Phase C)
+                const correctedVertical = bp.vertical ? {
                     ...bp.vertical,
                     width: verticalWidth,
                     height: verticalHeight,
-                    steps: 20, // Production standard: 20 (not 40 as previously)
-                    cfgscale: 1, // FLUX standard: 1 (not 7)
-                };
+                    steps: 20,
+                    cfgscale: 1,
+                } : undefined;
 
-                // Ensure marketing vertical has correct values (Phase B: now required)
-                const correctedMarketingVertical = {
+                // Handle optional marketing vertical prompt (now optional in Phase C)
+                const correctedMarketingVertical = bp.marketingVertical ? {
                     ...bp.marketingVertical,
                     width: verticalWidth,
                     height: verticalHeight,
-                    steps: 20, // Production standard: 20 (not 40 as previously)
-                    cfgscale: 1, // FLUX standard: 1 (not 7)
-                };
+                    steps: 20,
+                    cfgscale: 1,
+                } : undefined;
 
                 const corrected: BeatPrompts = {
                     beatId: bp.beatId,
                     cinematic: correctedCinematic,
-                    vertical: correctedVertical, // Now using properly generated vertical prompt
-                    marketingVertical: correctedMarketingVertical, // Marketing vertical if present
+                    vertical: correctedVertical,
+                    marketingVertical: correctedMarketingVertical,
                 };
 
                 // Log if values were corrected
                 if (bp.cinematic?.steps !== 20 || bp.cinematic?.cfgscale !== 1 ||
-                    bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1 ||
-                    bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1) {
+                    (bp.vertical && (bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1)) ||
+                    (bp.marketingVertical && (bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1))) {
                     console.log(`⚠️ Corrected steps/CFG for beat ${bp.beatId}:`);
                     if (bp.cinematic?.steps !== 20 || bp.cinematic?.cfgscale !== 1) {
                         console.log(`   Cinematic: steps ${bp.cinematic?.steps || 'missing'}→20, cfgscale ${bp.cinematic?.cfgscale || 'missing'}→1`);
                     }
-                    if (bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1) {
+                    if (bp.vertical && (bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1)) {
                         console.log(`   Vertical: steps ${bp.vertical?.steps || 'missing'}→20, cfgscale ${bp.vertical?.cfgscale || 'missing'}→1`);
                     }
-                    if (bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1) {
+                    if (bp.marketingVertical && (bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1)) {
                         console.log(`   Marketing Vertical: steps ${bp.marketingVertical?.steps || 'missing'}→20, cfgscale ${bp.marketingVertical?.cfgscale || 'missing'}→1`);
                     }
                 }

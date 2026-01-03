@@ -30,7 +30,7 @@ export interface PromptRichnessMetrics {
     compositionKeywords: string[];
     lightingKeywords: string[];
   };
-  richness Score: number; // 0-100 scale
+  richnessScore: number; // 0-100 scale
 }
 
 export interface ABComparisonData {

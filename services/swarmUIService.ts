@@ -188,7 +188,6 @@ export const initializeSession = async (maxRetries: number = 3): Promise<string>
         const errorBody = await response.text();
         let errorMessage = `SwarmUI session initialization failed (HTTP ${response.status})`;
         
-        // User-friendly error messages with actionable suggestions
         if (response.status === 404) {
           errorMessage = `SwarmUI API endpoint not found. Please verify:\n` +
             `1. SwarmUI is running at ${SWARMUI_API_BASE_URL}\n` +
@@ -199,16 +198,8 @@ export const initializeSession = async (maxRetries: number = 3): Promise<string>
             `1. SwarmUI logs for errors\n` +
             `2. SwarmUI service is fully started\n` +
             `3. Try restarting SwarmUI`;
-        } else if (response.status === 503) {
-          errorMessage = `SwarmUI service unavailable. Please check:\n` +
-            `1. SwarmUI is running\n` +
-            `2. No other process is using the same port\n` +
-            `3. Try restarting SwarmUI`;
         } else {
-          errorMessage += `\n\nDetails: ${errorBody}\n\nTroubleshooting:\n` +
-            `1. Verify SwarmUI is running: curl ${SWARMUI_API_BASE_URL}/API/GetNewSession\n` +
-            `2. Check SwarmUI logs for errors\n` +
-            `3. Verify network connectivity to ${SWARMUI_API_BASE_URL}`;
+          errorMessage += `\n\nDetails: ${errorBody}`;
         }
         
         throw new Error(errorMessage);
@@ -229,8 +220,8 @@ export const initializeSession = async (maxRetries: number = 3): Promise<string>
           `SwarmUI session initialization timed out after 30 seconds.\n\n` +
           `Troubleshooting:\n` +
           `1. Check if SwarmUI is running: ${SWARMUI_API_BASE_URL}\n` +
-          `2. Verify SwarmUI is not overloaded (check queue status)\n` +
-          `3. Check network connectivity and firewall settings\n` +
+          `2. Verify SwarmUI is not overloaded\n` +
+          `3. Check network connectivity\n` +
           `4. Try restarting SwarmUI service`
         );
       }
@@ -241,23 +232,48 @@ export const initializeSession = async (maxRetries: number = 3): Promise<string>
 };
 
 /**
+ * Generation options for SwarmUI (Flux-specific)
+ */
+export interface SwarmUIGenerationOptions {
+  model?: string;
+  width?: number;
+  height?: number;
+  sampler?: string;
+  scheduler?: string;
+  steps?: number;
+  cfgscale?: number;
+  fluxguidancescale?: number;
+  seed?: number;
+  automaticvae?: boolean;
+  sdtextencs?: string;
+  loras?: string;
+  loraweights?: string;
+  negativeprompt?: string;
+}
+
+/**
  * Generate images using SwarmUI's native API endpoint.
- * 
+ *
  * Sends generation request to SwarmUI with prompt text and session ID.
  * Returns image paths in various formats (filename, relative, or absolute).
  * Includes retry logic with exponential backoff for network/server errors.
- * 
+ *
  * @param prompt - The prompt text (with stage directions intrinsic)
  * @param imagesCount - Number of images to generate per prompt (default: 3)
  * @param sessionId - The SwarmUI session ID from initializeSession()
  * @param maxRetries - Maximum number of retry attempts (default: 3)
+ * @param options - Optional generation parameters (model, width, height, etc.)
  * @returns Promise that resolves to ImageGenerationResult with success status and image paths
  * @throws Error if generation fails after all retries
- * 
+ *
  * @example
  * ```typescript
  * const sessionId = await initializeSession();
- * const result = await generateImages('A beautiful sunset', 3, sessionId);
+ * const result = await generateImages('A beautiful sunset', 3, sessionId, 3, {
+ *   width: 1024,
+ *   height: 1024,
+ *   model: 'OfficialStableDiffusion/sd_xl_base_1.0'
+ * });
  * if (result.success && result.imagePaths) {
  *   console.log('Generated images:', result.imagePaths);
  * }
@@ -267,7 +283,8 @@ export const generateImages = async (
   prompt: string,
   imagesCount: number = 3,
   sessionId: string,
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  options?: SwarmUIGenerationOptions
 ): Promise<ImageGenerationResult> => {
   try {
     return await retryWithBackoff(async () => {
@@ -275,18 +292,72 @@ export const generateImages = async (
       const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout for generation
       
       try {
-        const response = await fetch(`${SWARMUI_API_BASE_URL}/API/Generate`, {
+        // Use SwarmUI's native GenerateText2Image API endpoint
+        console.log(`[SwarmUI] Generating with session ID: ${sessionId.substring(0, 20)}...`);
+
+        // Get generation options with defaults (Flux-specific)
+        const model = options?.model || getEnvVar('SWARMUI_MODEL') || 'flux1-dev-fp8';
+        const width = options?.width || parseInt(getEnvVar('SWARMUI_WIDTH') || '1088');
+        const height = options?.height || parseInt(getEnvVar('SWARMUI_HEIGHT') || '1920');
+        const sampler = options?.sampler || getEnvVar('SWARMUI_SAMPLER') || 'euler';
+        const scheduler = options?.scheduler || getEnvVar('SWARMUI_SCHEDULER') || 'simple';
+        const steps = options?.steps || parseInt(getEnvVar('SWARMUI_STEPS') || '20');
+        const cfgscale = options?.cfgscale || parseFloat(getEnvVar('SWARMUI_CFG_SCALE') || '1');
+        const fluxguidancescale = options?.fluxguidancescale || parseFloat(getEnvVar('SWARMUI_FLUX_GUIDANCE_SCALE') || '3.5');
+        const seed = options?.seed ?? parseInt(getEnvVar('SWARMUI_SEED') || '-1');
+        const automaticvae = options?.automaticvae ?? (getEnvVar('SWARMUI_AUTOMATIC_VAE') === 'true');
+        const sdtextencs = options?.sdtextencs || getEnvVar('SWARMUI_SD_TEXT_ENCS') || 'CLIP + T5';
+        const loras = options?.loras || getEnvVar('SWARMUI_LORAS') || '';
+        const loraweights = options?.loraweights || getEnvVar('SWARMUI_LORA_WEIGHTS') || '';
+        const negativeprompt = options?.negativeprompt || getEnvVar('SWARMUI_NEGATIVE_PROMPT') || '';
+
+        const endpoint = `${SWARMUI_API_BASE_URL}/API/GenerateText2Image`;
+
+        console.log(`[SwarmUI] Using endpoint: ${endpoint}`);
+        console.log(`[SwarmUI] Parameters: ${imagesCount} images, ${width}x${height}, model: ${model}, sampler: ${sampler}`);
+        if (loras) {
+          console.log(`[SwarmUI] LoRAs: ${loras} (weight: ${loraweights || '1'})`);
+        }
+
+        const requestBody: any = {
+          session_id: sessionId,
+          prompt: prompt,
+          images: imagesCount,
+          model: model,
+          width: width,
+          height: height,
+          sampler: sampler,
+          scheduler: scheduler,
+          steps: steps,
+          cfgscale: cfgscale,
+          fluxguidancescale: fluxguidancescale,
+          seed: seed,
+          automaticvae: automaticvae,
+          sdtextencs: sdtextencs
+        };
+
+        if (loras) {
+          requestBody.loras = loras;
+        }
+
+        if (loraweights) {
+          requestBody.loraweights = loraweights;
+        }
+
+        if (negativeprompt) {
+          requestBody.negativeprompt = negativeprompt;
+        }
+
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            session_id: sessionId,
-            prompt: prompt,
-            images_count: imagesCount,
-          }),
+          body: JSON.stringify(requestBody),
           signal: controller.signal,
         });
+
+        console.log(`[SwarmUI] Response status: ${response.status}`);
 
         clearTimeout(timeoutId);
 
@@ -296,16 +367,27 @@ export const generateImages = async (
           
           // User-friendly error messages with actionable suggestions
           if (response.status === 400) {
-            errorMessage = `Invalid generation request. Please check:\n` +
-              `1. Prompt is not empty\n` +
-              `2. Session ID is valid\n` +
-              `3. Request parameters are correct\n\n` +
-              `Details: ${errorBody}`;
+            // Check if it's a session ID error
+            if (errorBody.includes('session') || errorBody.includes('Session')) {
+              errorMessage = `Invalid session ID. Please check:\n` +
+                `1. Session was properly initialized\n` +
+                `2. Session ID is valid: ${sessionId}\n` +
+                `3. Try reinitializing the session\n\n` +
+                `Details: ${errorBody}`;
+            } else {
+              errorMessage = `Invalid generation request. Please check:\n` +
+                `1. Prompt is not empty\n` +
+                `2. Session ID is valid\n` +
+                `3. Request parameters are correct\n\n` +
+                `Details: ${errorBody}`;
+            }
           } else if (response.status === 404) {
             errorMessage = `Generation endpoint not found. Please verify:\n` +
-              `1. SwarmUI version supports /API/Generate endpoint\n` +
-              `2. API URL is correct: ${SWARMUI_API_BASE_URL}\n` +
-              `3. SwarmUI is fully started`;
+              `1. SwarmUI is running at ${SWARMUI_API_BASE_URL}\n` +
+              `2. SwarmUI native API endpoint is available: /API/GenerateText2Image\n` +
+              `3. SwarmUI is fully started and API is enabled\n` +
+              `4. Check SwarmUI logs for API route errors\n\n` +
+              `Response: ${errorBody}`;
           } else if (response.status === 500 || response.status === 503) {
             errorMessage = `SwarmUI server error during generation. Please check:\n` +
               `1. SwarmUI logs for model loading errors\n` +
@@ -325,8 +407,25 @@ export const generateImages = async (
 
         const result = await response.json();
         
-        // SwarmUI returns image_paths array (may be filename, relative, or absolute)
-        const imagePaths = result.image_paths || [];
+        // SwarmUI native API returns image_paths array
+        // The paths may be filename, relative, or absolute paths
+        let imagePaths: string[] = [];
+        
+        if (result.image_paths) {
+          imagePaths = Array.isArray(result.image_paths) ? result.image_paths : [result.image_paths];
+        } else if (result.images && Array.isArray(result.images)) {
+          // Fallback: if images are base64 encoded, construct paths
+          // SwarmUI saves images to Output/local/raw/YYYY-MM-DD/ directory
+          const today = new Date().toISOString().split('T')[0];
+          const basePath = process.env.SWARMUI_OUTPUT_PATH || 
+                          process.env.VITE_SWARMUI_OUTPUT_PATH ||
+                          'E:/FLUX_models_Auto_Downloaders_v7/SwarmUI/Output/local/raw';
+          for (let i = 0; i < result.images.length; i++) {
+            // Generate a filename based on timestamp
+            const timestamp = Date.now();
+            imagePaths.push(`${basePath}/${today}/${timestamp}_${i}.png`);
+          }
+        }
         
         return {
           success: true,

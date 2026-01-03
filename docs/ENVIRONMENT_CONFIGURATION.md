@@ -64,6 +64,37 @@ REDIS_PORT=<port>
 - **Purpose**: API response caching, session storage, rate limiting
 - **Important**: StoryArt will override any database number in REDIS_URL to ensure database 0 is used
 
+## 🎨 SwarmUI Image Generation
+
+### SwarmUI Configuration
+```env
+# Connection settings
+VITE_SWARMUI_API_URL=http://localhost:7801
+SWARMUI_API_URL=http://localhost:7801
+SWARMUI_API_KEY=
+
+# Generation parameters (required for API calls)
+SWARMUI_MODEL=OfficialStableDiffusion/sd_xl_base_1.0
+SWARMUI_WIDTH=1024
+SWARMUI_HEIGHT=1024
+SWARMUI_STEPS=20
+SWARMUI_CFG_SCALE=7.5
+SWARMUI_NEGATIVE_PROMPT=
+
+# Performance settings
+SWARMUI_CONNECTION_TIMEOUT=30
+SWARMUI_GENERATION_TIMEOUT=300
+SWARMUI_MAX_RETRIES=3
+SWARMUI_MAX_BATCH_SIZE=4
+```
+
+**Configuration Details:**
+- **Model**: SwarmUI model identifier (e.g., OfficialStableDiffusion/sd_xl_base_1.0)
+- **Width/Height**: Image dimensions in pixels (typical: 1024x1024 for square, 576x1024 for vertical)
+- **Steps**: Number of generation steps (higher = better quality, slower)
+- **CFG Scale**: Classifier-free guidance scale (7.5 is standard, higher = more prompt adherence)
+- **Negative Prompt**: What to avoid in generated images
+
 ## 🤖 AI Provider Configuration
 
 ### Western AI Providers

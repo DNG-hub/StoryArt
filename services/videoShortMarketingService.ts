@@ -5,25 +5,31 @@
  * based on the full episode narrative rather than individual beat analysis.
  */
 
-import type { 
-  AnalyzedEpisode, 
-  SwarmUIPrompt, 
+import type {
+  AnalyzedEpisode,
+  SwarmUIPrompt,
   EpisodeStyleConfig,
   EnhancedEpisodeContext,
-  BeatAnalysis 
+  BeatAnalysis
 } from '../types';
 import { providerManager, AIProvider, TaskType, AIRequest } from './aiProviderService';
 import { compactEpisodeContext } from '../utils';
+import { geminiGenerateContent } from './geminiService.js';
 
 export interface VideoShortMoment {
   momentId: string;
   title: string;
+  viralHookOverlay: string;     // One-liner viral hook overlay text
+  script: string;               // Full script with dialogue and sound direction
+  imagePrompts: string[];       // 3-4 specific image prompts for different shots
   description: string;          // Why this moment is compelling for marketing
   storyArcConnection: string;   // How it relates to overall story
   emotionalHook: string;        // Emotional appeal for marketing
-  visualPrompt: SwarmUIPrompt;  // 9:16 marketing-optimized prompt
+  visualPrompt: SwarmUIPrompt;  // 9:16 marketing-optimized prompt (primary/combined)
   beatReference?: string;       // Optional reference to original beat if applicable
   buzzScore: number;            // 0-10 score for marketing potential
+  sceneNumber?: number;         // Scene this moment belongs to
+  sceneTitle?: string;          // Title of the scene
 }
 
 export interface VideoShortEpisode {
@@ -74,15 +80,12 @@ Rank moments by marketing potential, with highest scores first.`;
   try {
     onProgress?.('Analyzing episode for marketing moments...');
 
-    const request: AIRequest = {
-      prompt: userPrompt,
+    const response = await geminiGenerateContent(
+      userPrompt,
       systemInstruction,
-      temperature: 0.3,
-      maxTokens: 2048,
-      taskType: TaskType.CREATIVE_WRITING
-    };
-
-    const response = await providerManager.executeTask(request);
+      0.3,
+      2048
+    );
     
     // Parse the AI response into structured moments
     // This is a simplified parsing - in practice, you'd want a more robust parser
@@ -102,6 +105,9 @@ Rank moments by marketing potential, with highest scores first.`;
       moments.push({
         momentId: `video_short_${Date.now()}_${moments.length + 1}`,
         title: title.trim(),
+        viralHookOverlay: '',  // Will be populated later
+        script: '',            // Will be populated later
+        imagePrompts: [],      // Will be populated later
         description: description.trim(),
         storyArcConnection: storyConnection.trim(),
         emotionalHook: emotionalHook.trim(),
@@ -137,6 +143,9 @@ Rank moments by marketing potential, with highest scores first.`;
         moments.push({
           momentId: `video_short_${beat.beatId}_${i + 1}`,
           title: `${beat.beat_title || `Scene ${beat['sceneNumber'] || 'X'} Moment`}`,
+          viralHookOverlay: `${beat.emotional_tone} moment that will hook viewers`,
+          script: beat.beat_script_text || beat.core_action,
+          imagePrompts: [],  // Will be populated later
           description: `Compelling moment from beat: ${beat.core_action}`,
           storyArcConnection: `Connects to overall episode narrative`,
           emotionalHook: `Strong ${beat.emotional_tone} moment`,
@@ -165,6 +174,9 @@ Rank moments by marketing potential, with highest scores first.`;
     const fallbackMoments: VideoShortMoment[] = sortedBeats.slice(0, 3).map((beat, idx) => ({
       momentId: `fallback_moment_${beat.beatId}_${idx}`,
       title: `${beat.beat_title || `Key Moment`} (${beat.emotional_tone})`,
+      viralHookOverlay: `${beat.emotional_tone} moment from the story`,
+      script: beat.beat_script_text || beat.core_action,
+      imagePrompts: [],
       description: beat.core_action,
       storyArcConnection: `Part of scene narrative`,
       emotionalHook: beat.emotional_tone,
@@ -233,12 +245,21 @@ export const generateMarketingVerticalPrompts = async (
   const verticalWidth = Math.round(Math.sqrt(baseResolution * baseResolution * verticalRatio) / 8) * 8;
   const verticalHeight = Math.round(verticalWidth / verticalRatio / 8) * 8;
 
-  const updatedMoments = await Promise.all(moments.map(async (moment, index) => {
+  const updatedMoments: VideoShortMoment[] = [];
+
+  for (let index = 0; index < moments.length; index++) {
+    const moment = moments[index];
     onProgress?.(`Generating marketing prompt ${index + 1}/${moments.length} for: ${moment.title}`);
     
-    const systemInstruction = `You are an expert **Marketing Visual Designer** creating promotional vertical (9:16) images designed to generate buzz and drive viewers to watch the full episode. Your prompts should be optimized for social media platforms (TikTok, Instagram Reels, YouTube Shorts) and focus on creating compelling visual hooks that entice viewers.`;
+    const systemInstruction = `You are an expert **YouTube Shorts Marketing Strategist** creating viral vertical video concepts. For each moment, you will create:
 
-    const userPrompt = `Create a compelling 9:16 vertical prompt for a marketing image based on this episode moment:
+1. A VIRAL HOOK OVERLAY - A single compelling sentence that appears as text overlay (max 15 words)
+2. A FULL SCRIPT - Complete narrative with dialogue, sound effects (in parentheses), and voiceover direction
+3. 3-4 IMAGE PROMPTS - Specific, detailed prompts for different shots/angles that tell the visual story
+
+Your output should be optimized for social media virality (TikTok, Instagram Reels, YouTube Shorts).`;
+
+    const userPrompt = `Create a comprehensive YouTube Short marketing concept for this moment:
 
 MOMENT DETAILS:
 - Title: ${moment.title}
@@ -250,35 +271,69 @@ MOMENT DETAILS:
 EPISODE CONTEXT:
 ${compactEpisodeContext(episodeContextJson)}
 
-Create a prompt that:
-1. Grabs attention in a social media feed
-2. Creates curiosity about the full episode
-3. Uses vertical composition effectively
-4. Is optimized for mobile viewing
-5. Has a strong visual hook that drives engagement
-6. Balances character focus with environmental storytelling
-7. Uses marketing language that generates interest
+Please provide your response in the following format:
 
-The prompt should emphasize:
-- Strong emotional/visual hook that makes people stop scrolling
-- Character appeal and/or dramatic action
-- Story connection that teases the full narrative
-- Vertical composition with elements at top and bottom of frame`;
+VIRAL HOOK OVERLAY:
+[One compelling sentence, max 15 words, that appears as text overlay on the video]
 
-    const request: AIRequest = {
-      prompt: userPrompt,
-      systemInstruction,
-      temperature: 0.4, // Slightly more creative for marketing
-      maxTokens: 1024,
-      taskType: TaskType.CREATIVE_WRITING
-    };
+SCRIPT:
+[Full script including:
+- Sound effects in parentheses like (Sound of wind howling)
+- Character dialogue with character names
+- Voiceover narration marked as (V.O.)
+- Beat markers showing pacing
+- Keep it under 60 seconds when read aloud]
+
+IMAGE PROMPTS:
+[Provide exactly 3-4 detailed, specific image generation prompts, each on its own line starting with "Prompt 1:", "Prompt 2:", etc. Each prompt should describe a different shot/angle that helps tell this moment's visual story. Include:
+- Camera angle (close-up, wide shot, POV, etc.)
+- Character positioning and expression
+- Lighting and atmosphere
+- Environmental details
+- Emotional tone
+Format: One prompt per line, very detailed and specific for image generation]
+
+Focus on creating viral, scroll-stopping content optimized for 9:16 vertical format.`;
 
     try {
-      const response = await providerManager.executeTask(request);
-      
+      const response = await geminiGenerateContent(
+        userPrompt,
+        systemInstruction,
+        0.4, // Slightly more creative for marketing
+        2048  // Increased for longer response
+      );
+
+      const responseText = response.content;
+
+      // Parse the structured response
+      const viralHookMatch = responseText.match(/VIRAL HOOK OVERLAY:\s*\n(.+?)(?:\n\n|$)/s);
+      const scriptMatch = responseText.match(/SCRIPT:\s*\n(.+?)(?:\n\nIMAGE PROMPTS:|$)/s);
+      const imagePromptsMatch = responseText.match(/IMAGE PROMPTS:\s*\n(.+?)$/s);
+
+      const viralHook = viralHookMatch ? viralHookMatch[1].trim() : moment.emotionalHook;
+      const script = scriptMatch ? scriptMatch[1].trim() : moment.description;
+
+      // Extract individual image prompts
+      const imagePrompts: string[] = [];
+      if (imagePromptsMatch) {
+        const promptsText = imagePromptsMatch[1];
+        const promptLines = promptsText.split(/Prompt \d+:/g).slice(1); // Split and remove empty first element
+        promptLines.forEach(line => {
+          const cleaned = line.trim();
+          if (cleaned) {
+            imagePrompts.push(cleaned);
+          }
+        });
+      }
+
+      // Use first image prompt as the primary visual prompt, or combine all if needed
+      const primaryPrompt = imagePrompts.length > 0
+        ? imagePrompts[0]
+        : `marketing optimized, high engagement potential, ${moment.title} - compelling visual hook, 9:16 aspect ratio`;
+
       // Create the SwarmUI prompt
       const visualPrompt: SwarmUIPrompt = {
-        prompt: response.content.trim(),
+        prompt: primaryPrompt,
         model: styleConfig.model,
         width: verticalWidth,
         height: verticalHeight,
@@ -287,17 +342,23 @@ The prompt should emphasize:
         seed: -1, // Random seed for variety
       };
 
-      return {
+      updatedMoments.push({
         ...moment,
+        viralHookOverlay: viralHook,
+        script: script,
+        imagePrompts: imagePrompts,
         visualPrompt,
-      };
+      });
     } catch (error) {
       console.error(`Error generating prompt for moment ${moment.title}:`, error);
       onProgress?.(`Error generating prompt for: ${moment.title}`);
-      
-      // Return the moment with a fallback prompt
-      return {
+
+      // Add the moment with a fallback prompt
+      updatedMoments.push({
         ...moment,
+        viralHookOverlay: moment.viralHookOverlay || moment.emotionalHook,
+        script: moment.script || moment.description,
+        imagePrompts: moment.imagePrompts || [],
         visualPrompt: {
           prompt: `marketing optimized, high engagement potential, ${moment.title} - compelling visual hook that draws viewers in, 9:16 aspect ratio`,
           model: styleConfig.model,
@@ -307,9 +368,14 @@ The prompt should emphasize:
           cfgscale: 1,
           seed: -1,
         },
-      };
+      });
     }
-  }));
+
+    // Rate limiting: Wait 7 seconds between calls to stay under 10 RPM
+    if (index < moments.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 7000));
+    }
+  }
 
   onProgress?.(`Completed generating ${updatedMoments.length} marketing vertical prompts`);
   return updatedMoments;

@@ -51,6 +51,9 @@
   - [ ] 1.6 Add Neo4j relationship mappings for outline→episode→scene hierarchies
   - [ ] 1.7 Extend PGVector embedding tables for outline content search
   - [ ] 1.8 Test migration on development database and verify data integrity
+  - [ ] **1.9 TESTING CHECKPOINT**: Verify schema creation and data integrity
+  - [ ] **1.10 DOCUMENTATION**: Document database schema and migration steps
+  - [ ] **1.11 COMMIT**: `git add . && git commit -m "feat: implement database schema for narrative context engine"`
 
 - [ ] 2.0 Backend API Development
   - [ ] 2.1 Create SQLAlchemy models for outline_versions, plot_templates, and dependencies
@@ -62,6 +65,9 @@
   - [ ] 2.7 Create episode context API endpoint for scene generator integration
   - [ ] 2.8 Add outline validation endpoints with timeline and character consistency checks
   - [ ] 2.9 Implement async database operations with proper error handling and rollback
+  - [ ] **2.10 TESTING CHECKPOINT**: Test all API endpoints for outline management
+  - [ ] **2.11 DOCUMENTATION**: Generate API documentation (Swagger/OpenAPI)
+  - [ ] **2.12 COMMIT**: `git add . && git commit -m "feat: implement backend api for narrative context engine"`
 
 - [ ] 3.0 Agency Swarm Integration
   - [ ] 3.1 Install and configure Agency Swarm v1.0 framework
@@ -74,6 +80,9 @@
   - [ ] 3.8 Integrate agents with existing AI coordinator and provider selection
   - [ ] 3.9 Create agent testing framework and validation suite
   - [ ] 3.10 Implement agent error handling and fallback mechanisms
+  - [ ] **3.11 TESTING CHECKPOINT**: Verify agent communication and task execution
+  - [ ] **3.12 DOCUMENTATION**: Document agent architecture and interaction flows
+  - [ ] **3.13 COMMIT**: `git add . && git commit -m "feat: integrate agency swarm for narrative context"`
 
 - [ ] 4.0 Frontend User Interface
   - [ ] 4.1 Create OutlineManager main component with navigation and overview
@@ -86,6 +95,9 @@
   - [ ] 4.8 Create character state panels showing development tracking
   - [ ] 4.9 Implement auto-save functionality with draft state management
   - [ ] 4.10 Add responsive design for tablet access and mobile compatibility
+  - [ ] **4.11 TESTING CHECKPOINT**: Test UI components and user interactions
+  - [ ] **4.12 DOCUMENTATION**: Document frontend components and user workflows
+  - [ ] **4.13 COMMIT**: `git add . && git commit -m "feat: implement frontend ui for narrative context engine"`
 
 - [ ] 5.0 Template Management System
   - [ ] 5.1 Create plot template database with industry-standard structures
@@ -98,6 +110,9 @@
   - [ ] 5.8 Add episode count calculator based on story complexity analysis
   - [ ] 5.9 Implement crisis point positioning and character milestone tracking
   - [ ] 5.10 Add template preview and comparison functionality
+  - [ ] **5.11 TESTING CHECKPOINT**: Verify template creation and application
+  - [ ] **5.12 DOCUMENTATION**: Document template structure and customization options
+  - [ ] **5.13 COMMIT**: `git add . && git commit -m "feat: implement template management system"`
 
 - [ ] 6.0 Version Control & Historical Context
   - [ ] 6.1 Implement immutable outline versioning with descriptive metadata
@@ -110,6 +125,9 @@
   - [ ] 6.8 Implement timeline-based version browser with visual representation
   - [ ] 6.9 Add version comparison analytics and change impact analysis
   - [ ] 6.10 Create version cleanup and archival system for storage management
+  - [ ] **6.11 TESTING CHECKPOINT**: Test versioning, branching, and restoration
+  - [ ] **6.12 DOCUMENTATION**: Document version control system and data flow
+  - [ ] **6.13 COMMIT**: `git add . && git commit -m "feat: implement version control and historical context"`
 
 - [ ] 7.0 Scene Generator Integration
   - [ ] 7.1 Create EpisodeContext data structure with all required scene generation metadata
@@ -122,6 +140,9 @@
   - [ ] 7.8 Implement context caching strategy for improved performance
   - [ ] 7.9 Add scene regeneration flagging when outline changes affect existing scenes
   - [ ] 7.10 Create scene generation analytics and success metrics tracking
+  - [ ] **7.11 TESTING CHECKPOINT**: Verify integration with scene generator
+  - [ ] **7.12 DOCUMENTATION**: Document scene generator integration points
+  - [ ] **7.13 COMMIT**: `git add . && git commit -m "feat: integrate with scene generator"`
 
 - [ ] 8.0 Testing & Validation
   - [ ] 8.1 Create unit tests for all outline models with comprehensive data validation
@@ -132,5 +153,8 @@
   - [ ] 8.6 Create performance tests for database queries and context retrieval
   - [ ] 8.7 Add load testing for concurrent outline editing and version management
   - [ ] 8.8 Create data consistency tests across PostgreSQL, Neo4j, and PGVector
-  - [ ] 8.9 Implement story boundary compliance tests ensuring proper story_id filtering
-  - [ ] 8.10 Add regression testing suite for existing StoryTeller functionality
+    - [ ] 8.9 Implement story boundary compliance tests ensuring proper story_id filtering
+    - [ ] 8.10 Add regression testing suite for existing StoryTeller functionality
+    - [ ] **8.11 DOCUMENTATION**: Finalize all technical documentation
+    - [ ] **8.12 COMMIT**: `git add . && git commit -m "test: complete comprehensive testing and validation"`
+  

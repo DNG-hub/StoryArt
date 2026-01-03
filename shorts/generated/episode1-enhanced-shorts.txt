@@ -1,0 +1,185 @@
+Episode 1: The Signal - Scene 1
+Generated: 2025-11-29T11:55:14.431Z
+Total Shorts: 4
+Format: Pre-written shorts from episode1 scen 1.txt
+Note: Phase A+B enhancement will be added in future task
+
+
+════════════════════════════════════════════════════════════════
+Short 1: "Physics Don't Lie"
+════════════════════════════════════════════════════════════════
+
+Focus: Cat's forensic analysis of the bombing proving the government narrative is false.
+
+Viral Hook Overlay: "They said it was a terrorist attack. The math says otherwise."
+
+Script:
+(Sound of wind howling through hollow ruins. Crunching of boots on glass.)
+Cat (V.O.): "The official report called it retaliation. A messy, chaotic bomb by the Radical Unity Front."
+(Sound of a scanner pinging. High-pitched, clinical.)
+Cat: "But look at the rebar. Molten. Curled inward. No shrapnel scatter. No chaos."
+(Beat. Low bass thrum.)
+Cat: "This wasn't a sledgehammer. It was a scalpel. They didn't want to destroy the building... they wanted to bury the server room."
+
+Image Prompts:
+
+1. Cinematic close-up, low angle, Cat Mitchell's boots stepping on shattered glass and powdered drywall, dystopian lighting, dust motes dancing in sunbeams.
+
+2. Macro shot of twisted steel rebar, molten and glowing faintly with heat, hyper-realistic texture, smoke rising.
+
+3. Cat kneeling in a blast crater, holding a high-tech scanner device emitting a blue laser grid over the debris, intense focus in her eyes, grime on face.
+
+4. Wide shot of a ruined Atlanta skyline, skeletal building remains, listening silence, volumetric fog.
+
+────────────────────────────────────────────────────────────────
+METADATA
+────────────────────────────────────────────────────────────────
+
+Buzz Score: 9/10
+
+Primary SwarmUI Prompt:
+Cinematic close-up, low angle, Cat Mitchell's boots stepping on shattered glass and powdered drywall, dystopian lighting, dust motes dancing in sunbeams.
+
+SwarmUI Settings:
+Resolution: 768x1344 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+
+════════════════════════════════════════════════════════════════
+Short 2: "The Shepherd"
+════════════════════════════════════════════════════════════════
+
+Focus: The tense first meeting between Cat and Daniel. Gunpoint standoff.
+
+Viral Hook Overlay: "He was sent to protect her. She thinks he was sent to silence her."
+
+Script:
+(Sound of a gun cocking. Sharp. Loud.)
+Cat: "You're late."
+Daniel: "I was securing the perimeter. Three hostiles. Neutralized."
+(Tense silence. Heartbeat sound effect.)
+Cat: "Preacher sent you because I'm valuable. Not because you care."
+Daniel: "I care about the mission."
+Cat: "Which mission? Saving lives? Or making sure I don't find the bodies?"
+
+Image Prompts:
+
+1. Silhouette of a broad-shouldered soldier (Daniel) standing in a destroyed doorway, backlit by harsh sunlight, holding a tactical rifle, intimidating stance.
+
+2. POV from Daniel looking down the barrel of a pistol held by a woman (Cat), her hand steady, eyes fierce and distrusting.
+
+3. Close-up of Daniel's face, scarred, gray eyes unreadable, jaw tightening, tactical gear detailed with dust and wear.
+
+4. Two-shot, side profile, Cat and Daniel standing amidst rubble, tension thick in the air, contrasting The Medic vs The Soldier aesthetics.
+
+────────────────────────────────────────────────────────────────
+METADATA
+────────────────────────────────────────────────────────────────
+
+Buzz Score: 8/10
+
+Primary SwarmUI Prompt:
+Silhouette of a broad-shouldered soldier (Daniel) standing in a destroyed doorway, backlit by harsh sunlight, holding a tactical rifle, intimidating stance.
+
+SwarmUI Settings:
+Resolution: 768x1344 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+
+════════════════════════════════════════════════════════════════
+Short 3: "You Are Not Alone"
+════════════════════════════════════════════════════════════════
+
+Focus: The first contact with Ghost/AEGIS.ECHO_7.
+
+Viral Hook Overlay: "This computer has been unplugged for 3 years. It just sent a message."
+
+Script:
+(Hum of servers powering up. A glitch sound effect.)
+Cat (Whisper): "It's encrypted. Triple layer. Military grade."
+(Sound of a chime. A monitor flickers to life.)
+Cat: "Wait. That server is air-gapped. No power. No network."
+(Sound of typing, but no one is typing.)
+Computer Voice (distorted): "You. Are. Not. Alone."
+Daniel: "Ghost was a rumor. A myth from the Audit Crisis."
+Cat: "Myths don't type, Daniel. Myths don't bleed data."
+
+Image Prompts:
+
+1. Dark, cavernous server room, rows of black monoliths, one single amber light pulsing like a heartbeat.
+
+2. Close-up of an old CRT monitor flickering to life, dust on the screen, displaying the text YOU ARE NOT ALONE in crisp white font.
+
+3. Cat's face illuminated by the glow of the screen, expression of pure shock and terror, pupils dilated.
+
+4. Daniel's hand gripping his pistol, veins popping, looking around the empty room for an invisible enemy.
+
+────────────────────────────────────────────────────────────────
+METADATA
+────────────────────────────────────────────────────────────────
+
+Buzz Score: 10/10
+
+Primary SwarmUI Prompt:
+Dark, cavernous server room, rows of black monoliths, one single amber light pulsing like a heartbeat.
+
+SwarmUI Settings:
+Resolution: 768x1344 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+
+════════════════════════════════════════════════════════════════
+Short 4: "Farming"
+════════════════════════════════════════════════════════════════
+
+Focus: The audio log from Elias Voss. The darkest secret.
+
+Viral Hook Overlay: "The hospitals weren't saving us. They were harvesting us."
+
+Script:
+(Static noise. Then a rasping, terrified voice.)
+Elias Voss (Audio): "Can't feel my legs... God, it burns. They said it was treatment."
+(Sound of medical machines beeping erratically.)
+Elias Voss (Audio): "It's not care. It's farming. I reported the fraud. The false positives. Now I'm here. No windows. Cold floors."
+Cat: "I know this voice. He was declared KIA weeks before the collapse."
+Daniel: "Then how is he speaking to us right now?"
+
+Image Prompts:
+
+1. Audio waveform visualization on a futuristic datapad, the waves looking jagged and corrupted red.
+
+2. Flashback overlay (glitch effect): A sterile white hospital room, a patient strapped to a bed, screaming silently, blurred motion.
+
+3. Cat hunched over a console in a cramped mobile base, hands covering her mouth in horror.
+
+4. Daniel staring at the speaker, a look of realization and disgust dawning on his face.
+
+────────────────────────────────────────────────────────────────
+METADATA
+────────────────────────────────────────────────────────────────
+
+Buzz Score: 10/10
+
+Primary SwarmUI Prompt:
+Audio waveform visualization on a futuristic datapad, the waves looking jagged and corrupted red.
+
+SwarmUI Settings:
+Resolution: 768x1344 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+

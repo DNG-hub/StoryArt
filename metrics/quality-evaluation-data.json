@@ -1,0 +1,376 @@
+{
+  "instructions": "Evaluate each beat on a 1-10 scale for: Technical Quality, Narrative Depth, Emotional Impact, Marketing Appeal",
+  "rubric": {
+    "technicalQuality": {
+      "9-10": "Exceptional composition, lighting, camera direction",
+      "7-8": "Strong technical elements, well-directed",
+      "5-6": "Adequate technical direction",
+      "3-4": "Basic technical elements, needs improvement",
+      "1-2": "Poor technical direction"
+    },
+    "narrativeDepth": {
+      "9-10": "Rich thematic elements, strong character depth",
+      "7-8": "Clear narrative presence, good character work",
+      "5-6": "Adequate narrative elements",
+      "3-4": "Minimal narrative depth",
+      "1-2": "Lacks narrative substance"
+    },
+    "emotionalImpact": {
+      "9-10": "Powerful emotional resonance, compelling",
+      "7-8": "Strong emotional presence",
+      "5-6": "Some emotional elements",
+      "3-4": "Limited emotional impact",
+      "1-2": "No emotional depth"
+    },
+    "marketingAppeal": {
+      "9-10": "Highly compelling, scroll-stopping",
+      "7-8": "Strong marketing potential",
+      "5-6": "Adequate for marketing use",
+      "3-4": "Limited marketing appeal",
+      "1-2": "Poor marketing potential"
+    }
+  },
+  "beats": [
+    {
+      "beatId": "s1-b1",
+      "richness": {
+        "beatId": "s1-b1",
+        "cinematicLength": 599,
+        "verticalLength": 581,
+        "marketingVerticalLength": 868,
+        "narrativeElements": {
+          "themeKeywords": [
+            "truth",
+            "professional",
+            "tension",
+            "determination",
+            "duty"
+          ],
+          "emotionalDescriptors": [
+            "intensely",
+            "focused"
+          ],
+          "compositionKeywords": [
+            "Rule of Thirds",
+            "third of frame",
+            "depth",
+            "foreground",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 88.53999999999999
+      },
+      "cinematic": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), professional focus masking personal stakes on her face, examining sJRUMLV womantered evidence in an interior shot, inside a damaged facility, with sJRUMLV womantered evidence. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "vertical": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), professional focus masking personal stakes on her face, examining scattered evidence in an interior shot, inside a damaged facility, with scattered evidence. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "marketing": "close-up positioned in right third of frame of a JRUMLV woman (MultiCam woodland camo tactical pants showing wear, form-fitting tactical vest with subtle medical insignia, lean athletic build, toned arms, tactical bun with loose strands suggesting extended operation), intensely focused expression radiating professional duty yet hinting at deep personal stakes, hands meticulously examining scattered evidence in a damaged facility, with debris in foreground and converging wall lines leading to her. dramatic rim lighting separating character from shadow environment, strong eye light showing determination, high contrast between illuminated evidence and dark facility suggesting hidden truths, visual tension between professional gear and personal involvement, Rule of Thirds positioning with eyes as primary focal point. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>"
+    },
+    {
+      "beatId": "s1-b3",
+      "richness": {
+        "beatId": "s1-b3",
+        "cinematicLength": 578,
+        "verticalLength": 578,
+        "marketingVerticalLength": 707,
+        "narrativeElements": {
+          "themeKeywords": [
+            "truth"
+          ],
+          "emotionalDescriptors": [],
+          "compositionKeywords": [
+            "depth",
+            "layering",
+            "foreground",
+            "background",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 68.71
+      },
+      "cinematic": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), expression shifting from clinical to affected on her face, discovering a critical clue in an interior shot, inside a dramatic evidence area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "vertical": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), expression shifting from clinical to affected on her face, discovering a critical clue in an interior shot, inside a dramatic evidence area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "marketing": "close-up positioned in center of frame of a JRUMLV woman (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark brown tactical bun), expression shifting from clinical focus to profound shock and personal affectation, her gaze fixed on a critical clue in a dramatic evidence area, with subtle light on the clue drawing the viewer's eye. dramatic rim lighting, strong eye light emphasizing her emotional shift, high contrast between her illuminated face and the shadowed background, creating a clear focal point on her reaction, suggesting the heavy burden of truth, depth layering with the clue in the foreground. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>"
+    },
+    {
+      "beatId": "s1-b5",
+      "richness": {
+        "beatId": "s1-b5",
+        "cinematicLength": 628,
+        "verticalLength": 628,
+        "marketingVerticalLength": 745,
+        "narrativeElements": {
+          "themeKeywords": [
+            "truth",
+            "moral",
+            "redemption"
+          ],
+          "emotionalDescriptors": [
+            "intensely",
+            "determined",
+            "resolute"
+          ],
+          "compositionKeywords": [
+            "depth",
+            "background",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 72.35
+      },
+      "cinematic": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), determined expression, reflecting a moral decision despite personal cost on her face, standing resolute, having made a choice to pursue the truth in an interior shot, inside a decisive area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "vertical": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), determined expression, reflecting a moral decision despite personal cost on her face, standing resolute, having made a choice to pursue the truth in an interior shot, inside a decisive area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "marketing": "close-up positioned in center of frame of a JRUMLV woman (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark brown tactical bun), intensely determined expression radiating unwavering resolve, reflecting a profound moral decision to pursue truth despite personal cost, her gaze fixed forward, in a decisive area of a facility with subtle background elements suggesting the path ahead. dramatic rim lighting, strong eye light conveying her inner strength, high contrast between her illuminated face and the shadowed environment, creating a powerful focal point on her commitment, hinting at the heavy cost of integrity and the journey of redemption. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>"
+    },
+    {
+      "beatId": "s2-b2",
+      "richness": {
+        "beatId": "s2-b2",
+        "cinematicLength": 615,
+        "verticalLength": 615,
+        "marketingVerticalLength": 698,
+        "narrativeElements": {
+          "themeKeywords": [
+            "investigation"
+          ],
+          "emotionalDescriptors": [],
+          "compositionKeywords": [
+            "depth",
+            "background",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 58.44
+      },
+      "cinematic": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), pensive expression, the weight of her investigation evident on her face, pausing at a junction, contemplating her next move in an interior shot, inside a facility at a junction, a crossroads. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "vertical": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), pensive expression, the weight of her investigation evident on her face, pausing at a junction, contemplating her next move in an interior shot, inside a facility at a junction, a crossroads. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "marketing": "close-up positioned in center of frame of a JRUMLV woman (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark brown tactical bun), deeply pensive expression, the immense weight of her investigation and internal conflict evident on her face, pausing at a junction, a visual crossroads, with diverging paths subtly visible in the background. dramatic rim lighting, strong eye light conveying her inner turmoil, high contrast between her illuminated face and the shadowed environment, creating a clear focal point on her moment of doubt and the burden of her choices, hinting at the difficult path ahead. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>"
+    },
+    {
+      "beatId": "s2-b4",
+      "richness": {
+        "beatId": "s2-b4",
+        "cinematicLength": 619,
+        "verticalLength": 619,
+        "marketingVerticalLength": 706,
+        "narrativeElements": {
+          "themeKeywords": [
+            "truth"
+          ],
+          "emotionalDescriptors": [],
+          "compositionKeywords": [
+            "depth",
+            "background",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 58.68
+      },
+      "cinematic": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), expression of horror and devastating realization on her face, finding evidence that confirms her worst fears about the outbreak in an interior shot, inside a shocking evidence room of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "vertical": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), expression of horror and devastating realization on her face, finding evidence that confirms her worst fears about the outbreak in an interior shot, inside a shocking evidence room of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "marketing": "close-up positioned in center of frame of a JRUMLV woman (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark brown tactical bun), expression of profound horror and devastating realization, her eyes wide with the impact of evidence confirming her worst fears about the outbreak, her hand hovering over the shocking evidence in an evidence room. dramatic rim lighting, intense eye light conveying her shock, high contrast between her illuminated face and the dark, unsettling background, creating a powerful focal point on her emotional breakdown, hinting at the brutal truth and the emotional cost of healing. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>"
+    },
+    {
+      "beatId": "s3-b1",
+      "richness": {
+        "beatId": "s3-b1",
+        "cinematicLength": 677,
+        "verticalLength": 668,
+        "marketingVerticalLength": 784,
+        "narrativeElements": {
+          "themeKeywords": [
+            "truth",
+            "moral",
+            "investigation",
+            "redemption"
+          ],
+          "emotionalDescriptors": [],
+          "compositionKeywords": [
+            "depth",
+            "negative space",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 68.52
+      },
+      "cinematic": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), expression of profound internal struggle, confronting the reality of her investigation's impliJRUMLV womanions for innocents on her face, standing in isolation, grappling with a moral reckoning in an interior shot, inside an isolated area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "vertical": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), expression of profound internal struggle, confronting the reality of her investigation's implications for innocents on her face, standing in isolation, grappling with a moral reckoning in an interior shot, inside an isolated area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "marketing": "close-up positioned in center of frame of a JRUMLV woman (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark brown tactical bun), expression of intense internal struggle and moral reckoning, confronting the devastating implications of her investigation for innocents, her gaze distant, in an isolated area of a facility with dramatic negative space above her suggesting the weight of her burden. dramatic rim lighting, strong eye light conveying her deep contemplation, high contrast between her illuminated face and the deep shadows of the isolated environment, creating a powerful focal point on her internal conflict, hinting at the profound cost of truth and the path to redemption. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>"
+    },
+    {
+      "beatId": "s3-b3",
+      "richness": {
+        "beatId": "s3-b3",
+        "cinematicLength": 1004,
+        "verticalLength": 1004,
+        "marketingVerticalLength": 1047,
+        "narrativeElements": {
+          "themeKeywords": [
+            "professional",
+            "boundaries"
+          ],
+          "emotionalDescriptors": [],
+          "compositionKeywords": [
+            "third of frame",
+            "depth",
+            "background",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 75
+      },
+      "cinematic": "medium shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun) and a HSCEIA man (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark hair, intense gaze), expressions of mutual recognition and understanding, acknowledging crossed professional lines, on their faces, standing close, exchanging a significant look, not making direct eye contact but aware of each other, in an interior shot, inside an intimate area of a facility. dramatic tactical lighting on faces, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> JRUMLV woman <segment:yolo-face_yolov9c.pt-2, 0.35, 0.5> HSCEIA man",
+      "vertical": "medium shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun) and a HSCEIA man (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark hair, intense gaze), expressions of mutual recognition and understanding, acknowledging crossed professional lines, on their faces, standing close, exchanging a significant look, not making direct eye contact but aware of each other, in an interior shot, inside an intimate area of a facility. dramatic tactical lighting on faces, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> JRUMLV woman <segment:yolo-face_yolov9c.pt-2, 0.35, 0.5> HSCEIA man",
+      "marketing": "medium shot with JRUMLV woman positioned in left third and HSCEIA man in right third of frame, of a JRUMLV woman (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark brown tactical bun) and a HSCEIA man (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark hair, intense gaze), expressions of subtle mutual recognition and deep understanding, acknowledging their partnership has crossed professional lines, standing close in an intimate area of a facility, with soft background lighting creating a sense of shared vulnerability. dramatic rim lighting on both characters, gentle eye light conveying their connection, high contrast between their forms and the slightly softened background, creating a clear focal point on their unspoken bond, hinting at the breaking of professional boundaries and the strengthening of found family. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> JRUMLV woman <segment:yolo-face_yolov9c.pt-2, 0.35, 0.5> HSCEIA man"
+    },
+    {
+      "beatId": "s3-b5",
+      "richness": {
+        "beatId": "s3-b5",
+        "cinematicLength": 946,
+        "verticalLength": 948,
+        "marketingVerticalLength": 1021,
+        "narrativeElements": {
+          "themeKeywords": [],
+          "emotionalDescriptors": [
+            "focused"
+          ],
+          "compositionKeywords": [
+            "leading lines",
+            "depth",
+            "foreground",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 72.5
+      },
+      "cinematic": "wide shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun) and a HSCEIA man (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark hair, intense gaze), focused, tactical expressions on their faces, moving as a unified tactical team, JRUMLV woman taking point, HSCEIA man covering her, M4 carbine at ready, in an interior shot, inside a tactical corridor of a facility. dramatic tactical lighting on faces, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> JRUMLV woman <segment:yolo-face_yolov9c.pt-2, 0.35, 0.5> HSCEIA man",
+      "vertical": "medium shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun) and a HSCEIA man (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark hair, intense gaze), focused, tactical expressions on their faces, moving as a unified tactical team, JRUMLV woman taking point, HSCEIA man covering her, M4 carbine at ready, in an interior shot, inside a tactical corridor of a facility. dramatic tactical lighting on faces, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> JRUMLV woman <segment:yolo-face_yolov9c.pt-2, 0.35, 0.5> HSCEIA man",
+      "marketing": "wide shot with JRUMLV woman in foreground taking point and HSCEIA man covering behind, positioned in the lower half of the frame, of a JRUMLV woman (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark brown tactical bun) and a HSCEIA man (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, M4 carbine at ready, dark hair, intense gaze), focused, tactical expressions on their faces, moving as a unified tactical team through a tactical corridor, with leading lines drawing the eye along their path. dramatic rim lighting on both figures, subtle eye light conveying their synchronized vigilance, high contrast between their active forms and the shadowed corridor, creating a powerful focal point on their seamless coordination, hinting at their unbreakable tactical partnership and the blend of their skills. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> JRUMLV woman <segment:yolo-face_yolov9c.pt-2, 0.35, 0.5> HSCEIA man"
+    },
+    {
+      "beatId": "s4-b2",
+      "richness": {
+        "beatId": "s4-b2",
+        "cinematicLength": 656,
+        "verticalLength": 656,
+        "marketingVerticalLength": 810,
+        "narrativeElements": {
+          "themeKeywords": [
+            "truth",
+            "redemption"
+          ],
+          "emotionalDescriptors": [],
+          "compositionKeywords": [
+            "third of frame",
+            "depth",
+            "background",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 69.3
+      },
+      "cinematic": "medium shot of a HSCEIA man (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark hair, intense gaze), expression of decisive choice and alignment, seeing the truth reflected in JRUMLV woman's expression, making his choice, his gaze fixed on JRUMLV woman (implied off-frame), in an interior shot, inside a critical area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "vertical": "medium shot of a HSCEIA man (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark hair, intense gaze), expression of decisive choice and alignment, seeing the truth reflected in JRUMLV woman's expression, making his choice, his gaze fixed on JRUMLV woman (implied off-frame), in an interior shot, inside a critical area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "marketing": "medium shot positioned in right third of frame of a HSCEIA man (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark hair, intense gaze), expression of profound decisive choice and unwavering alignment, his gaze fixed with intense focus, having seen the truth reflected in JRUMLV woman's expression (implied off-frame), in a critical area of a facility, with subtle background elements suggesting the weight of their situation. dramatic rim lighting, strong eye light conveying his absolute resolve, high contrast between his illuminated face and the shadowed environment, creating a clear focal point on his pivotal decision, hinting at the powerful bond of found family and the path of redemption through action. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>"
+    },
+    {
+      "beatId": "s4-b4",
+      "richness": {
+        "beatId": "s4-b4",
+        "cinematicLength": 609,
+        "verticalLength": 609,
+        "marketingVerticalLength": 785,
+        "narrativeElements": {
+          "themeKeywords": [
+            "truth",
+            "sacrifice",
+            "redemption"
+          ],
+          "emotionalDescriptors": [
+            "intensely",
+            "determined",
+            "resolute"
+          ],
+          "compositionKeywords": [
+            "depth",
+            "background",
+            "focal point"
+          ],
+          "lightingKeywords": [
+            "rim light",
+            "rim lighting",
+            "eye light",
+            "high contrast",
+            "shadow"
+          ]
+        },
+        "richnessScore": 73.55
+      },
+      "cinematic": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), determined expression, accepting the cost to her career, on her face, preparing to expose the truth, resolute in her decision, in an interior shot, inside a decisive area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "vertical": "close-up of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), determined expression, accepting the cost to her career, on her face, preparing to expose the truth, resolute in her decision, in an interior shot, inside a decisive area of a facility. dramatic tactical lighting on face, high contrast face shadows. Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>",
+      "marketing": "close-up positioned in center of frame of a JRUMLV woman (MultiCam woodland camo tactical pants, form-fitting tactical vest, lean athletic build, toned arms, dark brown tactical bun), intensely determined expression, accepting the profound cost to her career, as she prepares to expose the truth, her gaze fixed with unwavering resolve, in a decisive area of a facility, with subtle background elements suggesting the gravity of her actions. dramatic rim lighting, strong eye light conveying her inner strength and sacrifice, high contrast between her illuminated face and the shadowed environment, creating a powerful focal point on her determined preparation, hinting at the ultimate cost of integrity and the courageous act of redemption. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>"
+    }
+  ]
+}

@@ -274,7 +274,7 @@ const LoadingStateDisplay = ({ loadingMessage }: { loadingMessage: string }) => 
     );
 };
 
-export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, loadingMessage, error, onEditBeat, sessionTimestamp }) => {
+export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, loadingMessage, error, onReset, onEditBeat, sessionTimestamp }) => {
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<PipelineProgress | null>(null);
   const [bulkResult, setBulkResult] = useState<PipelineResult | null>(null);

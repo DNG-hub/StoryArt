@@ -6,7 +6,7 @@ export const generateSwarmUiPromptsWithQwen = async (
     episodeContextJson: string,
     styleConfig: EpisodeStyleConfig
 ): Promise<BeatPrompts[]> => {
-    const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate BOTH cinematic (16:9) AND vertical (9:16) prompts. Both are used for long-form storytelling and marketing, but with different compositional requirements.
+    const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate a cinematic (16:9) prompt. This is used for long-form storytelling.
 
 **Your Mandate: THINK LIKE A CINEMATOGRAPHER. Compose the shot by weaving together stylistic elements with the narrative.**
 
@@ -92,19 +92,6 @@ export const generateSwarmUiPromptsWithQwen = async (
     -   **Face Lighting Extraction:** READ beat narrative first, extract lighting keywords, adapt to face lighting using same descriptive words. FALLBACK to atmosphere lighting only if beat has no lighting details.
     -   **Example:** \`wide shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), alert, tactical expression on her face, moving through CDC archive bathed in eerie green light from backup generators. eerie green light on face, sickly green illumination, Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
 
-    **B. Vertical Prompt (9:16):**
-    -   **Focus:** Character-centric, emphasizing people and vertical composition. Prioritizes top and bottom of frame over side-to-side.
-    -   **Composition Requirements:**
-        - **Vertical Emphasis:** Prioritize elements in the top and bottom of the frame, not just center
-        - **Character Focus:** Place main subject close to camera, emphasizing facial features and expressions
-        - **Positioning:** Use facial expressions and YOLO segments for precise control (not weighted syntax at start)
-        - **Environment:** Include environmental context but keep it as background, not competing with the character
-        - **Top/BOTTOM Framing:** Include elements at the top of the frame (e.g., "character's head at top of frame") and bottom (e.g., "feet at bottom of frame")
-    -   **Structure:** \`[shot_type] of [character_description], [facial_expression], [action_verb] [environment_description with beat narrative lighting]. [face_lighting_extracted_from_beat_narrative]. [composition_directives]. <yolo_segments>\`
-    -   **For character focus:** \`medium shot of JRUMLV woman (detailed clothing and physique), alert expression on her face, [action in environment with beat narrative lighting]. [face lighting extracted from beat], [composition directives]. <yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
-    -   **For environmental storytelling in vertical:** \`medium shot of JRUMLV woman (detailed clothing and physique), [expression], [action in environment with beat narrative lighting]. [face lighting extracted from beat], [composition directives]. <yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
-    -   **Example (character focus):** \`medium shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), alert, tactical expression on her face, advancing through heavy gunsmoke with bright muzzle flashes illuminating the chaos. bright intermittent muzzle flashes on face subdued by thick gunsmoke, dramatic explosive illumination, flickering combat lighting, Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
-
 4.  **YOLO Face Refinement (Multi-Character):** You MUST apply a unique YOLO segmentation tag for **each character** whose face is visible in the shot.
     a.  **Identify Characters:** Count the number of distinct characters you are describing in the prompt.
     b.  **Append Indexed Tags:** For each character, append an indexed tag to the end of the prompt. The first character gets index 1, the second gets index 2, and so on.
@@ -141,13 +128,13 @@ export const generateSwarmUiPromptsWithQwen = async (
 - **DO NOT start with weighted positioning** (old method, new method uses facial expressions and YOLO)
 
 **Output:**
-- Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId', 'cinematic' prompt object, and 'vertical' prompt object.
+- Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId' and the 'cinematic' prompt object.
 - **CRITICAL:** Every prompt string in your response MUST follow the new production standard structure: [shot_type] of [character_description], [facial_expression], [action], [environment]. [face_lighting], [composition].
 - **CRITICAL:** Every prompt object MUST have \`steps: 20\`, \`cfgscale: 1\`, and \`fluxguidancescale: 3.5\` (for FLUX models). These are non-negotiable and must be used for all prompts.
-- **Note:** Both cinematic (16:9) and vertical (9:16) prompts are now required for long-form storytelling and marketing use cases.`;
+- **Note:** Vertical (9:16) prompts are NO LONGER generated per beat as they are now handled by a separate marketing-specific process.`;
 
     // Schema - only cinematic prompts are required for beat-based analysis
-    // Vertical prompts are generated separately for video short marketing content
+    // Vertical prompts are generated separately for video short marketing content (Phase C optimization)
     const responseSchema = {
         type: "array",
         items: {
@@ -178,7 +165,6 @@ export const generateSwarmUiPromptsWithQwen = async (
                         cfgscale: { type: "number" },
                         seed: { type: "number" },
                     },
-                    required: ['prompt', 'model', 'width', 'height', 'steps', 'cfgscale', 'seed'],
                 },
                 marketingVertical: {
                     type: "object",
@@ -191,10 +177,9 @@ export const generateSwarmUiPromptsWithQwen = async (
                         cfgscale: { type: "number" },
                         seed: { type: "number" },
                     },
-                    required: ['prompt', 'model', 'width', 'height', 'steps', 'cfgscale', 'seed'],
                 },
             },
-            required: ['beatId', 'cinematic', 'vertical']
+            required: ['beatId', 'cinematic']
         }
     };
 
@@ -255,7 +240,7 @@ export const generateSwarmUiPromptsWithQwen = async (
         console.log('Processing Qwen prompt generation response...');
         const result = JSON.parse(response.content) as any[];
 
-        // Post-process: Ensure correct steps and FLUX-specific parameters for both cinematic and vertical
+        // Post-process: Ensure correct steps and FLUX-specific parameters (Phase C optimization)
         const corrected = result.map(bp => {
             // Ensure cinematic has correct values
             const correctedCinematic: SwarmUIPrompt = {
@@ -264,16 +249,16 @@ export const generateSwarmUiPromptsWithQwen = async (
                 cfgscale: 1, // FLUX standard: 1 (not 7)
             };
 
-            // Ensure vertical has correct values
-            const correctedVertical: SwarmUIPrompt = {
+            // Ensure vertical has correct values if present (now optional in Phase C)
+            const correctedVertical: SwarmUIPrompt | undefined = bp.vertical ? {
                 ...bp.vertical,
                 width: verticalWidth,
                 height: verticalHeight,
                 steps: 20, // Production standard: 20 (not 40 as previously)
                 cfgscale: 1, // FLUX standard: 1 (not 7)
-            };
+            } : undefined;
 
-            // Ensure marketing vertical has correct values if present
+            // Ensure marketing vertical has correct values if present (now optional in Phase C)
             const correctedMarketingVertical: SwarmUIPrompt | undefined = bp.marketingVertical ? {
                 ...bp.marketingVertical,
                 width: verticalWidth,
@@ -291,16 +276,16 @@ export const generateSwarmUiPromptsWithQwen = async (
 
             // Log if values were corrected
             if (bp.cinematic?.steps !== 20 || bp.cinematic?.cfgscale !== 1 ||
-                bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1 ||
-                bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1) {
+                (bp.vertical && (bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1)) ||
+                (bp.marketingVertical && (bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1))) {
                 console.log(`⚠️ Corrected steps/CFG for beat ${bp.beatId}:`);
                 if (bp.cinematic?.steps !== 20 || bp.cinematic?.cfgscale !== 1) {
                     console.log(`   Cinematic: steps ${bp.cinematic?.steps || 'missing'}→20, cfgscale ${bp.cinematic?.cfgscale || 'missing'}→1`);
                 }
-                if (bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1) {
+                if (bp.vertical && (bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1)) {
                     console.log(`   Vertical: steps ${bp.vertical?.steps || 'missing'}→20, cfgscale ${bp.vertical?.cfgscale || 'missing'}→1`);
                 }
-                if (bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1) {
+                if (bp.marketingVertical && (bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1)) {
                     console.log(`   Marketing Vertical: steps ${bp.marketingVertical?.steps || 'missing'}→20, cfgscale ${bp.marketingVertical?.cfgscale || 'missing'}→1`);
                 }
             }

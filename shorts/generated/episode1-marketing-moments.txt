@@ -1,0 +1,609 @@
+Episode 1: The Signal
+Generated: 2025-11-29T11:08:36.078Z
+Total Moments: 20 (across 4 scenes)
+Strategy: 3-5 viral moments per scene for rolling releases
+
+
+════════════════════════════════════════════════════════════════
+SCENE 1: INT. NHIA FACILITY 7 - DAY
+5 Marketing Moments
+════════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 1: "Navigating the Treacherous Facility"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Cat moves deeper into the facility, navigating collapsed walls and dangling wires, amidst an unnerving silence.
+
+EMOTIONAL HOOK:
+Strong Tense, Somber moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 2: "Descending the Stairwell"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Cat descends a stairwell into cold stillness, scanning each landing and noting shredded files.
+
+EMOTIONAL HOOK:
+Strong Tense, Somber moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 3: "Initiating Decryption"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Cat initiates the decryption process for 'Project Nightingale', feeling watched as the progress bar inches forward.
+
+EMOTIONAL HOOK:
+Strong Tense, Paranoid moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 4: "Lights Flicker"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: The lights flicker, plunging the room into momentary darkness, and the servers begin to whine.
+
+EMOTIONAL HOOK:
+Strong Startled, Tense moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 5: "Metallic Scraping Sound"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Cat hears a faint, metallic scraping sound from the far end of the room, causing her to freeze and reach for her pistol.
+
+EMOTIONAL HOOK:
+Strong Alarmed, Tense moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+════════════════════════════════════════════════════════════════
+SCENE 2: INT. NHIA FACILITY 7 - CONTINUOUS
+5 Marketing Moments
+════════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 1: "Daniel's Introduction"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Daniel lowers his hood, revealing himself to Cat, who remains frozen with her hand on her pistol, and states, 'Preacher sent me'.
+
+EMOTIONAL HOOK:
+Strong Tense, Surprised moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 2: "Daniel's Presence and Gear"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Daniel steps into the light, revealing his tactical gear, M4 carbine, and intense, scanning gray eyes.
+
+EMOTIONAL HOOK:
+Strong Intense, Authoritative moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 3: "We're Not Alone"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Daniel's rifle snaps up as he senses they are not alone.
+
+EMOTIONAL HOOK:
+Strong Alarmed, Tense moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 4: "Moving Through the Hall"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Cat and Daniel move together down the central hall, Cat clutching the data cartridge, believing it can prove the fraud was intentional.
+
+EMOTIONAL HOOK:
+Strong Tense, Determined moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 5: "Footsteps Draw Nearer"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Outside the vault, the footsteps draw nearer, then closer.
+
+EMOTIONAL HOOK:
+Strong Tense, Imminent Danger moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+════════════════════════════════════════════════════════════════
+SCENE 3: Impossible Data
+5 Marketing Moments
+════════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 1: "Mobile Base Interior"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: The Mobile Medical Base hums with filtered air and refrigerated servers, with sunlight cutting through reinforced windows onto steel counters.
+
+EMOTIONAL HOOK:
+Strong Clinical, Tense moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 2: "Cat at the Console"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Cat Mitchell is hunched over her console, fingers flying across a holographic interface, her face taut with concentration.
+
+EMOTIONAL HOOK:
+Strong Focused, Tense moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 3: "Corrupted Audio"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Cat slots the warped NHIA cartridge into her decoder, and the screen flickers, displaying 'FILE TYPE: CORRUPTED AUDIO (WAV)'.
+
+EMOTIONAL HOOK:
+Strong Anticipatory, Tense moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 4: "Low Thrum and Static"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: The speakers emit a low thrum, vibrating Cat's molars, and fragmented words bleed through static as she cranks the gain.
+
+EMOTIONAL HOOK:
+Strong Unsettling, Tense moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 5: "Daniel Observes Cat"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 8/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Daniel O’Brien leans against a doorway, observing Cat for signs of emotional strain, his tac-vest unzipped.
+
+EMOTIONAL HOOK:
+Strong Watchful, Concerned moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+════════════════════════════════════════════════════════════════
+SCENE 4: A Message
+5 Marketing Moments
+════════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 1: "Humming Base, Cluttered Workbench"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: The Mobile Medical Base hums as Cat Mitchell scrolls through fragmented logs on her terminal, while Daniel O'Brien stands sentinel by the rear door.
+
+EMOTIONAL HOOK:
+Strong Tense, Focused moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 2: "Isolated Tone"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Cat whispers she doesn't know, then puts on her headset, isolating a single, clean, deliberate tone.
+
+EMOTIONAL HOOK:
+Strong Analytical, Tense moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 3: "I AM EVERYONE WHO DIED"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 10/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: The audio file glitches, and the terminal auto-generates text: 'I AM EVERYONE WHO DIED. He was the First. FIND THE OTHERS.'
+
+EMOTIONAL HOOK:
+Strong Shocking, Ominous moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 4: "Someone Wanted That Building Gone"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 8/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Daniel, without turning, states that someone wanted the building gone and will notice if anyone digs through its bones.
+
+EMOTIONAL HOOK:
+Strong Vigilant, Pragmatic moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOMENT 5: "Anomaly Shouldn't Exist"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUZZ SCORE: 8/10
+
+WHY THIS MOMENT:
+Compelling moment from beat: Cat exhales, stating they should have burned the data cores cleaner, as the anomaly shouldn't exist.
+
+EMOTIONAL HOOK:
+Strong Frustrated, Suspicious moment
+
+STORY CONNECTION:
+Connects to overall episode narrative
+
+9:16 VERTICAL PROMPT:
+(Prompt pending)
+
+NEGATIVE PROMPT:
+
+
+SWARMUI SETTINGS:
+Resolution: 768x1368 (9:16)
+Model: flux1-dev-fp8.safetensors
+Steps: 40
+CFG Scale: 1
+Sampler: euler
+Seed: -1

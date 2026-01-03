@@ -161,3 +161,28 @@ export const analyzeScriptWithQwen = async (
     throw new Error("Failed to analyze script. The AI model may be temporarily unavailable or the request was invalid.");
   }
 };
+
+/**
+ * Simple generic content generation using Qwen via providerManager
+ */
+export const qwenGenerateContent = async (
+  prompt: string,
+  systemInstruction?: string,
+  temperature: number = 0.7,
+  maxTokens: number = 2048
+): Promise<{ content: string }> => {
+  const request: AIRequest = {
+    prompt,
+    systemInstruction: systemInstruction || 'You are a helpful AI assistant.',
+    temperature,
+    maxTokens,
+    taskType: TaskType.CREATIVE_WRITING,
+    preferredProvider: AIProvider.QWEN
+  };
+
+  const response = await providerManager.executeTask(request);
+
+  return {
+    content: response.content
+  };
+};

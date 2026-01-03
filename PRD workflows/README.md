@@ -14,9 +14,64 @@ Building complex features with AI can sometimes feel like a black box. This work
 
 This structured approach helps ensure the AI stays on track, makes it easier to debug issues, and gives you confidence in the generated code.
 
+## 🆕 What's New: Phase 1 Enhancements
+
+This workflow has been enhanced with modern planning methodologies based on industry best practices:
+
+### Enhanced PRD Creation
+* **Problem Evidence Requirement:** Must provide data/feedback showing the problem exists before building
+* **Time Appetite Setting:** Set time budget (Small: 1-2 weeks, Medium: 3-4 weeks, Large: 5-6 weeks) to prevent over-engineering
+* **Risk Analysis:** Identify technical, adoption, and integration risks upfront with mitigation strategies
+* **Alternatives Considered:** Document why this approach was chosen over alternatives
+* **Validation Planning:** Plan how to measure success before building
+
+### Better Task Tracking
+* **Task States:** Use `[~]` "Figuring Out" and `[>]` "Executing" to show progress, not just done/not-done
+* **Definition of Done:** Standard quality checklist ensures every task meets consistent criteria
+* **Priority Levels:** Core (must ship), Nice-to-Have (can cut), Future Work (defer)
+
+### Strategic Planning Tools
+* **Impact Mapping:** Connect features to business goals, surface assumptions, explore alternatives
+* **Pre-Mortem Analysis:** Imagine failure, work backwards to identify and mitigate risks
+* **Enhanced PRD Template:** Complete example showing all new sections
+
+### Methodology Sources
+These enhancements are based on:
+* **Shape Up** (Basecamp): Time-boxing, appetite-based scoping, hill charts
+* **Jobs To Be Done** (JTBD): Focus on user outcomes, job stories
+* **Impact Mapping** (Gojko Adzic): Connect work to business objectives
+* **Evidence-Based PRDs**: Require proof of problem, hypothesis-driven development
+* **Pre-Mortem Analysis**: Risk identification through imagined failure
+
+Note: this directory is intended to be self-contained. If you add deeper research notes later, link them here.
+
 ## Workflow: From Idea to Implemented Feature 💡➡️💻
 
 Here's the step-by-step process using the `.md` files in this repository:
+
+### 0️⃣ Optional: Strategic Planning (New! Recommended for Complex Features)
+
+Before diving into a PRD, consider using the new planning templates for complex or uncertain features:
+
+**Impact Mapping (When unsure if feature is worth building):**
+```text
+Use @impact-map-template.md
+I want to [describe business goal]
+Reference these files for context: [Optional: @existing-docs]
+```
+This creates an impact map connecting your feature to business goals, surfaces assumptions, and helps you choose the right solution.
+
+**Pre-Mortem Analysis (When feature has high risk/complexity):**
+```text
+Use @pre-mortem-template.md
+Here's the PRD: @my-feature-prd.md
+Help me identify risks before we start
+```
+This imagines the feature has failed and works backwards to identify and mitigate risks.
+
+### AI/Agent features (add evals)
+If your feature involves LLMs or autonomous agents, add evals and safety gates using:
+- `PRD workflows/llm-agent-evals-checklist.md`
 
 ### 1️⃣ Create a Product Requirement Document (PRD)
 
@@ -99,11 +154,21 @@ If you'd like to see this in action, I demonstrated it on [Claire Vo's "How I AI
 
 ## 🗂️ Files in this Repository
 
-* **`create-prd.md`**: Guides the AI in generating a Product Requirement Document for your feature.
-* **`generate-tasks.md`**: Takes a PRD markdown file as input and helps the AI break it down into a detailed, step-by-step implementation task list.
+### Core Workflow Files
+
+* **`create-prd.md`**: Guides the AI in generating a Product Requirement Document for your feature. Now includes problem evidence requirements, time appetite setting, risk analysis, and validation planning.
+* **`generate-tasks.md`**: Takes a PRD markdown file as input and helps the AI break it down into a detailed, step-by-step implementation task list. Now includes task states (Figuring Out/Executing) and Definition of Done checklist.
 * **`process-task-list.md`**: Instructs the AI on how to process the generated task list, tackling one task at a time and waiting for your approval before proceeding. (This file also contains logic for the AI to mark tasks as complete).
 
+### New Planning Templates (Phase 1 Enhancements)
+
+* **`impact-map-template.md`**: Pre-PRD strategic alignment tool. Creates an impact map to connect features to business goals, surface assumptions, and explore alternatives before committing to implementation.
+* **`pre-mortem-template.md`**: Risk identification template. Conducts a pre-mortem analysis by imagining the feature has failed and working backwards to identify and mitigate risks.
+* **`enhanced-prd-template.md`**: Complete example PRD showing all enhanced sections including problem evidence, time appetite, risk analysis, alternatives considered, and validation planning.
+
 ## 🌟 Benefits
+
+### Core Workflow Benefits
 
 * **Structured Development:** Enforces a clear process from idea to code.
 * **Step-by-Step Verification:** Allows you to review and approve AI-generated code at each small step, ensuring quality and control.
@@ -113,6 +178,17 @@ If you'd like to see this in action, I demonstrated it on [Claire Vo's "How I AI
 * **Built-in Quality Gates:** Testing checkpoints ensure code works before moving forward.
 * **Change Documentation:** Automatic tracking of what changed and why during implementation.
 * **Version Control Integration:** Regular commits and pushes keep work synchronized and backed up.
+
+### Enhanced Planning Benefits (New!)
+
+* **Evidence-Based Requirements:** Problem evidence requirement prevents building features nobody needs
+* **Time-Boxed Development:** Time appetite setting prevents feature creep and over-engineering
+* **Risk-Aware Planning:** Pre-mortem analysis surfaces issues when they're cheaper to fix
+* **Strategic Alignment:** Impact mapping connects features to business goals
+* **Better Progress Visibility:** Task states show whether you're "figuring out" or "executing"
+* **Consistent Quality:** Definition of Done ensures every task meets quality criteria
+* **Alternative Exploration:** Alternatives considered section preserves decision-making context
+* **Validation Planning:** Built-in approach for measuring success before and after launch
 
 ## 🛠️ How to Use
 
@@ -184,11 +260,20 @@ For other AI-powered IDEs or CLIs:
 
 ## 💡 Tips for Success
 
+### Using the Core Workflow
 * **Be Specific:** The more context and clear instructions you provide (both in your initial feature description and any clarifications), the better the AI's output will be.
 * **Use a Capable Model:** The free version of Cursor currently uses less capable AI models that often struggle to follow the structured instructions in this workflow. For best results, consider upgrading to the Pro plan to ensure consistent, accurate task execution.
 * **MAX Mode for PRDs:** As mentioned, using MAX mode in Cursor for PRD creation (`create-prd.mdc`) can yield more thorough and higher-quality results if your budget supports it.
 * **Correct File Tagging:** Always ensure you're accurately tagging the PRD filename (e.g., `@MyFeature-PRD.md`) when generating tasks.
 * **Patience and Iteration:** AI is a powerful tool, but it's not magic. Be prepared to guide, correct, and iterate. This workflow is designed to make that iteration process smoother.
+
+### Using the Enhanced Planning Tools
+* **Start with Impact Maps for Uncertain Features:** If you're not sure a feature is worth building, create an impact map first to validate strategic alignment
+* **Always Provide Problem Evidence:** Don't skip the problem evidence section - it prevents wasted work on features nobody needs
+* **Set Realistic Time Appetites:** Be honest about how much time a feature is worth. If it's not worth 3-4 weeks, maybe it shouldn't be built at all
+* **Run Pre-Mortems on Risky Features:** For features with technical complexity, tight timelines, or high business impact, run a pre-mortem to surface risks early
+* **Use Task States Actively:** Update tasks from `[ ]` to `[~]` when you start figuring out an approach, then `[>]` when you have a clear path, then `[x]` when done
+* **Reference the Enhanced PRD Template:** Use `enhanced-prd-template.md` as a guide when creating your first evidence-based PRD
 
 ## 🧪 Testing, Documentation, and Git Workflow
 
@@ -202,6 +287,12 @@ The task list includes **testing checkpoints** at logical intervals (after major
 2. **Verify Results:** Ensure all tests pass before proceeding
 3. **Fix Issues:** If tests fail, document what was wrong and fix it
 4. **Document:** Record test results, coverage metrics, and any fixes applied
+
+### AI Feature Note (important if your PRD includes LLMs/agents)
+If the feature uses an LLM or autonomous agent behavior, modern best practice is to treat “model behavior” as a tested surface:
+- Add an **eval set** (golden prompts/inputs + expected outputs/constraints)
+- Add **regression tests** for model behavior (including prompt injection and data leakage attempts)
+- Add explicit **guardrails** (tool allowlists, structured outputs, citation requirements, refusal rules)
 
 ### Documentation Requirements
 
@@ -221,19 +312,21 @@ Documentation can be:
 
 ### Git Workflow
 
-After validation and documentation:
+VALESKA uses **Conventional Commits** and **Atomic Commit** principles. Every implementation step must be capped with a structured commit.
 
-1. **Stage Changes:** `git add -A` (or `git add .` for current directory)
-2. **Commit:** Use conventional commit format with descriptive message:
+1. **Stage Changes:** `git add .`
+2. **Commit:** Use `cz commit` (interactive) or the conventional format:
    ```bash
-   git commit -m "feat: [brief summary]" -m "- [detailed change 1]" -m "- [detailed change 2]"
+   git commit -m "feat: [brief summary]"
    ```
-3. **Push:** `git push` to sync with remote repository
+   *Note: AI agents in this repo are instructed to use these standards automatically.*
+3. **Push:** `git push` to sync with remote repository.
 
-**Commit Frequency:**
-- After each major task section (when all subtasks complete)
-- After testing checkpoints (when validated)
-- Before switching to a new major feature area
+**Commit Rhythm & Task List Generation:**
+- When generating a task list using `generate-tasks.md`, **always** include a "COMMIT" task at the end of every parent task/feature section.
+- Commit after each testing checkpoint and documentation update.
+- Never combine multiple unrelated features or bug fixes into a single commit.
+- Use `feat:` for new capabilities and `fix:` for bug resolutions to ensure the auto-generated changelog is accurate.
 
 **Commit Message Format:**
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`

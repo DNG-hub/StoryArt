@@ -1,3 +1,8 @@
+export type { ImageGenerationResult } from './services/swarmUIService';
+
+export type LLMProvider = 'gemini' | 'qwen' | 'claude' | 'openai' | 'xai' | 'deepseek' | 'glm';
+export type LLMSelection = LLMProvider;
+
 export interface SceneMetadata {
   targetDuration: string;
   sceneRole: string;
@@ -38,7 +43,7 @@ export interface SwarmUIPrompt {
 export interface BeatPrompts {
   beatId: string;
   cinematic: SwarmUIPrompt;
-  vertical: SwarmUIPrompt; // Vertical (9:16) prompts for long-form storytelling based on beat analysis
+  vertical?: SwarmUIPrompt; // Vertical (9:16) prompts for long-form storytelling based on beat analysis
   marketingVertical?: SwarmUIPrompt; // Vertical (9:16) prompts specifically for marketing, based on full episode analysis
 }
 
@@ -53,7 +58,7 @@ export interface BeatAnalysis {
   resolvedLocationId?: string; // The UUID of the specific sub-location from the hierarchy table.
   prompts?: {
     cinematic: SwarmUIPrompt;
-    vertical: SwarmUIPrompt; // For long-form storytelling based on beat analysis
+    vertical?: SwarmUIPrompt; // For long-form storytelling based on beat analysis
     marketingVertical?: SwarmUIPrompt; // For marketing based on full episode analysis
   };
   hookNarrative?: string; // For Phase 1.4

@@ -2,12 +2,17 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalyzedEpisode } from '../types';
 import { compactEpisodeContext } from '../utils';
 
-// Read API key from .env via import.meta.env (Vite client-side)
-// Vite requires VITE_ prefix for client-side environment variables
+// Read API key from .env
+// Support both Vite (import.meta.env) and Node.js (process.env) environments
 const getApiKey = () => {
-  // Try VITE_ prefix first (recommended), then fallback to non-prefixed for backward compat
-  return import.meta.env.VITE_GEMINI_API_KEY || 
-         import.meta.env.GEMINI_API_KEY || 
+  // Check if we're in Node.js context (tsx/node) or Vite context
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    // Vite environment
+    return import.meta.env.VITE_GEMINI_API_KEY ||
+           import.meta.env.GEMINI_API_KEY;
+  }
+  // Node.js environment (tsx, node)
+  return (process.env as any).VITE_GEMINI_API_KEY ||
          (process.env as any).GEMINI_API_KEY ||
          (process.env as any).API_KEY;
 };
@@ -540,4 +545,30 @@ export const analyzeScript = async (
     
     throw new Error("Failed to analyze script. The AI model may be temporarily unavailable or the request was invalid.");
   }
+};
+
+/**
+ * Simple generic content generation using Gemini
+ */
+export const geminiGenerateContent = async (
+  prompt: string,
+  systemInstruction?: string,
+  temperature: number = 0.7,
+  maxTokens: number = 2048
+): Promise<{ content: string }> => {
+  const ai = getGeminiClient();
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+    config: {
+      systemInstruction: systemInstruction || 'You are a helpful AI assistant.',
+      temperature,
+      maxOutputTokens: maxTokens,
+    }
+  });
+
+  return {
+    content: response.text || ''
+  };
 };
