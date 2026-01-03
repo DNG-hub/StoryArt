@@ -11,6 +11,9 @@
 import { execSync } from 'child_process';
 import type { StoryContextData } from '../types';
 
+// Check if we're in a browser environment
+const isBrowser = typeof window !== 'undefined';
+
 // Cache configuration
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
 
@@ -35,6 +38,19 @@ const cache = new Map<string, CacheEntry>();
  * }
  */
 export async function getStoryContext(storyId: string): Promise<StoryContextData | null> {
+  // Browser environment check - database operations not available
+  if (isBrowser) {
+    console.warn('[StoryContext] Running in browser - database operations should use API endpoints');
+    // Return null in browser - calling code should handle this gracefully
+    return null;
+  }
+
+  // Check if execSync is available (will be stubbed in browser by Vite)
+  if (typeof execSync !== 'function') {
+    console.warn('[StoryContext] execSync not available - database operations should use API endpoints');
+    return null;
+  }
+
   // Check cache first
   const cacheKey = `story_context_${storyId}`;
   const cached = getCachedData(cacheKey);

@@ -19,7 +19,9 @@
     "validate:env": "node scripts/validate-environment.js",
     "migrate:redis:1-to-0": "tsx scripts/migrate-redis-database-1-to-0.js",
     "migrate:redis:1-to-0:dry-run": "DRY_RUN=true tsx scripts/migrate-redis-database-1-to-0.js",
-    "generate-shorts": "tsx scripts/generate-episode1-shorts.js"
+    "generate-shorts": "tsx scripts/generate-episode1-shorts.js",
+    "generate-marketing": "tsx scripts/generate-episode1-marketing.ts",
+    "enhance-shorts": "tsx scripts/enhance-existing-shorts.ts"
   },
   "dependencies": {
     "@google/genai": "^1.27.0",
@@ -37,6 +39,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "@vitest/coverage-v8": "^4.0.6",
     "@vitest/ui": "^4.0.6",
+    "baseline-browser-mapping": "^2.9.11",
     "concurrently": "^8.2.2",
     "tsx": "^4.20.6",
     "typescript": "~5.8.2",

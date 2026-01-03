@@ -1,5 +1,21 @@
 // services/databaseContextService.ts
+// Note: This service uses Node.js-only modules (pg, dotenv)
+// In browser environments, these will be stubbed by Vite
+import dotenv from 'dotenv';
 import { Pool } from 'pg';
+
+// Check if we're in a browser environment
+const isBrowser = typeof window !== 'undefined';
+
+// In browser, these imports will be stubbed by Vite
+// Only call dotenv.config() in Node.js environment
+if (!isBrowser) {
+  try {
+    dotenv.config();
+  } catch (error) {
+    console.warn('Failed to load dotenv config');
+  }
+}
 import {
   DatabaseLocationData,
   DatabaseArtifactData,
@@ -15,6 +31,9 @@ import {
   CharacterAppearance
 } from '../types';
 import { resolveSceneLocation, applyTacticalOverrides, generateLocationPromptFragments } from './roadmapService';
+
+// Load environment variables before reading DATABASE_URL
+dotenv.config();
 
 // Location override mapping for tactical appearances
 const locationOverrideMapping: LocationOverrideMapping = {
@@ -57,8 +76,16 @@ const CAT_DANIEL_STORY_ID = (typeof import.meta !== 'undefined' && import.meta.e
                             process.env.VITE_CAT_DANIEL_STORY_ID ||
                             '59f64b1e-726a-439d-a6bc-0dfefcababdb';
 
-// Database connection pool
-const pool = new Pool({ connectionString: DATABASE_URL });
+// Database connection pool - only create in Node.js environment
+// In browser, database operations should use API endpoints
+let pool: any = null;
+if (!isBrowser && Pool) {
+  try {
+    pool = new Pool({ connectionString: DATABASE_URL });
+  } catch (error) {
+    console.warn('Failed to create database pool:', error);
+  }
+}
 
 // Cache for database queries to improve performance
 const cache = new Map<string, any>();
@@ -84,6 +111,10 @@ function setCachedData(key: string, data: any): void {
 
 // Database query functions - now using real PostgreSQL
 async function queryDatabase(query: string, params: any[] = []): Promise<any[]> {
+  if (isBrowser || !pool) {
+    throw new Error('Database queries cannot be executed in browser. Use API endpoints instead.');
+  }
+  
   try {
     console.log('Database query:', query, params);
 
@@ -192,6 +223,46 @@ export async function generateEnhancedEpisodeContext(
   episodeSummary: string,
   scenes: any[]
 ): Promise<EnhancedEpisodeContext> {
+  // Browser environment check - database operations not available
+  if (isBrowser || !pool) {
+    console.warn('generateEnhancedEpisodeContext: Running in browser - returning minimal fallback context');
+    // Return minimal fallback context for browser environments
+    return {
+      episode: {
+        episode_number: episodeNumber,
+        episode_title: episodeTitle,
+        episode_summary: episodeSummary,
+        story_context: '',
+        narrative_tone: '',
+        core_themes: '',
+        characters: [],
+        scenes: scenes.map(scene => ({
+          scene_number: scene.scene_number || 1,
+          scene_title: scene.scene_title || 'Scene',
+          scene_summary: scene.scene_summary || '',
+          roadmap_location: '',
+          location: scene.location || {
+            id: 'unknown',
+            name: 'Unknown Location',
+            description: '',
+            visual_description: '',
+            atmosphere: '',
+            atmosphere_category: 'neutral',
+            geographical_location: '',
+            time_period: '',
+            cultural_context: '',
+            key_features: '[]',
+            visual_reference_url: '',
+            significance_level: 'medium',
+            artifacts: [],
+            tactical_override_location: ''
+          },
+          character_appearances: []
+        }))
+      }
+    };
+  }
+
   try {
     // Fetch all database data
     const [storyData, locationData, artifactData, characterLocationData] = await Promise.all([
@@ -435,6 +506,12 @@ export interface HierarchicalLocationInfo {
  * @returns A promise that resolves to a HierarchicalLocationInfo object or null if not found.
  */
 export async function getHierarchicalLocationContext(locationArcId: string): Promise<HierarchicalLocationInfo | null> {
+  // Browser environment check - database operations not available
+  if (isBrowser || !pool) {
+    console.warn('getHierarchicalLocationContext: Running in browser - returning null');
+    return null;
+  }
+
   const cacheKey = `hierarchical_location_${locationArcId}`;
   const cached = getCachedData(cacheKey);
   if (cached) return cached;

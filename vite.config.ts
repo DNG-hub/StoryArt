@@ -17,11 +17,20 @@ export default defineConfig(({ mode }) => {
         global: 'globalThis'
       },
       optimizeDeps: {
-        exclude: ['redis']
+        exclude: ['redis', 'pg', '@types/pg']
       },
       resolve: {
         alias: {
-          '@': path.resolve(__dirname, '.')
+          '@': path.resolve(__dirname, '.'),
+          // Stub out Node.js-only modules for browser compatibility
+          'pg': path.resolve(__dirname, 'vite-stub-pg.js'),
+          'dotenv': path.resolve(__dirname, 'vite-stub-dotenv.js'),
+          'child_process': path.resolve(__dirname, 'vite-stub-child_process.js')
+        }
+      },
+      build: {
+        rollupOptions: {
+          external: ['pg', '@types/pg', 'dotenv']
         }
       }
     };

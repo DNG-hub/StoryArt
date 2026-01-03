@@ -222,6 +222,7 @@ function Dashboard({
 // }
 
 function App() {
+  console.log('📱 StoryArt: App component rendering...');
   // const navigate = useNavigate(); // Routing removed
   const [scriptText, setScriptText] = useState<string>(DEFAULT_SCRIPT);
   const [episodeContext, setEpisodeContext] = useState<string>(DEFAULT_EPISODE_CONTEXT);
@@ -560,7 +561,21 @@ function App() {
 
     // FIX: Corrected syntax for the try-catch block.
     } catch (e: any) {
-      setError(e.message || 'An unexpected error occurred.');
+      const errorMessage = e?.message || e?.toString() || 'An unexpected error occurred.';
+      const errorStack = e?.stack || 'No stack trace available';
+      
+      console.error('=== ANALYSIS ERROR ===');
+      console.error('Error message:', errorMessage);
+      console.error('Error stack:', errorStack);
+      console.error('Full error object:', e);
+      console.error('Error type:', typeof e);
+      console.error('Error constructor:', e?.constructor?.name);
+      
+      // Set error state
+      setError(errorMessage);
+      
+      // Also log to console for debugging
+      console.error('Error has been set in state. Check UI for error display.');
     } finally {
       setIsLoading(false);
       setLoadingMessage('');
