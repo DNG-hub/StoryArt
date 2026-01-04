@@ -3,8 +3,133 @@ import { getToken } from './authService';
 
 const BASE_URL = import.meta.env.VITE_STORYTELLER_API_URL || "http://localhost:8000";
 
+// Types for episode list and script responses
+export interface EpisodeListItem {
+  episode_id: string;
+  episode_number: number;
+  episode_title: string;
+  scene_count?: number;
+  status?: string;
+}
+
+export interface EpisodeScriptResponse {
+  success: boolean;
+  episode_id: string;
+  episode_number: number;
+  standardized_script: string;
+  metadata?: {
+    generated_at: string;
+    scene_count: number;
+  };
+}
+
+/**
+ * Fetches the list of episodes for a given story from the StoryTeller API (V2)
+ */
+export async function getEpisodeList(storyId: string): Promise<EpisodeListItem[]> {
+  let token: string;
+  try {
+    token = await getToken();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Backend server unavailable')) {
+      throw new Error('Cannot fetch episode list: Backend server is not running. Please start the StoryTeller API server.');
+    }
+    throw error;
+  }
+
+  const url = `${BASE_URL}/api/v2/stories/${storyId}/episodes`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      const errorMessage = errorBody.detail || errorBody.error || `HTTP Error: ${response.status}`;
+      throw new Error(`Failed to fetch episode list. ${errorMessage}`);
+    }
+
+    const result = await response.json();
+
+    // Handle different response formats (array directly or wrapped in data)
+    const episodes = Array.isArray(result) ? result : (result.data || result.episodes || []);
+
+    return episodes.map((ep: any) => ({
+      episode_id: ep.episode_id || ep.id,
+      episode_number: ep.episode_number,
+      episode_title: ep.episode_title || ep.title || `Episode ${ep.episode_number}`,
+      scene_count: ep.scene_count,
+      status: ep.status,
+    }));
+  } catch (error) {
+    console.error("Episode list request failed:", error);
+    throw error;
+  }
+}
+
+/**
+ * Fetches the standardized script for a specific episode from the StoryTeller API (V2)
+ */
+export async function getEpisodeScript(storyId: string, episodeNumber: number): Promise<EpisodeScriptResponse> {
+  let token: string;
+  try {
+    token = await getToken();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Backend server unavailable')) {
+      throw new Error('Cannot fetch episode script: Backend server is not running. Please start the StoryTeller API server.');
+    }
+    throw error;
+  }
+
+  const url = `${BASE_URL}/api/v2/stories/${storyId}/episodes/${episodeNumber}/standardized-script`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      const errorMessage = errorBody.detail || errorBody.error || `HTTP Error: ${response.status}`;
+      throw new Error(`Failed to fetch episode script. ${errorMessage}`);
+    }
+
+    const result = await response.json();
+
+    return {
+      success: result.success !== false,
+      episode_id: result.episode_id,
+      episode_number: result.episode_number || episodeNumber,
+      standardized_script: result.standardized_script,
+      metadata: result.metadata,
+    };
+  } catch (error) {
+    console.error("Episode script request failed:", error);
+    throw error;
+  }
+}
+
 export async function getEpisodeContext(storyId: string, episodeNumber: number): Promise<any> {
-  const token = await getToken();
+  let token: string;
+  try {
+    token = await getToken();
+  } catch (error) {
+    // If token fetch fails (e.g., backend not running), provide a helpful error
+    if (error instanceof Error && error.message.includes('Backend server unavailable')) {
+      throw new Error('Cannot fetch episode context: Backend server is not running. Please start the StoryTeller API server.');
+    }
+    throw error;
+  }
+  
   const url = `${BASE_URL}/api/v1/scene-context/extract-episode-context`;
 
   try {
@@ -21,7 +146,7 @@ export async function getEpisodeContext(storyId: string, episodeNumber: number):
     });
 
     if (!response.ok) {
-        const errorBody = await response.json();
+        const errorBody = await response.json().catch(() => ({}));
         const errorMessage = errorBody.error || `HTTP Error: ${response.status}`;
         throw new Error(`Failed to fetch episode context. ${errorMessage}`);
     }

@@ -7,7 +7,7 @@ import { SessionBrowser } from './components/SessionBrowser';
 // import { ServiceStatusPanel } from './components/ServiceStatusPanel'; // Component removed
 import { analyzeScript } from './services/geminiService';
 import { analyzeScriptWithProvider } from './services/multiProviderAnalysisService';
-import { getEpisodeContext } from './services/contextService';
+import { getEpisodeContext, getEpisodeList, getEpisodeScript, type EpisodeListItem } from './services/contextService';
 // import { ensureServiceRunning, type ServiceStatus } from './services/storytellerService'; // Service removed
 import { parseEpisodeNumber, postProcessAnalysis } from './utils';
 import type { AnalyzedEpisode, EpisodeStyleConfig, EnhancedEpisodeContext, SceneContext, BeatAnalysis, LLMSelection, LLMProvider } from './types';
@@ -74,7 +74,14 @@ function Dashboard({
   saveSuccess,
   onSaveToRedis,
   isSaving,
-  saveError
+  saveError,
+  // New props for database episode selection
+  episodeList,
+  selectedEpisodeNumber,
+  onEpisodeSelect,
+  isEpisodeListLoading,
+  episodeListError,
+  isScriptFetching,
 }: {
   scriptText: string;
   setScriptText: (text: string) => void;
@@ -114,6 +121,13 @@ function Dashboard({
   onSaveToRedis?: () => Promise<void>;
   isSaving?: boolean;
   saveError?: string | null;
+  // New props for database episode selection
+  episodeList: EpisodeListItem[];
+  selectedEpisodeNumber: number | null;
+  onEpisodeSelect: (episodeNumber: number) => Promise<void>;
+  isEpisodeListLoading: boolean;
+  episodeListError: string | null;
+  isScriptFetching: boolean;
 }) {
   // SwarmUI export hook removed - stubbing out functionality
   const isSavingToSwarmUI = false;
@@ -171,6 +185,13 @@ function Dashboard({
                 onSaveToRedis={onSaveToRedis}
                 isSaving={isSaving}
                 saveError={saveError}
+                // New props for database episode selection
+                episodeList={episodeList}
+                selectedEpisodeNumber={selectedEpisodeNumber}
+                onEpisodeSelect={onEpisodeSelect}
+                isEpisodeListLoading={isEpisodeListLoading}
+                episodeListError={episodeListError}
+                isScriptFetching={isScriptFetching}
               />
             </div>
           )}
@@ -222,7 +243,13 @@ function Dashboard({
 // }
 
 function App() {
-  console.log('📱 StoryArt: App component rendering...');
+  // Only log renders in development and limit frequency
+  if (import.meta.env.DEV) {
+    const renderCount = (window as any).__storyart_render_count = ((window as any).__storyart_render_count || 0) + 1;
+    if (renderCount <= 3 || renderCount % 10 === 0) {
+      console.log('📱 StoryArt: App component rendering...', `(render #${renderCount})`);
+    }
+  }
   // const navigate = useNavigate(); // Routing removed
   const [scriptText, setScriptText] = useState<string>(DEFAULT_SCRIPT);
   const [episodeContext, setEpisodeContext] = useState<string>(DEFAULT_EPISODE_CONTEXT);
@@ -404,7 +431,77 @@ function App() {
 
   const [selectedLLM, setSelectedLLM] = useState<LLMProvider>('gemini'); // Default to Gemini as it's set as DEFAULT_AI_PROVIDER in .env
 
+  // New state for database episode selection
+  const [episodeList, setEpisodeList] = useState<EpisodeListItem[]>([]);
+  const [selectedEpisodeNumber, setSelectedEpisodeNumber] = useState<number | null>(null);
+  const [isEpisodeListLoading, setIsEpisodeListLoading] = useState<boolean>(false);
+  const [episodeListError, setEpisodeListError] = useState<string | null>(null);
+  const [isScriptFetching, setIsScriptFetching] = useState<boolean>(false);
 
+  // Fetch episode list when story UUID changes (in database mode)
+  useEffect(() => {
+    if (retrievalMode === 'database' && storyUuid.trim()) {
+      const fetchEpisodeList = async () => {
+        setIsEpisodeListLoading(true);
+        setEpisodeListError(null);
+        setEpisodeList([]);
+        setSelectedEpisodeNumber(null);
+        setScriptText('');
+        setEpisodeContext('');
+
+        try {
+          const episodes = await getEpisodeList(storyUuid);
+          setEpisodeList(episodes);
+        } catch (e: any) {
+          setEpisodeListError(e.message || 'Failed to fetch episode list.');
+        } finally {
+          setIsEpisodeListLoading(false);
+        }
+      };
+
+      fetchEpisodeList();
+    }
+  }, [retrievalMode, storyUuid]);
+
+  // Handle episode selection - fetch both script and context
+  const handleEpisodeSelect = async (episodeNumber: number) => {
+    setSelectedEpisodeNumber(episodeNumber);
+    setScriptText('');
+    setEpisodeContext('');
+    setContextError(null);
+
+    // Fetch script and context in parallel
+    setIsScriptFetching(true);
+    setIsContextFetching(true);
+    setLoadingMessage('Fetching episode data...');
+
+    try {
+      const [scriptResult, contextResult] = await Promise.all([
+        getEpisodeScript(storyUuid, episodeNumber),
+        getEpisodeContext(storyUuid, episodeNumber),
+      ]);
+
+      // Set script
+      if (scriptResult.success && scriptResult.standardized_script) {
+        setScriptText(scriptResult.standardized_script);
+      } else {
+        throw new Error('Failed to fetch standardized script.');
+      }
+
+      // Set context
+      const formattedContext = JSON.stringify(contextResult, null, 2);
+      setEpisodeContext(formattedContext);
+
+    } catch (e: any) {
+      setContextError(e.message || 'Failed to fetch episode data.');
+    } finally {
+      setIsScriptFetching(false);
+      setIsContextFetching(false);
+      setLoadingMessage('');
+    }
+  };
+
+  // Legacy handleFetchContext - still used for manual mode parsing
   const handleFetchContext = async () => {
     setIsContextFetching(true);
     setContextError(null);
@@ -467,23 +564,32 @@ function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only once on mount
 
-  useEffect(() => {
-    if (retrievalMode === 'database' && storyUuid) {
-        setLoadingMessage('Fetching context...');
-        handleFetchContext();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [retrievalMode, scriptText, storyUuid]);
+  // Note: Old auto-fetch useEffect removed - now handled by episode selection flow
+  // When user switches to database mode, the episode list is fetched
+  // When user selects an episode, both script and context are fetched via handleEpisodeSelect
 
 
   const handleRetrievalModeChange = (mode: RetrievalMode) => {
     setRetrievalMode(mode);
     if (mode === 'manual') {
-        // Only set default context if the current context is empty
+        // Reset to defaults for manual mode
+        if (!scriptText.trim() || scriptText === '') {
+            setScriptText(DEFAULT_SCRIPT);
+        }
         if (!episodeContext.trim()) {
             setEpisodeContext(DEFAULT_EPISODE_CONTEXT);
         }
         setContextError(null);
+        // Reset database mode state
+        setSelectedEpisodeNumber(null);
+        setEpisodeListError(null);
+    } else {
+        // Switching to database mode - clear script and context, keep story UUID
+        // The useEffect will fetch episode list automatically
+        setScriptText('');
+        setEpisodeContext('');
+        setContextError(null);
+        setSelectedEpisodeNumber(null);
     }
   };
 
@@ -744,7 +850,7 @@ function App() {
         contextError={contextError}
         setContextError={setContextError}
         retrievalMode={retrievalMode}
-        setRetrievalMode={setRetrievalMode}
+        setRetrievalMode={handleRetrievalModeChange}
         storyUuid={storyUuid}
         setStoryUuid={setStoryUuid}
         isInputCollapsed={isInputCollapsed}
@@ -766,6 +872,13 @@ function App() {
         isSaving={isSaving}
         saveError={saveError}
         onOpenSessionBrowser={() => setIsSessionBrowserOpen(true)}
+        // New props for database episode selection
+        episodeList={episodeList}
+        selectedEpisodeNumber={selectedEpisodeNumber}
+        onEpisodeSelect={handleEpisodeSelect}
+        isEpisodeListLoading={isEpisodeListLoading}
+        episodeListError={episodeListError}
+        isScriptFetching={isScriptFetching}
       />
       <SessionBrowser
         isOpen={isSessionBrowserOpen}

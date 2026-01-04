@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GenerateIcon, PanelCollapseIcon } from './icons';
-import type { EpisodeStyleConfig, RetrievalMode } from '../types';
+import type { EpisodeStyleConfig, RetrievalMode, LLMProvider } from '../types';
+import type { EpisodeListItem } from '../services/contextService';
 
 // Database context quality indicator component
 const DatabaseContextIndicator: React.FC<{
@@ -143,6 +144,13 @@ interface InputPanelProps {
   onOpenSessionBrowser?: () => void;
   selectedLLM: LLMProvider;
   onSelectedLLMChange: (llm: LLMProvider) => void;
+  // New props for database episode selection
+  episodeList: EpisodeListItem[];
+  selectedEpisodeNumber: number | null;
+  onEpisodeSelect: (episodeNumber: number) => void;
+  isEpisodeListLoading: boolean;
+  episodeListError: string | null;
+  isScriptFetching: boolean;
 }
 
 const LLMProviderSelector: React.FC<{
@@ -237,6 +245,77 @@ const StyleConfigPanel: React.FC<{
     )
 }
 
+// Episode selector for database mode
+const EpisodeSelector: React.FC<{
+  episodes: EpisodeListItem[];
+  selectedEpisodeNumber: number | null;
+  onSelect: (episodeNumber: number) => void;
+  isLoading: boolean;
+  error: string | null;
+  disabled?: boolean;
+}> = ({ episodes, selectedEpisodeNumber, onSelect, isLoading, error, disabled }) => {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-3 bg-gray-900 border border-gray-700 rounded-md">
+        <svg className="animate-spin h-4 w-4 text-brand-blue mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span className="text-gray-400 text-sm">Loading episodes...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-3 bg-red-900/20 border border-red-700 rounded-md">
+        <p className="text-red-400 text-sm">{error}</p>
+      </div>
+    );
+  }
+
+  if (episodes.length === 0) {
+    return (
+      <div className="p-3 bg-yellow-900/20 border border-yellow-700 rounded-md">
+        <p className="text-yellow-400 text-sm">No episodes found for this story.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label htmlFor="episode-selector" className="block text-sm font-medium text-gray-300 mb-2">
+        Select Episode
+      </label>
+      <select
+        id="episode-selector"
+        value={selectedEpisodeNumber ?? ''}
+        onChange={(e) => onSelect(parseInt(e.target.value, 10))}
+        disabled={disabled}
+        className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-gray-200 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <option value="" disabled>-- Select an episode --</option>
+        {episodes.map((ep) => (
+          <option key={ep.episode_id} value={ep.episode_number}>
+            Episode {ep.episode_number}: {ep.episode_title}
+            {ep.scene_count ? ` (${ep.scene_count} scenes)` : ''}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// Manual mode notice component
+const ManualModeNotice: React.FC = () => (
+  <div className="p-3 bg-gray-900/50 border border-gray-600 rounded-md">
+    <p className="text-xs text-gray-500 italic">
+      Manual script input is available but hidden in Database mode.
+      Switch to "Manual Input" mode to paste scripts directly.
+    </p>
+  </div>
+);
+
 export const InputPanel: React.FC<InputPanelProps> = ({
   script,
   setScript,
@@ -264,7 +343,14 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   saveError = null,
   onOpenSessionBrowser,
   selectedLLM,
-  onSelectedLLMChange
+  onSelectedLLMChange,
+  // New props for database episode selection
+  episodeList = [],
+  selectedEpisodeNumber = null,
+  onEpisodeSelect,
+  isEpisodeListLoading = false,
+  episodeListError = null,
+  isScriptFetching = false,
 }) => {
   const [isContextJsonValid, setIsContextJsonValid] = useState(true);
 
@@ -337,9 +423,10 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   const isAnalyzeDisabled =
     isLoading ||
     isContextFetching ||
+    isScriptFetching ||
     !script.trim() ||
     (retrievalMode === 'manual' && (!episodeContext.trim() || !isContextJsonValid)) ||
-    (retrievalMode === 'database' && (!storyUuid.trim() || !episodeContext.trim() || !!contextError));
+    (retrievalMode === 'database' && (!storyUuid.trim() || !episodeContext.trim() || !!contextError || selectedEpisodeNumber === null));
     
   return (
     <div className="bg-gray-800/50 p-6 rounded-lg shadow-lg h-full flex flex-col relative">
@@ -352,9 +439,16 @@ export const InputPanel: React.FC<InputPanelProps> = ({
       </button>
       <h2 className="text-2xl font-semibold mb-4 text-brand-purple text-center">Inputs</h2>
       <div className="flex-grow flex flex-col space-y-4">
-        
-        {/* Script Input */}
-        <div className='flex flex-col flex-grow' style={{ minHeight: '150px' }}>
+
+        {/* Retrieval Mode Switch - Moved to top for better UX */}
+        <div>
+          <div className="text-sm font-medium text-gray-300 mb-2 text-center">Data Source</div>
+          <RetrievalModeSwitch mode={retrievalMode} setMode={onRetrievalModeChange} />
+        </div>
+
+        {/* Script Input - Only shown in manual mode */}
+        {retrievalMode === 'manual' ? (
+          <div className='flex flex-col flex-grow' style={{ minHeight: '150px' }}>
             <label htmlFor="script-input" className="block text-sm font-medium text-gray-300 mb-2">
                 Script
             </label>
@@ -366,7 +460,70 @@ export const InputPanel: React.FC<InputPanelProps> = ({
                 className="w-full flex-grow bg-gray-900 border border-gray-700 rounded-md p-3 text-gray-200 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition duration-200"
                 aria-label="Script Input"
             />
-        </div>
+          </div>
+        ) : (
+          /* Database Mode: Episode Selection and Fetched Script */
+          <div className='flex flex-col space-y-4'>
+            {/* Story UUID Input */}
+            <div>
+              <label htmlFor="story-uuid-input" className="block text-sm font-medium text-gray-300 mb-2">
+                Story UUID
+              </label>
+              <input
+                type="text"
+                id="story-uuid-input"
+                value={storyUuid}
+                onChange={(e) => setStoryUuid(e.target.value)}
+                placeholder="Enter Story UUID..."
+                className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-gray-200 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition duration-200"
+                aria-label="Story UUID Input"
+              />
+            </div>
+
+            {/* Episode Selector */}
+            <EpisodeSelector
+              episodes={episodeList}
+              selectedEpisodeNumber={selectedEpisodeNumber}
+              onSelect={onEpisodeSelect}
+              isLoading={isEpisodeListLoading}
+              error={episodeListError}
+              disabled={isContextFetching || isScriptFetching}
+            />
+
+            {/* Fetched Script Display (read-only) */}
+            {selectedEpisodeNumber !== null && (
+              <div className='flex flex-col' style={{ minHeight: '120px' }}>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Script (from database)
+                </label>
+                {isScriptFetching ? (
+                  <div className="flex-grow flex items-center justify-center bg-gray-900 border border-gray-700 rounded-md p-3">
+                    <svg className="animate-spin h-5 w-5 text-brand-blue mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-gray-400">Fetching script...</span>
+                  </div>
+                ) : script.trim() ? (
+                  <textarea
+                    value={script}
+                    readOnly
+                    className="w-full flex-grow bg-gray-900 border border-gray-700 rounded-md p-3 font-mono text-sm text-gray-400 cursor-not-allowed"
+                    style={{ minHeight: '100px', maxHeight: '200px' }}
+                    aria-label="Fetched Script (read-only)"
+                  />
+                ) : (
+                  <div className="flex-grow flex items-center justify-center bg-gray-900/50 border border-dashed border-gray-700 rounded-md p-3">
+                    <span className="text-gray-500 text-sm">Script will appear here after fetching</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Manual mode notice */}
+            <ManualModeNotice />
+          </div>
+        )}
 
         {/* AI Model Config */}
         <LLMProviderSelector selectedLLM={selectedLLM} onSelectedLLMChange={onSelectedLLMChange} />
@@ -377,85 +534,79 @@ export const InputPanel: React.FC<InputPanelProps> = ({
           setConfig={setStyleConfig} 
         />
 
-        {/* Retrieval Mode Switch and Context Input */}
-        <div className='flex flex-col flex-grow' style={{ minHeight: '150px' }}>
-            <div className="text-sm font-medium text-gray-300 my-2 text-center">Episode Context Source</div>
-            <RetrievalModeSwitch mode={retrievalMode} setMode={onRetrievalModeChange} />
-            
-            {/* Database Context Indicator */}
-            <div className="mt-3">
-              <DatabaseContextIndicator 
-                retrievalMode={retrievalMode}
-                episodeContext={episodeContext}
-                contextError={contextError}
-                isContextFetching={isContextFetching}
-              />
-            </div>
-            
-            <div className="mt-4 flex-grow flex flex-col">
-                {retrievalMode === 'manual' ? (
-                     <>
-                        <textarea
-                            id="episode-context-input"
-                            value={episodeContext}
-                            onChange={(e) => setEpisodeContext(e.target.value)}
-                            placeholder="Enter episode context JSON data here..."
-                            className={`w-full flex-grow bg-gray-900 border rounded-md p-3 font-mono text-sm text-gray-200 focus:ring-2 focus:border-brand-blue transition duration-200 ${
-                                !isContextJsonValid && episodeContext.trim() ? 'border-red-500 focus:ring-red-500' : 'border-gray-700'
-                            }`}
-                            aria-label="Episode Context Input"
-                        />
-                        {!isContextJsonValid && episodeContext.trim() && (
-                            <p className="text-red-400 text-xs mt-1">
-                                Invalid JSON format. Please check for errors.
-                            </p>
-                        )}
-                    </>
-                ) : (
-                    <div className="flex-grow flex flex-col space-y-4">
-                        <div>
-                            <label htmlFor="story-uuid-input" className="block text-sm font-medium text-gray-300 mb-2">
-                                Story UUID
-                            </label>
-                            <input
-                                type="text"
-                                id="story-uuid-input"
-                                value={storyUuid}
-                                onChange={(e) => setStoryUuid(e.target.value)}
-                                placeholder="Enter Story UUID to fetch context..."
-                                className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-gray-200 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition duration-200"
-                                aria-label="Story UUID Input"
-                            />
-                        </div>
-                         <div className="flex-grow flex flex-col">
-                            <label htmlFor="episode-context-input-db" className="block text-sm font-medium text-gray-300 mb-2">
-                                Episode Context (Fetched)
-                            </label>
-                             {isContextFetching ? (
-                                <div className="flex-grow flex items-center justify-center bg-gray-900 border border-gray-700 rounded-md p-3">
-                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    <span className="ml-2 text-gray-400">Fetching context...</span>
-                                </div>
-                             ) : contextError ? (
-                                <div className="flex-grow flex items-center justify-center bg-red-900/20 border border-red-700 rounded-md p-3">
-                                    <p className="text-red-400 text-sm text-center">{contextError}</p>
-                                </div>
-                             ) : (
-                                <textarea
-                                    id="episode-context-input-db"
-                                    value={episodeContext}
-                                    readOnly
-                                    className="w-full flex-grow bg-gray-900 border border-gray-700 rounded-md p-3 font-mono text-sm text-gray-400 cursor-not-allowed"
-                                    aria-label="Fetched Episode Context"
-                                />
-                             )}
-                        </div>
-                    </div>
+        {/* Episode Context Section */}
+        <div className='flex flex-col' style={{ minHeight: '150px' }}>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+                Episode Context {retrievalMode === 'database' ? '(auto-fetched)' : '(JSON)'}
+            </label>
+
+            {/* Database Context Indicator - shown in database mode */}
+            {retrievalMode === 'database' && (
+              <div className="mb-3">
+                <DatabaseContextIndicator
+                  retrievalMode={retrievalMode}
+                  episodeContext={episodeContext}
+                  contextError={contextError}
+                  isContextFetching={isContextFetching}
+                />
+              </div>
+            )}
+
+            {retrievalMode === 'manual' ? (
+              /* Manual mode: editable JSON input */
+              <>
+                <textarea
+                    id="episode-context-input"
+                    value={episodeContext}
+                    onChange={(e) => setEpisodeContext(e.target.value)}
+                    placeholder="Enter episode context JSON data here..."
+                    className={`w-full flex-grow bg-gray-900 border rounded-md p-3 font-mono text-sm text-gray-200 focus:ring-2 focus:border-brand-blue transition duration-200 ${
+                        !isContextJsonValid && episodeContext.trim() ? 'border-red-500 focus:ring-red-500' : 'border-gray-700'
+                    }`}
+                    style={{ minHeight: '100px' }}
+                    aria-label="Episode Context Input"
+                />
+                {!isContextJsonValid && episodeContext.trim() && (
+                    <p className="text-red-400 text-xs mt-1">
+                        Invalid JSON format. Please check for errors.
+                    </p>
                 )}
-            </div>
+              </>
+            ) : (
+              /* Database mode: read-only fetched context */
+              <div className="flex-grow flex flex-col">
+                {isContextFetching ? (
+                  <div className="flex-grow flex items-center justify-center bg-gray-900 border border-gray-700 rounded-md p-3">
+                    <svg className="animate-spin h-5 w-5 text-brand-blue mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-gray-400">Fetching context...</span>
+                  </div>
+                ) : contextError ? (
+                  <div className="flex-grow flex items-center justify-center bg-red-900/20 border border-red-700 rounded-md p-3">
+                    <p className="text-red-400 text-sm text-center">{contextError}</p>
+                  </div>
+                ) : episodeContext.trim() ? (
+                  <textarea
+                    id="episode-context-input-db"
+                    value={episodeContext}
+                    readOnly
+                    className="w-full flex-grow bg-gray-900 border border-gray-700 rounded-md p-3 font-mono text-sm text-gray-400 cursor-not-allowed"
+                    style={{ minHeight: '100px', maxHeight: '200px' }}
+                    aria-label="Fetched Episode Context"
+                  />
+                ) : selectedEpisodeNumber === null ? (
+                  <div className="flex-grow flex items-center justify-center bg-gray-900/50 border border-dashed border-gray-700 rounded-md p-3">
+                    <span className="text-gray-500 text-sm">Select an episode above to fetch context</span>
+                  </div>
+                ) : (
+                  <div className="flex-grow flex items-center justify-center bg-gray-900/50 border border-dashed border-gray-700 rounded-md p-3">
+                    <span className="text-gray-500 text-sm">Context will appear here after fetching</span>
+                  </div>
+                )}
+              </div>
+            )}
         </div>
 
       </div>
