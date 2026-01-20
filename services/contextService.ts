@@ -1,7 +1,10 @@
 // services/contextService.ts
 import { getToken } from './authService';
 
-const BASE_URL = import.meta.env.VITE_STORYTELLER_API_URL || "http://localhost:8000";
+// Support both Vite (browser) and Node.js environments
+const BASE_URL = (typeof process !== 'undefined' && process.env?.VITE_STORYTELLER_API_URL)
+  || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STORYTELLER_API_URL)
+  || "http://localhost:8000";
 
 // Types for episode list and script responses
 export interface EpisodeListItem {
@@ -37,6 +40,7 @@ export async function getEpisodeList(storyId: string): Promise<EpisodeListItem[]
     throw error;
   }
 
+  // Use V2 endpoint for episode list
   const url = `${BASE_URL}/api/v2/stories/${storyId}/episodes`;
 
   try {
@@ -54,16 +58,14 @@ export async function getEpisodeList(storyId: string): Promise<EpisodeListItem[]
       throw new Error(`Failed to fetch episode list. ${errorMessage}`);
     }
 
-    const result = await response.json();
+    const episodes = await response.json();
 
-    // Handle different response formats (array directly or wrapped in data)
-    const episodes = Array.isArray(result) ? result : (result.data || result.episodes || []);
-
+    // V2 response format (list of EpisodeV2 objects)
     return episodes.map((ep: any) => ({
-      episode_id: ep.episode_id || ep.id,
+      episode_id: ep.id,
       episode_number: ep.episode_number,
-      episode_title: ep.episode_title || ep.title || `Episode ${ep.episode_number}`,
-      scene_count: ep.scene_count,
+      episode_title: ep.episode_title,
+      scene_count: ep.scene_count || 0,
       status: ep.status,
     }));
   } catch (error) {
@@ -86,6 +88,7 @@ export async function getEpisodeScript(storyId: string, episodeNumber: number): 
     throw error;
   }
 
+  // Use V2 script endpoint which generates script from V2 scene content
   const url = `${BASE_URL}/api/v2/stories/${storyId}/episodes/${episodeNumber}/standardized-script`;
 
   try {
@@ -105,13 +108,12 @@ export async function getEpisodeScript(storyId: string, episodeNumber: number): 
 
     const result = await response.json();
 
-    return {
-      success: result.success !== false,
-      episode_id: result.episode_id,
-      episode_number: result.episode_number || episodeNumber,
-      standardized_script: result.standardized_script,
-      metadata: result.metadata,
-    };
+    // V2 response format: { success, episode_id, episode_number, standardized_script, metadata }
+    if (result.success) {
+      return result;
+    } else {
+      throw new Error(`Failed to fetch script: ${result.error || 'Unknown error'}`);
+    }
   } catch (error) {
     console.error("Episode script request failed:", error);
     throw error;
@@ -129,7 +131,7 @@ export async function getEpisodeContext(storyId: string, episodeNumber: number):
     }
     throw error;
   }
-  
+
   const url = `${BASE_URL}/api/v1/scene-context/extract-episode-context`;
 
   try {
@@ -146,9 +148,9 @@ export async function getEpisodeContext(storyId: string, episodeNumber: number):
     });
 
     if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        const errorMessage = errorBody.error || `HTTP Error: ${response.status}`;
-        throw new Error(`Failed to fetch episode context. ${errorMessage}`);
+      const errorBody = await response.json().catch(() => ({}));
+      const errorMessage = errorBody.error || `HTTP Error: ${response.status}`;
+      throw new Error(`Failed to fetch episode context. ${errorMessage}`);
     }
 
     const result = await response.json();

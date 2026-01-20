@@ -1,6 +1,9 @@
 // services/authService.ts
 
-const BASE_URL = import.meta.env.VITE_STORYTELLER_API_URL || "http://localhost:8000";
+// Support both Vite (browser) and Node.js environments
+const BASE_URL = (typeof process !== 'undefined' && process.env?.VITE_STORYTELLER_API_URL)
+  || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STORYTELLER_API_URL)
+  || "http://localhost:8000";
 let accessToken: string | null = null;
 let tokenPromise: Promise<string> | null = null;
 
@@ -31,6 +34,13 @@ async function fetchDevToken(): Promise<string> {
     accessToken = data.access_token;
     return accessToken as string;
   } catch (error) {
+    // Check if it's a connection error (backend not running)
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      console.warn('⚠️ Backend server not available. Please ensure the StoryTeller API is running on', BASE_URL);
+      console.warn('   Some features may not work until the backend is started.');
+      // Don't throw - allow the app to continue with limited functionality
+      throw new Error(`Backend server unavailable at ${BASE_URL}. Please start the StoryTeller API server.`);
+    }
     console.error('Failed to fetch developer token:', error);
     throw error;
   }

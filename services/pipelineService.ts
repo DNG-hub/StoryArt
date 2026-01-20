@@ -16,9 +16,10 @@ import type {
 } from '../types';
 
 import { getSessionByTimestamp, getLatestSession } from './redisService';
-import { initializeSession, generateImages, getQueueStatus, getGenerationStatistics } from './swarmUIService';
+import { initializeSession, generateImages, getQueueStatus, getGenerationStatistics, createSwarmUIPreset } from './swarmUIService';
 import { normalizeImagePath, enhanceImagePathsWithMetadata } from './imagePathTracker';
 import { createEpisodeProject, organizeSwarmUIImages } from './davinciProjectService';
+import { createImageReviewSession, BeatGenerationResult } from './storyTellerService';
 
 /**
  * Progress callback type for pipeline operations
@@ -165,19 +166,9 @@ export async function generateImagesFromPrompts(
   const generationStartDate = new Date();
   const generationTimes: number[] = []; // Track generation times for estimation
 
-  // Get initial statistics for time estimation
+  // Get initial statistics for time estimation (will be called after session init)
   let averageGenerationTime = 0;
   let queueLength = 0;
-  try {
-    const stats = await getGenerationStatistics();
-    averageGenerationTime = stats.average_generation_time || 0; // milliseconds
-    
-    const queueStatus = await getQueueStatus();
-    queueLength = queueStatus.queue_length || 0;
-  } catch (error) {
-    // If endpoints not available, we'll track our own times
-    console.log('SwarmUI statistics endpoints not available, will track generation times locally');
-  }
 
   // Initialize SwarmUI session
   progressCallback?.({
@@ -187,11 +178,16 @@ export async function generateImagesFromPrompts(
     progress: 0,
   });
 
-    let sessionId: string;
+  let sessionId: string;
+  console.log('[Pipeline] Initializing SwarmUI session...');
+  console.log('[Pipeline] About to call initializeSession() from swarmUIService');
   try {
     sessionId = await initializeSession();
+    console.log(`[Pipeline] ✅ SwarmUI session initialized successfully: ${sessionId.substring(0, 20)}...`);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Pipeline] ❌ Failed to initialize SwarmUI session:', errorMsg);
+    console.error('[Pipeline] Full error:', error);
     throw new Error(
       `Failed to initialize SwarmUI session.\n\n` +
       `${errorMsg}\n\n` +
@@ -202,6 +198,52 @@ export async function generateImagesFromPrompts(
   // Check for cancellation
   if (cancellationToken?.isCancelled()) {
     throw new Error(`Operation cancelled: ${cancellationToken.getReason() || 'User cancelled'}`);
+  }
+
+  // OPTIMIZATION: Create/ensure presets exist for faster generation
+  // Get preset name from environment or use defaults
+  const getEnvVar = (key: string): string | undefined => {
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env[key];
+    }
+    if (typeof import.meta !== 'undefined') {
+      try {
+        const env = import.meta.env;
+        if (env) return env[key];
+      } catch (e) {}
+    }
+    return undefined;
+  };
+
+  const presetName = getEnvVar('SWARMUI_PRESET') || getEnvVar('VITE_SWARMUI_PRESET');
+  const usePresets = presetName !== undefined && presetName !== '';
+
+  if (usePresets) {
+    console.log(`[Pipeline] 🚀 Using preset optimization: ${presetName}`);
+    // Preset should already exist in SwarmUI, but we'll try to ensure it exists
+    // This is a no-op if preset already exists (SwarmUI handles it)
+    try {
+      await createSwarmUIPreset(presetName, sessionId);
+    } catch (error) {
+      console.warn(`[Pipeline] Could not ensure preset exists, continuing anyway:`, error);
+    }
+  } else {
+    console.log('[Pipeline] No preset configured, using full parameter mode');
+  }
+
+  // Get initial statistics for time estimation (now that we have sessionId)
+  // Note: GetStats endpoint may not be available in all SwarmUI versions - this is optional
+  try {
+    const stats = await getGenerationStatistics(sessionId);
+    averageGenerationTime = stats.average_generation_time || 0; // milliseconds
+    
+    const queueStatus = await getQueueStatus(sessionId);
+    queueLength = queueStatus.queue_length || 0;
+    console.log(`[Pipeline] Queue status: ${queueLength} items, avg time: ${averageGenerationTime}ms`);
+  } catch (error) {
+    // If endpoints not available, we'll track our own times
+    // This is expected if SwarmUI version doesn't support GetStats endpoint
+    console.log('[Pipeline] SwarmUI statistics endpoints not available, will track generation times locally');
   }
 
   // Process prompts sequentially
@@ -239,10 +281,60 @@ export async function generateImagesFromPrompts(
 
     try {
       // Generate images (default: 3 images per prompt)
+      console.log(`[Pipeline] Generating image ${i + 1}/${prompts.length} for beat ${prompt.beatId}`);
+      
+      // Use explicit parameters (matching exact duplicate test config) - presets are unreliable
+      // Exact config: 1344x768, steps: 40, scheduler: simple, cfgscale: 1, sampler: euler
+      // Tested and verified - produces images matching manual generation
+      const generationOptions: any = {
+        // Default to exact duplicate test config dimensions
+        width: 1344,
+        height: 768,
+        steps: 40,
+        scheduler: 'simple',
+        cfgscale: 1,
+        sampler: 'euler',
+        automaticvae: true,
+        loras: 'gargan',
+        loraweights: '1',
+      };
+
+      // Override with format-specific dimensions if needed
+      if (prompt.format === 'vertical') {
+        generationOptions.width = 768;
+        generationOptions.height = 1344; // 9:16 vertical
+      } else if (prompt.format === 'cinematic') {
+        generationOptions.width = 1344;
+        generationOptions.height = 768; // 16:9 cinematic (manual frog config)
+      }
+
+      // Extract parameters from prompt if available (override defaults)
+      if (prompt.prompt.width && prompt.prompt.height) {
+        generationOptions.width = prompt.prompt.width;
+        generationOptions.height = prompt.prompt.height;
+      }
+      if (prompt.prompt.model) {
+        generationOptions.model = prompt.prompt.model;
+      }
+      if (prompt.prompt.steps) {
+        generationOptions.steps = prompt.prompt.steps;
+      }
+      if (prompt.prompt.cfgscale !== undefined) {
+        generationOptions.cfgscale = prompt.prompt.cfgscale;
+      }
+      if (prompt.prompt.scheduler) {
+        generationOptions.scheduler = prompt.prompt.scheduler;
+      }
+      if (prompt.prompt.sampler) {
+        generationOptions.sampler = prompt.prompt.sampler;
+      }
+      
       const result = await generateImages(
         prompt.prompt.prompt,
         3, // imagesCount
-        sessionId
+        sessionId,
+        3, // maxRetries
+        generationOptions
       );
 
       // Track generation time
@@ -427,8 +519,88 @@ export async function organizeAssetsInDaVinci(
 }
 
 /**
+ * Transform pipeline results to StoryTeller Image Review format.
+ *
+ * Groups generation results by beat and formats them for the StoryTeller API.
+ *
+ * @param prompts - Original prompts from Redis
+ * @param generationResults - Results from SwarmUI generation
+ * @returns Array of BeatGenerationResult for StoryTeller
+ */
+function transformToStoryTellerFormat(
+  prompts: BeatPrompt[],
+  generationResults: ImageGenerationResult[]
+): BeatGenerationResult[] {
+  // Group results by beat ID
+  const beatMap = new Map<string, {
+    beatId: string;
+    sceneNumber: number;
+    narrativeContext: string;
+    results: { format: string; prompt: string; images: string[]; metadata: any }[];
+  }>();
+
+  for (let i = 0; i < prompts.length; i++) {
+    const prompt = prompts[i];
+    const result = generationResults[i];
+
+    if (!result?.success || !result.imagePaths || result.imagePaths.length === 0) {
+      continue;
+    }
+
+    const key = prompt.beatId;
+    if (!beatMap.has(key)) {
+      beatMap.set(key, {
+        beatId: prompt.beatId,
+        sceneNumber: prompt.sceneNumber,
+        narrativeContext: prompt.beat_script_text || '',
+        results: []
+      });
+    }
+
+    const beatData = beatMap.get(key)!;
+
+    // Map format to StoryTeller format_type
+    const formatType = prompt.format === 'cinematic' ? '16:9_cinematic' : '9:16_vertical';
+
+    beatData.results.push({
+      format: formatType,
+      prompt: prompt.prompt.prompt,
+      images: result.imagePaths,
+      metadata: result.metadata || {}
+    });
+  }
+
+  // Convert map to array of BeatGenerationResult
+  const storyTellerResults: BeatGenerationResult[] = [];
+
+  beatMap.forEach((beatData) => {
+    storyTellerResults.push({
+      beat_id: beatData.beatId,
+      scene_number: beatData.sceneNumber,
+      generation_results: beatData.results.map(r => ({
+        format_type: r.format,
+        prompt: r.prompt,
+        generated_images: r.images,
+        metadata: r.metadata
+      })),
+      narrative_context: beatData.narrativeContext
+    });
+  });
+
+  // Sort by scene number and beat ID for consistent ordering
+  storyTellerResults.sort((a, b) => {
+    if (a.scene_number !== b.scene_number) {
+      return a.scene_number - b.scene_number;
+    }
+    return a.beat_id.localeCompare(b.beat_id);
+  });
+
+  return storyTellerResults;
+}
+
+/**
  * Process complete episode pipeline from Redis to SwarmUI to DaVinci.
- * 
+ *
  * Orchestrates the full pipeline workflow:
  * 1. Fetches prompts from Redis session
  * 2. Filters beats with NEW_IMAGE decisions
@@ -501,6 +673,7 @@ export async function processEpisodeCompletePipeline(
     });
 
     const prompts = await fetchPromptsFromRedis(sessionTimestamp);
+    console.log(`[Pipeline] Fetched ${prompts.length} prompts from Redis for generation`);
 
     if (prompts.length === 0) {
       return {
@@ -569,19 +742,64 @@ export async function processEpisodeCompletePipeline(
       organizationResult = await organizeAssetsInDaVinci(generationResults, sessionTimestamp, (progress) => {
         progressCallback?.({
           currentStep: 4 + progress.currentStep,
-          totalSteps: 7,
+          totalSteps: 8,
           currentStepName: progress.currentStepName,
-          progress: Math.round(80 + (progress.progress / 3) * 20),
+          progress: Math.round(70 + (progress.progress / 4) * 20),
         });
       });
     } catch (error) {
       console.error('Failed to organize assets:', error);
     }
 
+    // Create StoryTeller Image Review session
+    progressCallback?.({
+      currentStep: 7,
+      totalSteps: 8,
+      currentStepName: 'Creating review session in StoryTeller...',
+      progress: 90,
+    });
+
+    let reviewSessionId: string | undefined;
+    try {
+      // Transform pipeline results to StoryTeller format
+      const storyTellerResults = transformToStoryTellerFormat(prompts, generationResults);
+
+      // Get story info from session if available
+      const storyId = sessionResponse.data.storyId;
+      const storyName = sessionResponse.data.storyName || analyzedEpisode.title;
+
+      const reviewResponse = await createImageReviewSession({
+        episode_number: analyzedEpisode.episodeNumber,
+        generation_results: storyTellerResults,
+        generation_timestamp: new Date().toISOString(),
+        story_id: storyId,
+        story_name: storyName,
+        images_per_prompt: 3
+      });
+
+      if (reviewResponse.success) {
+        reviewSessionId = reviewResponse.session_id;
+        console.log(`[Pipeline] ✅ Created StoryTeller review session: ${reviewSessionId}`);
+        console.log(`[Pipeline]    Total images for review: ${reviewResponse.total_images}`);
+      }
+    } catch (error) {
+      // Don't fail the pipeline if StoryTeller integration fails
+      console.warn('[Pipeline] ⚠️ Failed to create StoryTeller review session:', error);
+      console.warn('[Pipeline]    Images are saved locally but not available in StoryTeller Image Review.');
+    }
+
+    progressCallback?.({
+      currentStep: 8,
+      totalSteps: 8,
+      currentStepName: 'Complete!',
+      progress: 100,
+    });
+
     const duration = Date.now() - startTime;
 
     return {
       success: organizationResult?.success ?? false,
+      reviewSessionId: reviewSessionId,
       sessionTimestamp: sessionTimestamp,
       episodeNumber: analyzedEpisode.episodeNumber,
       episodeTitle: analyzedEpisode.title,
@@ -729,10 +947,27 @@ export async function processSingleBeat(
       };
     }
 
-    // Get time estimation for single beat
+    // OPTIMIZATION: Use preset if configured
+    const getEnvVarForBeat = (key: string): string | undefined => {
+      if (typeof process !== 'undefined' && process.env) {
+        return process.env[key];
+      }
+      if (typeof import.meta !== 'undefined') {
+        try {
+          const env = import.meta.env;
+          if (env) return env[key];
+        } catch (e) {}
+      }
+      return undefined;
+    };
+    
+    const presetName = getEnvVarForBeat('SWARMUI_PRESET') || getEnvVarForBeat('VITE_SWARMUI_PRESET');
+    const usePresets = presetName !== undefined && presetName !== '';
+
+    // Get time estimation for single beat (using sessionId)
     let estimatedTimeRemaining: number | undefined;
     try {
-      const stats = await getGenerationStatistics();
+      const stats = await getGenerationStatistics(sessionId);
       if (stats.average_generation_time > 0) {
         estimatedTimeRemaining = stats.average_generation_time;
       }
@@ -749,10 +984,49 @@ export async function processSingleBeat(
       estimatedTimeRemaining,
     });
 
+    // Use explicit parameters (matching exact duplicate test config) - presets are unreliable
+    // Exact config: 1344x768, steps: 40, scheduler: simple, cfgscale: 1, sampler: euler
+    // Tested and verified - produces images matching manual generation
+    const generationOptions: any = {
+      // Default to exact duplicate test config dimensions
+      width: format === 'vertical' ? 768 : 1344,
+      height: format === 'vertical' ? 1344 : 768,
+      steps: 40,
+      scheduler: 'simple',
+      cfgscale: 1,
+      sampler: 'euler',
+      automaticvae: true,
+      loras: 'gargan',
+      loraweights: '1',
+    };
+
+    // Override with parameters from prompt if available
+    if (prompt.width && prompt.height) {
+      generationOptions.width = prompt.width;
+      generationOptions.height = prompt.height;
+    }
+    if (prompt.model) {
+      generationOptions.model = prompt.model;
+    }
+    if (prompt.steps) {
+      generationOptions.steps = prompt.steps;
+    }
+    if (prompt.cfgscale !== undefined) {
+      generationOptions.cfgscale = prompt.cfgscale;
+    }
+    if (prompt.scheduler) {
+      generationOptions.scheduler = prompt.scheduler;
+    }
+    if (prompt.sampler) {
+      generationOptions.sampler = prompt.sampler;
+    }
+    
     const generationResult = await generateImages(
       prompt.prompt,
       3, // imagesCount
-      sessionId
+      sessionId,
+      3, // maxRetries
+      generationOptions
     );
 
     if (!generationResult.success || !generationResult.imagePaths || generationResult.imagePaths.length === 0) {

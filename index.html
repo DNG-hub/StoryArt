@@ -6,19 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StoryTeller SwarmUI Prompt Architect</title>
     <!-- Tailwind CDN used for development - Replace with PostCSS plugin for production -->
-    <script src="https://cdn.tailwindcss.com"></script>
     <script>
       // Suppress production warning in development
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        console.warn = (function(originalWarn) {
-          return function() {
-            if (arguments[0] && typeof arguments[0] === 'string' && arguments[0].includes('cdn.tailwindcss.com')) {
-              return; // Suppress Tailwind CDN warning in development
-            }
-            originalWarn.apply(console, arguments);
-          };
-        })(console.warn);
-      }
+      // This MUST run before Tailwind CDN script loads to intercept the warning
+      (function() {
+        const originalWarn = console.warn;
+        console.warn = function() {
+          const message = arguments[0];
+          // Suppress Tailwind CDN warning in development
+          if (typeof message === 'string' && 
+              (message.includes('cdn.tailwindcss.com') || 
+               message.includes('should not be used in production'))) {
+            return; // Silently suppress Tailwind CDN warning
+          }
+          originalWarn.apply(console, arguments);
+        };
+      })();
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
 
       // Suppress expected network errors for session restore endpoints
       // These 404s are expected when Redis API services aren't running

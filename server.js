@@ -201,12 +201,15 @@ app.get('/api/v1/session/latest', async (req, res) => {
       });
     }
 
-    // Remove timestamp before returning
+    // Extract timestamp but keep it in response (needed for pipeline processing)
     const { timestamp, ...session } = sessionData;
 
     res.json({
       success: true,
-      data: session,
+      data: {
+        ...session,
+        timestamp: timestamp // Include timestamp in response (needed for getSessionByTimestamp)
+      },
       storage: redisClient?.isOpen ? 'redis' : 'memory'
     });
   } catch (error) {
@@ -293,12 +296,15 @@ app.get('/api/v1/session/:timestamp', async (req, res) => {
       });
     }
 
-    // Remove timestamp before returning
+    // Extract timestamp but keep it in response (needed for pipeline processing)
     const { timestamp: ts, ...session } = sessionData;
 
     res.json({
       success: true,
-      data: session,
+      data: {
+        ...session,
+        timestamp: ts // Include timestamp in response (needed for getSessionByTimestamp)
+      },
       storage: redisClient?.isOpen ? 'redis' : 'memory'
     });
   } catch (error) {

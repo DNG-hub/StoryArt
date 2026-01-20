@@ -63,9 +63,17 @@ export async function processEpisodeCompletePipeline(
   progressCallback?: ProgressCallback,
   abortController?: AbortController
 ): Promise<PipelineResult> {
+  console.log('[PipelineClient] processEpisodeCompletePipeline called');
+  console.log('[PipelineClient] API_BASE_URL:', API_BASE_URL);
+  console.log('[PipelineClient] sessionTimestamp:', sessionTimestamp);
+  console.log('[PipelineClient] Full URL:', `${API_BASE_URL}/api/v1/pipeline/process-episode`);
+  
   return new Promise((resolve, reject) => {
     // Use fetch with streaming for POST to support SSE
-    fetch(`${API_BASE_URL}/api/v1/pipeline/process-episode`, {
+    const url = `${API_BASE_URL}/api/v1/pipeline/process-episode`;
+    console.log('[PipelineClient] Making fetch request to:', url);
+    
+    fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -74,6 +82,9 @@ export async function processEpisodeCompletePipeline(
       signal: abortController?.signal,
     })
       .then(async (response) => {
+        console.log('[PipelineClient] Response status:', response.status, response.statusText);
+        console.log('[PipelineClient] Response headers:', Object.fromEntries(response.headers.entries()));
+        
         if (!response.ok) {
           // Check content type before parsing
           const contentType = response.headers.get('content-type');
@@ -83,18 +94,23 @@ export async function processEpisodeCompletePipeline(
             try {
               const error = await response.json();
               errorMessage = error.error || error.message || errorMessage;
+              console.error('[PipelineClient] JSON error response:', error);
             } catch (e) {
               // If JSON parsing fails, use status text
               errorMessage = `${response.status} ${response.statusText}`;
+              console.error('[PipelineClient] Failed to parse JSON error:', e);
             }
           } else {
             // Try to get text for HTML error pages
             const text = await response.text();
             errorMessage = `Server error (${response.status}): ${text.substring(0, 200)}`;
+            console.error('[PipelineClient] Text error response:', text.substring(0, 200));
           }
           
           throw new Error(errorMessage);
         }
+        
+        console.log('[PipelineClient] Response OK, reading SSE stream...');
 
         // Read SSE stream
         const reader = response.body?.getReader();
@@ -152,12 +168,26 @@ export async function processEpisodeCompletePipeline(
         }
 
         if (result) {
+          console.log('[PipelineClient] Pipeline completed successfully');
           resolve(result);
         } else {
+          console.error('[PipelineClient] No result received from pipeline');
           reject(new Error('No result received from pipeline'));
         }
       })
-      .catch(reject);
+      .catch((error) => {
+        console.error('[PipelineClient] Fetch error in processEpisodeCompletePipeline:', error);
+        console.error('[PipelineClient] Error name:', error.name);
+        console.error('[PipelineClient] Error message:', error.message);
+        if (error.stack) {
+          console.error('[PipelineClient] Error stack:', error.stack);
+        }
+        // Check if it's a network error (server not running)
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+          console.error('[PipelineClient] Network error - is the API server running on', API_BASE_URL, '?');
+        }
+        reject(error);
+      });
   });
 }
 

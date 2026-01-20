@@ -77,7 +77,12 @@ export const saveSessionToRedis = async (data: SwarmUIExportData): Promise<{ suc
   };
 
   const redisApiUrl = normalizeUrl(REDIS_API_BASE_URL);
-  const storyTellerUrl = normalizeUrl(import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000');
+  const storyTellerUrl = normalizeUrl(
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STORYTELLER_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.VITE_STORYTELLER_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.STORYTELLER_API_URL) ||
+    'http://localhost:8000'
+  );
   const endpoints = [
     `${redisApiUrl}/api/v1/session/save`,
     `${storyTellerUrl}/api/v1/session/save`,
@@ -238,7 +243,12 @@ export const getLatestSession = async (skipApiCalls: boolean = false): Promise<R
   };
 
   const redisApiUrl = normalizeUrl(REDIS_API_BASE_URL);
-  const storyTellerUrl = normalizeUrl(import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000');
+  const storyTellerUrl = normalizeUrl(
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STORYTELLER_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.VITE_STORYTELLER_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.STORYTELLER_API_URL) ||
+    'http://localhost:8000'
+  );
   const endpoints = [
     `${redisApiUrl}/api/v1/session/latest`,
     `${storyTellerUrl}/api/v1/session/latest`,
@@ -332,8 +342,18 @@ export const getSessionList = async (): Promise<SessionListResponse> => {
     return normalized;
   };
 
-  const redisApiUrl = normalizeUrl(import.meta.env.VITE_REDIS_API_URL || 'http://localhost:7802');
-  const storyTellerUrl = normalizeUrl(import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000');
+  const redisApiUrl = normalizeUrl(
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_REDIS_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.VITE_REDIS_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.REDIS_API_URL) ||
+    'http://localhost:7802'
+  );
+  const storyTellerUrl = normalizeUrl(
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STORYTELLER_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.VITE_STORYTELLER_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.STORYTELLER_API_URL) ||
+    'http://localhost:8000'
+  );
   const endpoints = [
     `${redisApiUrl}/api/v1/session/list`,
     `${storyTellerUrl}/api/v1/session/list`,
@@ -408,8 +428,18 @@ export const getSessionByTimestamp = async (timestamp: number): Promise<RedisSes
     return normalized;
   };
 
-  const redisApiUrl = normalizeUrl(import.meta.env.VITE_REDIS_API_URL || 'http://localhost:7802');
-  const storyTellerUrl = normalizeUrl(import.meta.env.VITE_STORYTELLER_API_URL || 'http://localhost:8000');
+  const redisApiUrl = normalizeUrl(
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_REDIS_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.VITE_REDIS_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.REDIS_API_URL) ||
+    'http://localhost:7802'
+  );
+  const storyTellerUrl = normalizeUrl(
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STORYTELLER_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.VITE_STORYTELLER_API_URL) ||
+    (typeof process !== 'undefined' && process.env?.STORYTELLER_API_URL) ||
+    'http://localhost:8000'
+  );
   const endpoints = [
     `${redisApiUrl}/api/v1/session/${timestamp}`,
     `${storyTellerUrl}/api/v1/session/${timestamp}`,
@@ -435,6 +465,15 @@ export const getSessionByTimestamp = async (timestamp: number): Promise<RedisSes
       if (response.ok) {
         const result: RedisSessionResponse = await response.json();
         if (result.success && result.data) {
+          // Ensure timestamp is in the data if it's not already there
+          // The server should include it, but if not, try to extract from sessionKey
+          if (!result.data.timestamp && result.data.sessionKey) {
+            // Extract timestamp from sessionKey format: "storyart:session:{timestamp}"
+            const match = result.data.sessionKey.match(/storyart:session:(\d+)/);
+            if (match) {
+              result.data.timestamp = parseInt(match[1], 10);
+            }
+          }
           return result;
         }
       }

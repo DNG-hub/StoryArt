@@ -32,8 +32,8 @@ import {
 } from '../types';
 import { resolveSceneLocation, applyTacticalOverrides, generateLocationPromptFragments } from './roadmapService';
 
-// Load environment variables before reading DATABASE_URL
-dotenv.config();
+// Note: dotenv.config() is already called above in the Node.js environment check
+// No need to call it again here
 
 // Location override mapping for tactical appearances
 const locationOverrideMapping: LocationOverrideMapping = {
@@ -46,6 +46,8 @@ const locationOverrideMapping: LocationOverrideMapping = {
   "General Location - Dangerous Terrain": "Atlanta Emergency Zone", // Tactical override
   "General Location - Urban Ruins": "Atlanta Emergency Zone",   // Tactical override
   "General Location - Decommissioned Outpost": "Atlanta Emergency Zone", // Tactical override
+  "Derelict Medical Clinic": "Atlanta Emergency Zone",          // Tactical override - Episode 2
+  "General Location - Derelict Medical Clinic": "Atlanta Emergency Zone", // Tactical override - Episode 2
   
   // OFFICE LOCATIONS - Business casual futuristic
   "OmniGen HQ": "Office Professional",                          // Corporate headquarters

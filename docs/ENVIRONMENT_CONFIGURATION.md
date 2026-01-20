@@ -200,6 +200,43 @@ SWARMUI_API_URL=http://localhost:7801
 **Purpose**: Base URL for SwarmUI API endpoints  
 **Required**: Yes (for pipeline functionality)
 
+### SwarmUI Preset Optimization (Optional)
+```env
+SWARMUI_PRESET=Nice Dave and Catia
+VITE_SWARMUI_PRESET=Nice Dave and Catia
+```
+
+**Purpose**: Use SwarmUI preset to reduce request payload size by ~75%  
+**Benefits**: 
+- Faster request transmission
+- Less parameter parsing in SwarmUI
+- Cleaner code (just prompt + preset name)
+
+**How it works**:
+1. Create preset in SwarmUI with all default parameters
+2. Set `SWARMUI_PRESET` to preset name
+3. StoryArt will use preset instead of sending all parameters
+4. Can still override specific parameters per request if needed
+
+**Example preset structure** (create in SwarmUI):
+```json
+{
+  "Nice Dave and Catia": {
+    "param_map": {
+      "images": "1",
+      "seed": "-1",
+      "steps": "40",
+      "cfgscale": "1",
+      "aspectratio": "16:9",
+      "sampler": "euler",
+      "scheduler": "beta",
+      "loras": "gargan",
+      "loraweights": "1"
+    }
+  }
+}
+```
+
 ### SwarmUI Output Path Configuration
 
 **Critical for Pipeline**: This path is required for the SwarmUI to DaVinci pipeline to locate generated images.

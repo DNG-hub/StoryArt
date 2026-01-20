@@ -1,10 +1,41 @@
 // services/roadmapService.ts
-import { 
-  DatabaseLocationData, 
+import {
+  DatabaseLocationData,
   DatabaseCharacterLocationData,
-  LocationOverrideMapping 
+  LocationOverrideMapping
 } from '../types';
 import { getLocationOverrideMapping } from './databaseContextService';
+import { Pool } from 'pg';
+import dotenv from 'dotenv';
+
+// Check if we're in a browser environment
+const isBrowser = typeof window !== 'undefined';
+
+// Load environment variables in Node.js environment
+if (!isBrowser) {
+  try {
+    dotenv.config();
+  } catch (error) {
+    console.warn('Failed to load dotenv config in roadmapService');
+  }
+}
+
+// Database connection configuration (same as databaseContextService)
+let DATABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DATABASE_URL) ||
+                   process.env.VITE_DATABASE_URL ||
+                   process.env.DATABASE_URL ||
+                   'postgresql://username:password@localhost:5432/storyteller_dev';
+DATABASE_URL = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://');
+
+// Database connection pool - only create in Node.js environment
+let pool: any = null;
+if (!isBrowser && Pool) {
+  try {
+    pool = new Pool({ connectionString: DATABASE_URL });
+  } catch (error) {
+    console.warn('Failed to create database pool in roadmapService:', error);
+  }
+}
 
 // Interface for roadmap scene data
 export interface RoadmapSceneData {
@@ -15,6 +46,13 @@ export interface RoadmapSceneData {
   location_type: string;
   tactical_override_applied: boolean;
   override_location: string;
+  // Extended fields from database
+  scene_title?: string;
+  scene_summary?: string;
+  characters_present?: string[];
+  mood?: string;
+  time_of_day?: string;
+  pacing?: string;
 }
 
 // Interface for location resolution result
@@ -48,55 +86,124 @@ function setCachedData(key: string, data: RoadmapSceneData[]): void {
   roadmapCache.set(key, { data, timestamp: Date.now() });
 }
 
-// Simulate roadmap scenes data for development
-// In production, this would query the actual roadmap_scenes table
+/**
+ * Normalize location name by stripping common prefixes like "General Location - "
+ * This allows matching roadmap locations to location_arcs entries
+ */
+function normalizeLocationName(locationName: string | null): string {
+  if (!locationName) return 'Unknown Location';
+
+  // Strip "General Location - " prefix if present
+  const normalized = locationName.replace(/^General Location\s*-\s*/i, '');
+  return normalized.trim() || 'Unknown Location';
+}
+
+/**
+ * Determine tactical override based on location name
+ * Uses the location override mapping from databaseContextService
+ */
+function determineTacticalOverride(locationName: string, overrideMapping: LocationOverrideMapping): string | null {
+  const normalizedName = normalizeLocationName(locationName);
+
+  // Check if this location has a tactical override
+  if (overrideMapping[normalizedName]) {
+    return overrideMapping[normalizedName];
+  }
+
+  // Check the original name too
+  if (overrideMapping[locationName]) {
+    return overrideMapping[locationName];
+  }
+
+  return null;
+}
+
+/**
+ * Query the actual roadmap_scenes table from the database
+ * This replaces the mock data implementation
+ */
 async function getRoadmapScenesData(storyId: string, episodeNumber: number): Promise<RoadmapSceneData[]> {
   const cacheKey = `roadmap_${storyId}_${episodeNumber}`;
   const cached = getCachedData(cacheKey);
   if (cached) return cached;
 
-  // Simulate roadmap data based on the default script locations
-  const mockRoadmapData: RoadmapSceneData[] = [
-    {
-      scene_id: "scene-1",
-      episode_number: episodeNumber,
-      scene_number: 1,
-      location_name: "NHIA Facility 7",
-      location_type: "SPECIFIC",
-      tactical_override_applied: true,
-      override_location: "Atlanta Emergency Zone"
-    },
-    {
-      scene_id: "scene-2", 
-      episode_number: episodeNumber,
-      scene_number: 2,
-      location_name: "NHIA Facility 7",
-      location_type: "SPECIFIC",
-      tactical_override_applied: true,
-      override_location: "Atlanta Emergency Zone"
-    },
-    {
-      scene_id: "scene-3",
-      episode_number: episodeNumber,
-      scene_number: 3,
-      location_name: "Mobile Medical Base",
-      location_type: "SPECIFIC",
-      tactical_override_applied: false,
-      override_location: "Office Professional"
-    },
-    {
-      scene_id: "scene-4",
-      episode_number: episodeNumber,
-      scene_number: 4,
-      location_name: "Mobile Medical Base",
-      location_type: "SPECIFIC",
-      tactical_override_applied: false,
-      override_location: "Office Professional"
-    }
-  ];
+  // If in browser or no pool, return empty array with warning
+  if (isBrowser || !pool) {
+    console.warn('getRoadmapScenesData: Cannot query database in browser environment');
+    return [];
+  }
 
-  setCachedData(cacheKey, mockRoadmapData);
-  return mockRoadmapData;
+  try {
+    console.log(`Querying roadmap_scenes for story ${storyId}, episode ${episodeNumber}`);
+
+    // Query roadmap_scenes joined with roadmap_episodes and roadmaps
+    const query = `
+      SELECT
+        rs.id as scene_id,
+        re.episode_number,
+        rs.scene_number,
+        rs.scene_title,
+        rs.scene_summary,
+        rs.location_name,
+        rs.locations,
+        rs.characters_present,
+        rs.mood,
+        rs.time_of_day,
+        rs.pacing
+      FROM roadmap_scenes rs
+      JOIN roadmap_episodes re ON rs.episode_id = re.id
+      JOIN roadmaps r ON re.roadmap_id = r.id
+      WHERE r.story_id = $1 AND re.episode_number = $2
+      ORDER BY rs.scene_number
+    `;
+
+    const result = await pool.query(query, [storyId, episodeNumber]);
+
+    if (result.rows.length === 0) {
+      console.warn(`No roadmap scenes found for story ${storyId}, episode ${episodeNumber}`);
+      return [];
+    }
+
+    // Get location override mapping for tactical override determination
+    const overrideMapping = getLocationOverrideMapping();
+
+    // Transform database rows to RoadmapSceneData format
+    const roadmapData: RoadmapSceneData[] = result.rows.map((row: any) => {
+      const locationName = row.location_name || (row.locations && row.locations[0]) || 'Unknown Location';
+      const normalizedLocation = normalizeLocationName(locationName);
+      const tacticalOverride = determineTacticalOverride(locationName, overrideMapping);
+
+      return {
+        scene_id: row.scene_id,
+        episode_number: row.episode_number,
+        scene_number: row.scene_number,
+        location_name: normalizedLocation,
+        location_type: locationName.startsWith('General Location') ? 'GENERAL' : 'SPECIFIC',
+        tactical_override_applied: tacticalOverride !== null,
+        override_location: tacticalOverride || '',
+        // Extended fields
+        scene_title: row.scene_title,
+        scene_summary: row.scene_summary,
+        characters_present: row.characters_present || [],
+        mood: row.mood,
+        time_of_day: row.time_of_day,
+        pacing: row.pacing
+      };
+    });
+
+    console.log(`Found ${roadmapData.length} roadmap scenes for episode ${episodeNumber}`);
+    roadmapData.forEach(scene => {
+      console.log(`  Scene ${scene.scene_number}: ${scene.location_name} (override: ${scene.override_location || 'none'})`);
+    });
+
+    setCachedData(cacheKey, roadmapData);
+    return roadmapData;
+
+  } catch (error) {
+    console.error('Failed to query roadmap_scenes:', error);
+    // Return empty array on error - allows graceful degradation
+    return [];
+  }
 }
 
 // Resolve location for a specific scene
@@ -110,9 +217,9 @@ export async function resolveSceneLocation(
   try {
     // Get roadmap data for the episode
     const roadmapScenes = await getRoadmapScenesData(storyId, episodeNumber);
-    
+
     // Find the specific scene in roadmap
-    const roadmapScene = roadmapScenes.find(scene => 
+    const roadmapScene = roadmapScenes.find(scene =>
       scene.episode_number === episodeNumber && scene.scene_number === sceneNumber
     );
 
@@ -129,23 +236,23 @@ export async function resolveSceneLocation(
 
     // Get location override mapping
     const locationOverrideMapping = getLocationOverrideMapping();
-    
-    // Determine tactical override
-    const tacticalOverride = roadmapScene.tactical_override_applied 
-      ? roadmapScene.override_location 
+
+    // Determine tactical override (already computed in getRoadmapScenesData, but check mapping too)
+    const tacticalOverride = roadmapScene.tactical_override_applied
+      ? roadmapScene.override_location
       : locationOverrideMapping[roadmapScene.location_name] || null;
 
-    // Find matching location data
-    const locationInfo = locationData.find(loc => 
-      loc.name === roadmapScene.location_name || 
-      loc.name === tacticalOverride
-    );
+    // Find matching location data with flexible matching
+    const locationInfo = findMatchingLocation(roadmapScene.location_name, locationData, tacticalOverride);
 
-    // Find character appearances for this location
-    const characterAppearances = characterLocationData.filter(charLoc => 
-      charLoc.location_name === roadmapScene.location_name ||
-      charLoc.location_name === tacticalOverride
-    );
+    // Find character appearances for this location (with flexible matching)
+    const characterAppearances = characterLocationData.filter(charLoc => {
+      const charLocNormalized = normalizeLocationName(charLoc.location_name);
+      return charLocNormalized === roadmapScene.location_name ||
+             charLoc.location_name === roadmapScene.location_name ||
+             charLocNormalized === tacticalOverride ||
+             charLoc.location_name === tacticalOverride;
+    });
 
     return {
       originalLocation: roadmapScene.location_name,
@@ -159,6 +266,61 @@ export async function resolveSceneLocation(
     console.error('Failed to resolve scene location:', error);
     throw error;
   }
+}
+
+/**
+ * Find matching location in location_arcs data with flexible matching
+ * Handles cases where roadmap uses slightly different names than location_arcs
+ */
+function findMatchingLocation(
+  locationName: string,
+  locationData: DatabaseLocationData[],
+  tacticalOverride: string | null
+): DatabaseLocationData | null {
+  // Try exact match first
+  let match = locationData.find(loc => loc.name === locationName);
+  if (match) return match;
+
+  // Try tactical override location
+  if (tacticalOverride) {
+    match = locationData.find(loc => loc.name === tacticalOverride);
+    if (match) return match;
+  }
+
+  // Try case-insensitive match
+  const lowerName = locationName.toLowerCase();
+  match = locationData.find(loc => loc.name.toLowerCase() === lowerName);
+  if (match) return match;
+
+  // Try partial match (location_arc name contains roadmap location name or vice versa)
+  match = locationData.find(loc =>
+    loc.name.toLowerCase().includes(lowerName) ||
+    lowerName.includes(loc.name.toLowerCase())
+  );
+  if (match) {
+    console.log(`Partial location match: "${locationName}" -> "${match.name}"`);
+    return match;
+  }
+
+  // Try matching with common variations
+  const variations = [
+    locationName.replace(/\s+/g, ' '),  // Normalize spaces
+    locationName.replace(/clinic/i, 'Medical Clinic'),
+    locationName.replace(/Medical Clinic/i, 'Clinic'),
+  ];
+
+  for (const variation of variations) {
+    match = locationData.find(loc =>
+      loc.name.toLowerCase() === variation.toLowerCase()
+    );
+    if (match) {
+      console.log(`Variation match: "${locationName}" -> "${match.name}"`);
+      return match;
+    }
+  }
+
+  console.warn(`No location match found for: "${locationName}"`);
+  return null;
 }
 
 // Get all roadmap scenes for an episode
@@ -182,10 +344,10 @@ export function applyTacticalOverrides(
   return characterAppearances.map(appearance => ({
     ...appearance,
     location_name: tacticalOverride,
-    swarmui_prompt_override: appearance.swarmui_prompt_override.replace(
+    swarmui_prompt_override: appearance.swarmui_prompt_override?.replace(
       appearance.location_name,
       tacticalOverride
-    )
+    ) || ''
   }));
 }
 

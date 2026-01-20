@@ -6,7 +6,13 @@
       "Bash(npx tsx:*)",
       "Bash(npm run type-check:*)",
       "Bash(npm run:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git -C \"E:\\\\repos\\\\storyart\" branch --list backup-agent-system)",
+      "Bash(git -C \"E:\\\\repos\\\\storyart\" checkout HEAD -- services/promptGenerationService.ts)",
+      "Bash(git -C \"E:\\\\repos\\\\storyart\" checkout HEAD -- App.tsx)",
+      "Bash(git -C \"E:\\\\repos\\\\storyart\" checkout HEAD -- types.ts)",
+      "Bash(git -C \"E:\\\\repos\\\\storyart\" status --short services/promptGenerationService.ts App.tsx types.ts)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

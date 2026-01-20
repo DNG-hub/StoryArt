@@ -1,4 +1,5 @@
-export type { ImageGenerationResult } from './services/swarmUIService';
+import type { ImageGenerationResult } from './services/swarmUIService';
+export type { ImageGenerationResult };
 
 export type LLMProvider = 'gemini' | 'qwen' | 'claude' | 'openai' | 'xai' | 'deepseek' | 'glm';
 export type LLMSelection = LLMProvider;
@@ -361,6 +362,7 @@ export interface PipelineResult {
   generationResults: ImageGenerationResult[];
   errors?: string[];
   duration?: number; // Processing duration in milliseconds
+  reviewSessionId?: string; // StoryTeller Image Review session ID
 }
 
 export interface BeatPipelineResult {

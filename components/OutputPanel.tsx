@@ -297,6 +297,10 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
   }, 0) ?? 0;
 
   const handleBulkProcess = async () => {
+    console.log('[OutputPanel] handleBulkProcess called');
+    console.log('[OutputPanel] analysis:', analysis);
+    console.log('[OutputPanel] sessionTimestamp:', sessionTimestamp);
+    
     setIsBulkProcessing(true);
     setBulkError(null);
     setBulkResult(null);
@@ -311,6 +315,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
     });
 
     try {
+      console.log('[OutputPanel] Starting pipeline process...');
       // Get session timestamp
       let timestamp = sessionTimestamp;
       if (!timestamp) {
@@ -318,17 +323,27 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
         timestamp = getSessionTimestampFromLocalStorage() || undefined;
         
         if (!timestamp) {
-          // Fallback: get latest session and try to extract timestamp
+          // Get latest session - it contains the timestamp
+          console.log('[OutputPanel] No sessionTimestamp provided, fetching latest session...');
           const sessionResponse = await getLatestSession();
           if (!sessionResponse.success || !sessionResponse.data) {
-            throw new Error('Failed to get session. Please ensure you have saved your analysis.');
+            throw new Error('Failed to get session. Please ensure you have saved your analysis by clicking "Analyze Script".');
           }
-          // If we can't get timestamp, use current time as fallback
-          // Note: This may not work correctly if the session was saved to Redis
-          // In production, the API should return the session key/timestamp
-          timestamp = Date.now();
+          
+          // Extract timestamp from the saved session data
+          // The session data should have a timestamp field
+          if (sessionResponse.data.timestamp) {
+            timestamp = sessionResponse.data.timestamp;
+            console.log('[OutputPanel] Found session timestamp:', timestamp);
+          } else {
+            // If timestamp not in data, try to extract from session key if available
+            // This is a fallback - the timestamp should be in the data
+            throw new Error('Session found but no timestamp available. Please re-analyze the episode to create a new session.');
+          }
         }
       }
+      
+      console.log('[OutputPanel] Using session timestamp:', timestamp);
 
       const progressCallback: ProgressCallback = (progressData) => {
         setBulkProgress({
@@ -340,13 +355,20 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
         });
       };
 
+      console.log('[OutputPanel] Calling processEpisodeCompletePipeline with timestamp:', timestamp);
       const result = await processEpisodeCompletePipeline(timestamp, progressCallback, abortController);
+      console.log('[OutputPanel] Pipeline result:', result);
       setBulkResult(result);
 
       if (!result.success) {
-        setBulkError(result.errors?.join(', ') || 'Pipeline processing failed');
+        const errorMsg = result.errors?.join(', ') || 'Pipeline processing failed';
+        console.error('[OutputPanel] Pipeline failed:', errorMsg);
+        setBulkError(errorMsg);
+      } else {
+        console.log('[OutputPanel] Pipeline succeeded!');
       }
     } catch (err) {
+      console.error('[OutputPanel] Error in handleBulkProcess:', err);
       if (err instanceof Error && err.name === 'AbortError') {
         setBulkError('Operation cancelled by user');
         const finalTimestamp = sessionTimestamp || timestamp || 0;
@@ -473,16 +495,16 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
         )}
       </div>
       <div className="space-y-8">
-        {analysis.scenes.map((scene) => (
-          <details key={scene.sceneNumber} open className="bg-gray-900/50 p-4 rounded-lg">
+        {analysis.scenes.map((scene, sceneIndex) => (
+          <details key={`scene-${scene.sceneNumber}-${sceneIndex}`} open className="bg-gray-900/50 p-4 rounded-lg">
             <summary className="text-2xl font-semibold text-brand-purple cursor-pointer">
               Scene {scene.sceneNumber}: {scene.title}
             </summary>
             <div className="mt-4 space-y-4">
               {scene.beats && Array.isArray(scene.beats) && scene.beats.length > 0 ? (
                 scene.beats.map((beat, beatIndex) => (
-                  <BeatAnalysisCard 
-                    key={beat.beatId} 
+                  <BeatAnalysisCard
+                    key={`${beat.beatId}-${beatIndex}`}
                     beat={beat} 
                     sceneNumber={scene.sceneNumber} 
                     beatIndex={beatIndex}

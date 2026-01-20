@@ -168,19 +168,27 @@ async function retryWithBackoff<T>(
  * @throws Error if session initialization fails after retries
  */
 export const initializeSession = async (maxRetries: number = 3): Promise<string> => {
+  console.log(`[SwarmUI] Initializing session with base URL: ${SWARMUI_API_BASE_URL}`);
   return retryWithBackoff(async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
     
     try {
-      const response = await fetch(`${SWARMUI_API_BASE_URL}/API/GetNewSession`, {
+      const endpoint = `${SWARMUI_API_BASE_URL}/API/GetNewSession`;
+      console.log(`[SwarmUI] Attempting to connect to: ${endpoint}`);
+      
+      // SwarmUI GetNewSession endpoint - use same format as test file
+      // Send empty JSON object with Content-Type header (matches working test implementation)
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({}), // Empty object as per test file
         signal: controller.signal,
       });
+      
+      console.log(`[SwarmUI] Response status: ${response.status} ${response.statusText}`);
 
       clearTimeout(timeoutId);
 
@@ -206,17 +214,22 @@ export const initializeSession = async (maxRetries: number = 3): Promise<string>
       }
 
       const result = await response.json();
+      console.log(`[SwarmUI] Session response:`, result);
       
       if (!result.session_id) {
+        console.error(`[SwarmUI] Invalid response format. Expected session_id, got:`, result);
         throw new Error('SwarmUI session initialization failed: No session_id in response');
       }
 
+      console.log(`[SwarmUI] Session initialized successfully: ${result.session_id.substring(0, 20)}...`);
       return result.session_id;
     } catch (error) {
       clearTimeout(timeoutId);
       
+      console.error(`[SwarmUI] Session initialization error:`, error);
+      
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(
+        const timeoutError = new Error(
           `SwarmUI session initialization timed out after 30 seconds.\n\n` +
           `Troubleshooting:\n` +
           `1. Check if SwarmUI is running: ${SWARMUI_API_BASE_URL}\n` +
@@ -224,11 +237,120 @@ export const initializeSession = async (maxRetries: number = 3): Promise<string>
           `3. Check network connectivity\n` +
           `4. Try restarting SwarmUI service`
         );
+        console.error(`[SwarmUI]`, timeoutError.message);
+        throw timeoutError;
+      }
+      
+      // Log fetch errors with more detail
+      if (error instanceof Error) {
+        if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+          console.error(`[SwarmUI] Network error connecting to ${SWARMUI_API_BASE_URL}:`, error.message);
+          console.error(`[SwarmUI] This usually means:`);
+          console.error(`  - SwarmUI is not running`);
+          console.error(`  - SwarmUI is running on a different port`);
+          console.error(`  - CORS is blocking the request (if from browser)`);
+          console.error(`  - Firewall is blocking the connection`);
+        }
       }
       
       throw error;
     }
   }, maxRetries);
+};
+
+/**
+ * Create or update a SwarmUI preset with default StoryArt parameters.
+ * 
+ * @param presetName - Name of the preset to create/update
+ * @param sessionId - SwarmUI session ID
+ * @param options - Optional parameters to include in preset (defaults to StoryArt defaults)
+ * @returns Promise that resolves to true if preset was created/updated successfully
+ */
+export const createSwarmUIPreset = async (
+  presetName: string,
+  sessionId: string,
+  options?: SwarmUIGenerationOptions
+): Promise<boolean> => {
+  try {
+    const model = options?.model || getEnvVar('SWARMUI_MODEL') || 'flux1-dev-fp8';
+    const width = options?.width || parseInt(getEnvVar('SWARMUI_WIDTH') || '1088');
+    const height = options?.height || parseInt(getEnvVar('SWARMUI_HEIGHT') || '1920');
+    const sampler = options?.sampler || getEnvVar('SWARMUI_SAMPLER') || 'euler';
+    const scheduler = options?.scheduler || getEnvVar('SWARMUI_SCHEDULER') || 'simple';
+    const steps = options?.steps || parseInt(getEnvVar('SWARMUI_STEPS') || '20');
+    const cfgscale = options?.cfgscale || parseFloat(getEnvVar('SWARMUI_CFG_SCALE') || '1');
+    const seed = options?.seed ?? parseInt(getEnvVar('SWARMUI_SEED') || '-1');
+    const loras = options?.loras || getEnvVar('SWARMUI_LORAS') || '';
+    const loraweights = options?.loraweights || getEnvVar('SWARMUI_LORA_WEIGHTS') || '';
+    const aspectratio = options?.aspectratio;
+
+    // Build param_map matching SwarmUI preset format (all values as strings)
+    const paramMap: any = {
+      images: "1", // Default to 1, can be overridden per request
+      seed: seed.toString(),
+      steps: steps.toString(),
+      cfgscale: cfgscale.toString(),
+      sampler: sampler,
+      scheduler: scheduler,
+    };
+
+    // Use aspectratio if provided, otherwise use width/height
+    if (aspectratio) {
+      paramMap.aspectratio = aspectratio;
+    } else {
+      paramMap.width = width.toString();
+      paramMap.height = height.toString();
+    }
+
+    if (model) {
+      paramMap.model = model;
+    }
+
+    if (loras) {
+      paramMap.loras = loras;
+      paramMap.loraweights = loraweights || "1";
+    }
+
+    const requestBody = {
+      title: presetName,
+      description: `StoryArt default preset: ${presetName}`,
+      raw: {
+        param_map: paramMap
+      },
+      is_edit: true, // Update if exists
+      editing: presetName
+    };
+
+    console.log(`[SwarmUI] Creating/updating preset: ${presetName}`);
+
+    const response = await fetch(`${SWARMUI_API_BASE_URL}/API/AddNewPreset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.warn(`[SwarmUI] Failed to create preset: ${errorBody}`);
+      return false;
+    }
+
+    const result = await response.json();
+    if (result.success) {
+      console.log(`[SwarmUI] ✅ Preset "${presetName}" created/updated successfully`);
+      return true;
+    } else if (result.preset_fail) {
+      console.warn(`[SwarmUI] Preset creation failed: ${result.preset_fail}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`[SwarmUI] Error creating preset:`, error);
+    return false;
+  }
 };
 
 /**
@@ -244,11 +366,14 @@ export interface SwarmUIGenerationOptions {
   cfgscale?: number;
   fluxguidancescale?: number;
   seed?: number;
+  variationseed?: number; // Variation seed (optional, for image variations)
   automaticvae?: boolean;
   sdtextencs?: string;
   loras?: string;
   loraweights?: string;
   negativeprompt?: string;
+  preset?: string; // Optional preset name (DISABLED - use explicit parameters instead)
+  aspectratio?: string; // Optional aspect ratio (e.g., "16:9", "9:16") - alternative to width/height
 }
 
 /**
@@ -295,21 +420,24 @@ export const generateImages = async (
         // Use SwarmUI's native GenerateText2Image API endpoint
         console.log(`[SwarmUI] Generating with session ID: ${sessionId.substring(0, 20)}...`);
 
-        // Get generation options with defaults (Flux-specific)
+        // Get generation options with defaults matching exact duplicate test config
+        // Exact config: 1344x768, steps: 40, scheduler: simple, cfgscale: 1, sampler: euler
+        // Tested and verified - produces images matching manual generation
         const model = options?.model || getEnvVar('SWARMUI_MODEL') || 'flux1-dev-fp8';
-        const width = options?.width || parseInt(getEnvVar('SWARMUI_WIDTH') || '1088');
-        const height = options?.height || parseInt(getEnvVar('SWARMUI_HEIGHT') || '1920');
+        const width = options?.width || parseInt(getEnvVar('SWARMUI_WIDTH') || '1344');
+        const height = options?.height || parseInt(getEnvVar('SWARMUI_HEIGHT') || '768');
         const sampler = options?.sampler || getEnvVar('SWARMUI_SAMPLER') || 'euler';
         const scheduler = options?.scheduler || getEnvVar('SWARMUI_SCHEDULER') || 'simple';
-        const steps = options?.steps || parseInt(getEnvVar('SWARMUI_STEPS') || '20');
+        const steps = options?.steps || parseInt(getEnvVar('SWARMUI_STEPS') || '40');
         const cfgscale = options?.cfgscale || parseFloat(getEnvVar('SWARMUI_CFG_SCALE') || '1');
         const fluxguidancescale = options?.fluxguidancescale || parseFloat(getEnvVar('SWARMUI_FLUX_GUIDANCE_SCALE') || '3.5');
         const seed = options?.seed ?? parseInt(getEnvVar('SWARMUI_SEED') || '-1');
-        const automaticvae = options?.automaticvae ?? (getEnvVar('SWARMUI_AUTOMATIC_VAE') === 'true');
+        const automaticvae = options?.automaticvae ?? true; // Default true (matches exact config)
         const sdtextencs = options?.sdtextencs || getEnvVar('SWARMUI_SD_TEXT_ENCS') || 'CLIP + T5';
-        const loras = options?.loras || getEnvVar('SWARMUI_LORAS') || '';
-        const loraweights = options?.loraweights || getEnvVar('SWARMUI_LORA_WEIGHTS') || '';
+        const loras = options?.loras || getEnvVar('SWARMUI_LORAS') || 'gargan';
+        const loraweights = options?.loraweights || getEnvVar('SWARMUI_LORA_WEIGHTS') || '1';
         const negativeprompt = options?.negativeprompt || getEnvVar('SWARMUI_NEGATIVE_PROMPT') || '';
+        const variationseed = options?.variationseed; // Optional variation seed
 
         const endpoint = `${SWARMUI_API_BASE_URL}/API/GenerateText2Image`;
 
@@ -319,34 +447,119 @@ export const generateImages = async (
           console.log(`[SwarmUI] LoRAs: ${loras} (weight: ${loraweights || '1'})`);
         }
 
-        const requestBody: any = {
-          session_id: sessionId,
+        // Build rawInput object with all T2I parameters as per SwarmUI API spec
+        // DECISION: Use explicit parameters (matching manual frog config) instead of presets
+        // Presets are unreliable - aspectratio override doesn't work, produces wrong resolution
+        // Explicit parameters are reliable, predictable, and match working manual config
+        const rawInput: any = {
           prompt: prompt,
-          images: imagesCount,
-          model: model,
-          width: width,
-          height: height,
-          sampler: sampler,
-          scheduler: scheduler,
-          steps: steps,
-          cfgscale: cfgscale,
-          fluxguidancescale: fluxguidancescale,
-          seed: seed,
-          automaticvae: automaticvae,
-          sdtextencs: sdtextencs
         };
 
+        // Always send explicit parameters (matching manual frog config)
+        rawInput.model = model;
+        rawInput.sampler = sampler;
+        rawInput.scheduler = scheduler;
+        rawInput.steps = steps.toString();
+        rawInput.cfgscale = cfgscale.toString();
+        rawInput.seed = seed.toString();
+        rawInput.automaticvae = automaticvae;
+        rawInput.sdtextencs = sdtextencs;
+        
+        // Use width/height (matching manual frog: 1344x768) instead of aspectratio
+        // aspectratio is unreliable - use explicit dimensions
+        if (options?.aspectratio && !options?.width && !options?.height) {
+          // Only use aspectratio if width/height not explicitly provided
+          rawInput.aspectratio = options.aspectratio;
+          console.log(`[SwarmUI] Using aspect ratio: ${options.aspectratio}`);
+        } else {
+          // Prefer explicit width/height (more reliable)
+          rawInput.width = width;
+          rawInput.height = height;
+        }
+
+        if (fluxguidancescale !== undefined) {
+          rawInput.fluxguidancescale = fluxguidancescale.toString();
+        }
+
+        // Add variation seed if provided
+        if (variationseed !== undefined) {
+          rawInput.variationseed = variationseed.toString();
+        }
+
+        // Override with explicit parameters if provided
+        if (options?.model) rawInput.model = options.model;
+        if (options?.sampler) rawInput.sampler = options.sampler;
+        if (options?.scheduler) rawInput.scheduler = options.scheduler;
+        if (options?.steps !== undefined) rawInput.steps = options.steps.toString();
+        if (options?.cfgscale !== undefined) rawInput.cfgscale = options.cfgscale.toString();
+        if (options?.seed !== undefined) rawInput.seed = options.seed.toString();
+        if (options?.variationseed !== undefined) rawInput.variationseed = options.variationseed.toString();
+        
+        // Handle width/height overrides (prefer explicit dimensions over aspectratio)
+        if (options?.width || options?.height) {
+          if (options.width) rawInput.width = options.width;
+          if (options.height) rawInput.height = options.height;
+          // Remove aspectratio if width/height are explicitly set (they conflict)
+          delete rawInput.aspectratio;
+        } else if (options?.aspectratio) {
+          // Only use aspectratio if width/height not provided
+          rawInput.aspectratio = options.aspectratio;
+          delete rawInput.width;
+          delete rawInput.height;
+        }
+
         if (loras) {
-          requestBody.loras = loras;
+          rawInput.loras = loras;
         }
 
         if (loraweights) {
-          requestBody.loraweights = loraweights;
+          rawInput.loraweights = loraweights;
         }
 
         if (negativeprompt) {
-          requestBody.negativeprompt = negativeprompt;
+          rawInput.negativeprompt = negativeprompt;
         }
+
+        // SwarmUI API expects all parameters at ROOT level, not nested in rawInput
+        // SwarmUI logs show: "rawInput parameter is unrecognized" - parameters must be at root
+        // The API docs note: "all params go on the same level as images, session_id, etc."
+        const requestBody: any = {
+          images: imagesCount,
+          session_id: sessionId,
+          // All T2I parameters go at root level (not nested in rawInput)
+          prompt: rawInput.prompt,
+        };
+
+        // Add model (required) - use from rawInput or fallback
+        if (rawInput.model) {
+          requestBody.model = rawInput.model;
+        } else if (model) {
+          requestBody.model = model;
+        }
+
+        // Add all parameters at root level (explicit parameters, matching manual frog config)
+        if (rawInput.sampler) requestBody.sampler = rawInput.sampler;
+        if (rawInput.scheduler) requestBody.scheduler = rawInput.scheduler;
+        if (rawInput.steps) requestBody.steps = rawInput.steps;
+        if (rawInput.cfgscale) requestBody.cfgscale = rawInput.cfgscale;
+        if (rawInput.seed) requestBody.seed = rawInput.seed;
+        if (rawInput.variationseed) requestBody.variationseed = rawInput.variationseed;
+        
+        // Handle aspectratio/width/height (prefer explicit width/height)
+        if (rawInput.width && rawInput.height) {
+          // Explicit width/height (more reliable, matches manual frog: 1344x768)
+          requestBody.width = rawInput.width;
+          requestBody.height = rawInput.height;
+        } else if (rawInput.aspectratio) {
+          // Fallback to aspectratio if width/height not set
+          requestBody.aspectratio = rawInput.aspectratio;
+        }
+        if (rawInput.fluxguidancescale) requestBody.fluxguidancescale = rawInput.fluxguidancescale;
+        if (rawInput.automaticvae !== undefined) requestBody.automaticvae = rawInput.automaticvae;
+        if (rawInput.sdtextencs) requestBody.sdtextencs = rawInput.sdtextencs;
+        if (rawInput.loras) requestBody.loras = rawInput.loras;
+        if (rawInput.loraweights) requestBody.loraweights = rawInput.loraweights;
+        if (rawInput.negativeprompt) requestBody.negativeprompt = rawInput.negativeprompt;
 
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -407,24 +620,19 @@ export const generateImages = async (
 
         const result = await response.json();
         
-        // SwarmUI native API returns image_paths array
-        // The paths may be filename, relative, or absolute paths
+        // SwarmUI API returns images array per documentation:
+        // "images": ["View/local/raw/2024-01-02/0304-a photo of a cat-etc-1.png", ...]
         let imagePaths: string[] = [];
         
-        if (result.image_paths) {
+        if (result.images && Array.isArray(result.images)) {
+          // API returns array of image paths (or data URLs in some cases)
+          imagePaths = result.images;
+        } else if (result.image_paths) {
+          // Fallback for older API versions or alternative response format
           imagePaths = Array.isArray(result.image_paths) ? result.image_paths : [result.image_paths];
-        } else if (result.images && Array.isArray(result.images)) {
-          // Fallback: if images are base64 encoded, construct paths
-          // SwarmUI saves images to Output/local/raw/YYYY-MM-DD/ directory
-          const today = new Date().toISOString().split('T')[0];
-          const basePath = process.env.SWARMUI_OUTPUT_PATH || 
-                          process.env.VITE_SWARMUI_OUTPUT_PATH ||
-                          'E:/FLUX_models_Auto_Downloaders_v7/SwarmUI/Output/local/raw';
-          for (let i = 0; i < result.images.length; i++) {
-            // Generate a filename based on timestamp
-            const timestamp = Date.now();
-            imagePaths.push(`${basePath}/${today}/${timestamp}_${i}.png`);
-          }
+        } else {
+          console.warn('[SwarmUI] Unexpected response format:', result);
+          throw new Error('SwarmUI API returned unexpected response format. Expected "images" array.');
         }
         
         return {
@@ -494,17 +702,23 @@ export const generateImages = async (
  * Get the current queue status from SwarmUI.
  * Note: This endpoint may not be available in all SwarmUI versions.
  * 
+ * @param sessionId - Optional session ID (required by some SwarmUI versions)
  * @returns A promise that resolves with queue status including length and current generation
  * @throws Error if endpoint is not available or request fails
  */
-export const getQueueStatus = async (): Promise<QueueStatus> => {
+export const getQueueStatus = async (sessionId?: string): Promise<QueueStatus> => {
   try {
+    const requestBody: any = {};
+    if (sessionId) {
+      requestBody.session_id = sessionId;
+    }
+    
     const response = await fetch(`${SWARMUI_API_BASE_URL}/API/GetQueueStatus`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -544,17 +758,23 @@ export const getQueueStatus = async (): Promise<QueueStatus> => {
  * Get generation statistics from SwarmUI.
  * Note: This endpoint may not be available in all SwarmUI versions.
  * 
+ * @param sessionId - Optional session ID (required by some SwarmUI versions)
  * @returns A promise that resolves with generation statistics
  * @throws Error if endpoint is not available or request fails
  */
-export const getGenerationStatistics = async (): Promise<GenerationStats> => {
+export const getGenerationStatistics = async (sessionId?: string): Promise<GenerationStats> => {
   try {
+    const requestBody: any = {};
+    if (sessionId) {
+      requestBody.session_id = sessionId;
+    }
+    
     const response = await fetch(`${SWARMUI_API_BASE_URL}/API/GetStats`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {

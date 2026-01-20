@@ -1,8 +1,12 @@
-<# 
+<#
   StoryArt Development START Script
   - Cleanup -> start -> health-gate -> fresh browser profile
   - Enhanced process tree management and health checks
   - Optimized for StoryArt React/Vite application
+
+  Note: Redis Session API server is disabled by default.
+        Session data is stored in localStorage (browser).
+        PostgreSQL (via StoryTeller API) stores generation results.
 
   Usage:
     .\start-storyart.ps1 [-UseEdge] [-NoBrowser] [-Help]
@@ -23,9 +27,13 @@ if ($Help) {
   Write-Host "  -Help            Show this help"
   Write-Host ""
   Write-Host "What it does:"
-  Write-Host "  1) Clean shutdown: kill process trees on ports 3000/5173; wait until ports are free"
+  Write-Host "  1) Clean shutdown: kill process trees on port 3000; wait until port is free"
   Write-Host "  2) Start StoryArt React/Vite dev server + wait for readiness"
   Write-Host "  3) Open app in a fresh, throwaway browser profile"
+  Write-Host ""
+  Write-Host "Storage:"
+  Write-Host "  - Sessions: localStorage (browser) - survives refresh, not browser data clear"
+  Write-Host "  - Results:  PostgreSQL (via StoryTeller API) - permanent storage"
   exit 0
 }
 
@@ -40,13 +48,16 @@ $Frontend = @{
   HealthUrl = 'http://localhost:3000'                   # vite responds at /
 }
 
-$Backend = @{
-  Name      = 'Redis Session API Server'
-  Port      = 7802
-  WorkDir   = 'E:\REPOS\StoryArt'
-  StartCmd  = 'npm run dev:server'
-  HealthUrl = 'http://localhost:7802/health'
-}
+# Redis Session API Server - DISABLED (using localStorage instead)
+# Session data persists in browser localStorage
+# Generation results persist to PostgreSQL via StoryTeller API
+# $Backend = @{
+#   Name      = 'Redis Session API Server'
+#   Port      = 7802
+#   WorkDir   = 'E:\REPOS\StoryArt'
+#   StartCmd  = 'npm run dev:server'
+#   HealthUrl = 'http://localhost:7802/health'
+# }
 
 $OpenUrl = 'http://localhost:3000'
 
@@ -66,7 +77,8 @@ function Get-ChildPids {
         $children += $p.ProcessId
         $queue.Enqueue($p.ProcessId)
       }
-    } catch {
+    }
+    catch {
       # ignore
     }
   }
@@ -80,8 +92,9 @@ function Stop-ProcessOnPort {
   $owners = @()
   try {
     $owners = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty OwningProcess -Unique
-  } catch {
+    Select-Object -ExpandProperty OwningProcess -Unique
+  }
+  catch {
     $owners = @()
   }
 
@@ -100,7 +113,7 @@ function Stop-ProcessOnPort {
       $proc = Get-Process -Id $processId -ErrorAction Stop
       
       # Skip system processes
-      $systemProcesses = @('Idle', 'System', 'smss', 'csrss', 'wininit', 'winlogon', 'services', 'lsass', 'svchost')
+      $systemProcesses = @('Idle', 'System', 'smss', 'csrss', 'wininit', 'winlogon', 'services', 'lsass', 'svchost', 'com.docker.backend', 'docker', 'dockerd', 'vpnkit')
       if ($systemProcesses -contains $proc.ProcessName) {
         continue
       }
@@ -117,7 +130,8 @@ function Stop-ProcessOnPort {
           Stop-Process -Id $cpid -Force -ErrorAction SilentlyContinue
         }
       }
-    } catch {
+    }
+    catch {
       # ignore one-off races
     }
   }
@@ -131,7 +145,8 @@ function Stop-ProcessOnPort {
 
   if (-not $still) {
     Write-Host "  - Freed" -ForegroundColor Green
-  } else {
+  }
+  else {
     Write-Host ("  - WARNING: port {0} still busy" -f $Port) -ForegroundColor Yellow
   }
 }
@@ -140,23 +155,40 @@ function Wait-HttpReady {
   param(
     [string]$Url,
     [int]$TimeoutSeconds = 60,
-    [int]$DelayMs = 500
+    [int]$DelayMs = 1000
   )
   Write-Host ("Waiting for: {0}" -f $Url) -ForegroundColor Yellow
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $attempt = 0
   while ((Get-Date) -lt $deadline) {
+    $attempt++
     try {
-      $r = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3
-      if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) {
-        Write-Host ("  Ready ({0})" -f $r.StatusCode) -ForegroundColor Green
-        return $true
+      # Use Test-NetConnection first to avoid Invoke-WebRequest resource issues
+      $uri = [System.Uri]$Url
+      $tcpTest = Test-NetConnection -ComputerName $uri.Host -Port $uri.Port -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+
+      if ($tcpTest.TcpTestSucceeded) {
+        # Port is open, now try HTTP request with disposal
+        $response = $null
+        try {
+          $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+          if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+            Write-Host ("  Ready ({0}) after {1} attempts" -f $response.StatusCode, $attempt) -ForegroundColor Green
+            return $true
+          }
+        }
+        finally {
+          if ($response) { $response = $null }
+          [System.GC]::Collect()
+        }
       }
-    } catch {
-      # not ready yet
+    }
+    catch {
+      # not ready yet - this is expected during startup
     }
     Start-Sleep -Milliseconds $DelayMs
   }
-  Write-Host ("  NOT ready (timeout after {0}s)" -f $TimeoutSeconds) -ForegroundColor Yellow
+  Write-Host ("  NOT ready (timeout after {0}s, {1} attempts)" -f $TimeoutSeconds, $attempt) -ForegroundColor Yellow
   return $false
 }
 
@@ -167,10 +199,21 @@ function Open-BrowserTempProfile {
 
   if ($Edge) {
     Write-Host ("Opening Edge (temp profile): {0}" -f $Url) -ForegroundColor Cyan
-    Start-Process "msedge.exe" --% --user-data-dir="$tempProfile" --no-first-run --disable-extensions "$Url"
-  } else {
+    Start-Process -FilePath "msedge.exe" -ArgumentList @(
+      "--user-data-dir=$tempProfile",
+      "--no-first-run",
+      "--disable-extensions",
+      "$Url"
+    )
+  }
+  else {
     Write-Host ("Opening Chrome (temp profile): {0}" -f $Url) -ForegroundColor Cyan
-    Start-Process "chrome.exe" --% --user-data-dir="$tempProfile" --no-first-run --disable-extensions "$Url"
+    Start-Process -FilePath "chrome.exe" -ArgumentList @(
+      "--user-data-dir=$tempProfile",
+      "--no-first-run",
+      "--disable-extensions",
+      "$Url"
+    )
   }
 }
 
@@ -181,7 +224,8 @@ function Ensure-NodeModules {
     Write-Host ("Installing StoryArt dependencies in {0}..." -f $Dir) -ForegroundColor Yellow
     Push-Location $Dir
     try { npm install | Out-Null } finally { Pop-Location }
-  } else {
+  }
+  else {
     Write-Host "StoryArt dependencies present" -ForegroundColor Green
   }
 }
@@ -196,9 +240,8 @@ function Stop-StoryArtProcesses {
       $_.CommandLine -like "*storyart*" -or 
       $_.CommandLine -like "*StoryArt*" -or
       $_.CommandLine -like "*StoryArt*" -or
-      $_.CommandLine -like "*vite*" -or
-      $_.CommandLine -like "*npm*" -or
-      $_.CommandLine -like "*dev*"
+      $_.CommandLine -like "*StoryArt*" -or
+      $_.CommandLine -like "*storyart*"
     )
   }
   
@@ -208,7 +251,8 @@ function Stop-StoryArtProcesses {
     $port3000 = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
     $port5173 = Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
     $portProcesses = @($port3000, $port5173) | Where-Object { $_ -ne $null -and $_ -gt 4 } | Select-Object -Unique
-  } catch {
+  }
+  catch {
     # ignore
   }
   
@@ -224,7 +268,7 @@ function Stop-StoryArtProcesses {
       $proc = Get-Process -Id $processId -ErrorAction SilentlyContinue
       if ($proc) {
         # Skip system processes like Idle, System, etc.
-        $systemProcesses = @('Idle', 'System', 'smss', 'csrss', 'wininit', 'winlogon', 'services', 'lsass', 'svchost')
+        $systemProcesses = @('Idle', 'System', 'smss', 'csrss', 'wininit', 'winlogon', 'services', 'lsass', 'svchost', 'com.docker.backend', 'docker', 'dockerd', 'vpnkit')
         if ($systemProcesses -contains $proc.ProcessName) {
           continue
         }
@@ -249,16 +293,15 @@ function Stop-StoryArtProcesses {
 # =========================
 # 1) CLEANUP
 # =========================
-Write-Host ("="*64) -ForegroundColor DarkCyan
+Write-Host ("=" * 64) -ForegroundColor DarkCyan
 Write-Host "StoryArt Dev: Cleanup -> Start" -ForegroundColor Yellow
-Write-Host ("="*64) -ForegroundColor DarkCyan
+Write-Host ("=" * 64) -ForegroundColor DarkCyan
 
 # Enhanced cleanup: Kill all StoryArt processes first
 Stop-StoryArtProcesses
 
-# Then clear specific ports with process tree management
+# Clear frontend port
 Stop-ProcessOnPort -Port $Frontend.Port -ServiceName $Frontend.Name
-Stop-ProcessOnPort -Port $Backend.Port -ServiceName $Backend.Name
 
 # Give processes extra time to fully terminate
 Write-Host "Waiting for processes to fully terminate..." -ForegroundColor Yellow
@@ -270,27 +313,16 @@ Start-Sleep -Seconds 3
 Ensure-NodeModules -Dir $Frontend.WorkDir
 
 # =========================
-# 2.5) START BACKEND SERVER
-# =========================
-Write-Host "`nStarting Redis Session API server…" -ForegroundColor Green
-$backendArgs = @("-NoExit", "-Command", $Backend.StartCmd)
-try {
-  Start-Process -FilePath "powershell" -ArgumentList $backendArgs -WorkingDirectory $Backend.WorkDir | Out-Null
-  Write-Host "Waiting for Redis API server to be ready..." -ForegroundColor Yellow
-  Start-Sleep -Seconds 2
-  [void](Wait-HttpReady -Url $Backend.HealthUrl -TimeoutSeconds 10)
-} catch {
-  Write-Host "Failed to start Redis API server (will use localStorage fallback)." -ForegroundColor Yellow
-}
-
-# =========================
 # 3) START FRONTEND
 # =========================
+# Note: Redis Session API server is disabled - using localStorage for sessions
+#       Generation results persist to PostgreSQL via StoryTeller API
 Write-Host "`nStarting StoryArt frontend…" -ForegroundColor Green
 $frontendArgs = @("-NoExit", "-Command", $Frontend.StartCmd)
 try {
   Start-Process -FilePath "powershell" -ArgumentList $frontendArgs -WorkingDirectory $Frontend.WorkDir | Out-Null
-} catch {
+}
+catch {
   Write-Host "Failed to start StoryArt frontend process." -ForegroundColor Red
 }
 
@@ -301,18 +333,20 @@ try {
 # =========================
 if (-not $NoBrowser) {
   Open-BrowserTempProfile -Url $OpenUrl -Edge:$UseEdge
-} else {
+}
+else {
   Write-Host "Browser launch skipped (-NoBrowser)" -ForegroundColor Yellow
 }
 
 Write-Host "`nStoryArt development environment started:" -ForegroundColor Green
 Write-Host ("  Frontend: {0}" -f $OpenUrl) -ForegroundColor Cyan
-Write-Host ("  Backend API: http://localhost:{0}" -f $Backend.Port) -ForegroundColor Cyan
-Write-Host ("="*64) -ForegroundColor DarkCyan
+Write-Host "  Sessions: localStorage (browser)" -ForegroundColor Cyan
+Write-Host "  Results:  PostgreSQL (via StoryTeller API)" -ForegroundColor Cyan
+Write-Host ("=" * 64) -ForegroundColor DarkCyan
 
 Write-Host "`nDevelopment Tips:" -ForegroundColor Yellow
 Write-Host "  - Vite dev server will auto-reload on file changes" -ForegroundColor White
-Write-Host "  - Check the terminal window for any startup errors" -ForegroundColor White
+Write-Host "  - Session data persists in browser localStorage" -ForegroundColor White
 Write-Host "  - Use Ctrl+C in the terminal to stop the server" -ForegroundColor White
 Write-Host "  - Fresh browser profile prevents cache issues" -ForegroundColor White
 
