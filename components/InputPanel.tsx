@@ -15,34 +15,34 @@ const DatabaseContextIndicator: React.FC<{
     locations: 0,
     artifacts: 0,
     characterContexts: 0,
-    tacticalOverrides: 0
+    characterOverrides: 0
   });
 
   useEffect(() => {
     if (retrievalMode === 'database' && episodeContext && !contextError && !isContextFetching) {
       try {
         const context = JSON.parse(episodeContext);
-        
+
         // Analyze context quality based on structure
         const locations = context.episode?.scenes?.length || 0;
-        const artifacts = context.episode?.scenes?.reduce((total: number, scene: any) => 
+        const artifacts = context.episode?.scenes?.reduce((total: number, scene: any) =>
           total + (scene.location?.artifacts?.length || 0), 0) || 0;
-        
+
         // Characters are nested in scenes, and location_context is a single object (not array)
-        const characterContexts = context.episode?.scenes?.reduce((total: number, scene: any) => 
+        const characterContexts = context.episode?.scenes?.reduce((total: number, scene: any) =>
           total + (scene.characters?.filter((char: any) => char.location_context).length || 0), 0) || 0;
-        
-        // Tactical overrides: check if characters have swarmui_prompt_override or lora_weight_adjustment
-        // (these indicate location-specific tactical customization)
-        const tacticalOverrides = context.episode?.scenes?.reduce((total: number, scene: any) => {
-          const charactersWithOverrides = scene.characters?.filter((char: any) => 
-            char.location_context?.swarmui_prompt_override || 
+
+        // Character overrides: check if characters have swarmui_prompt_override or lora_weight_adjustment
+        // (these indicate location-specific appearance customization)
+        const characterOverrides = context.episode?.scenes?.reduce((total: number, scene: any) => {
+          const charactersWithOverrides = scene.characters?.filter((char: any) =>
+            char.location_context?.swarmui_prompt_override ||
             char.location_context?.lora_weight_adjustment
           ).length || 0;
           return total + charactersWithOverrides;
         }, 0) || 0;
 
-        setContextMetrics({ locations, artifacts, characterContexts, tacticalOverrides });
+        setContextMetrics({ locations, artifacts, characterContexts, characterOverrides });
 
         // Determine quality level
         if (locations > 0 && artifacts > 0 && characterContexts > 0) {
@@ -54,11 +54,11 @@ const DatabaseContextIndicator: React.FC<{
         }
       } catch (error) {
         setContextQuality('none');
-        setContextMetrics({ locations: 0, artifacts: 0, characterContexts: 0, tacticalOverrides: 0 });
+        setContextMetrics({ locations: 0, artifacts: 0, characterContexts: 0, characterOverrides: 0 });
       }
     } else {
       setContextQuality('none');
-      setContextMetrics({ locations: 0, artifacts: 0, characterContexts: 0, tacticalOverrides: 0 });
+      setContextMetrics({ locations: 0, artifacts: 0, characterContexts: 0, characterOverrides: 0 });
     }
   }, [retrievalMode, episodeContext, contextError, isContextFetching]);
 
@@ -105,7 +105,7 @@ const DatabaseContextIndicator: React.FC<{
           <div>Locations: {contextMetrics.locations}</div>
           <div>Artifacts: {contextMetrics.artifacts}</div>
           <div>Character Contexts: {contextMetrics.characterContexts}</div>
-          <div>Tactical Overrides: {contextMetrics.tacticalOverrides}</div>
+          <div>Character Overrides: {contextMetrics.characterOverrides}</div>
         </div>
       ) : (
         <div className="text-xs opacity-75">
@@ -380,18 +380,15 @@ export const InputPanel: React.FC<InputPanelProps> = ({
       try {
         const context = JSON.parse(episodeContext);
         const scenes = context.episode?.scenes || [];
-        const tacticalScenes = scenes.filter((scene: any) => scene.location?.tactical_override_location);
-        
-        if (tacticalScenes.length > 0) {
-          return `Generate with ${tacticalScenes.length} tactical location${tacticalScenes.length > 1 ? 's' : ''}`;
-        } else if (scenes.length > 0) {
-          return `Generate with ${scenes.length} database location${scenes.length > 1 ? 's' : ''}`;
+
+        if (scenes.length > 0) {
+          return `Generate with ${scenes.length} database scene${scenes.length > 1 ? 's' : ''}`;
         }
       } catch (error) {
         // Fall back to default text if parsing fails
       }
     }
-    
+
     return 'Analyze Script';
   };
 
@@ -399,24 +396,20 @@ export const InputPanel: React.FC<InputPanelProps> = ({
     if (isLoading || retrievalMode === 'manual') {
       return null;
     }
-    
+
     if (retrievalMode === 'database' && episodeContext && !contextError) {
       try {
         const context = JSON.parse(episodeContext);
         const scenes = context.episode?.scenes || [];
-        const tacticalScenes = scenes.filter((scene: any) => scene.location?.tactical_override_location);
-        
-        if (tacticalScenes.length > 0) {
-          const overrideLocations = [...new Set(tacticalScenes.map((scene: any) => scene.location.tactical_override_location))];
-          return `Using ${overrideLocations.join(', ')} overrides`;
-        } else if (scenes.length > 0) {
+
+        if (scenes.length > 0) {
           return 'Using database context';
         }
       } catch (error) {
         // Fall back to default text if parsing fails
       }
     }
-    
+
     return null;
   };
 

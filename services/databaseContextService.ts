@@ -21,7 +21,6 @@ import {
   DatabaseArtifactData,
   DatabaseCharacterLocationData,
   DatabaseStoryData,
-  LocationOverrideMapping,
   EnhancedEpisodeContext,
   CharacterContext,
   SceneContext,
@@ -30,40 +29,14 @@ import {
   CharacterLocationContext,
   CharacterAppearance
 } from '../types';
-import { resolveSceneLocation, applyTacticalOverrides, generateLocationPromptFragments } from './roadmapService';
+import { resolveSceneLocation, generateLocationPromptFragments } from './roadmapService';
 
 // Note: dotenv.config() is already called above in the Node.js environment check
 // No need to call it again here
 
-// Location override mapping for tactical appearances
-const locationOverrideMapping: LocationOverrideMapping = {
-  // FIELD LOCATIONS - Tactical gear, tactical bun
-  "Atlanta Emergency Zone": "Atlanta Emergency Zone",           // Direct match
-  "NHIA Facility 7": "Atlanta Emergency Zone",                  // Tactical override
-  "Underground Facility Alpha": "Atlanta Emergency Zone",       // Tactical override
-  "Military Black Site": "Atlanta Emergency Zone",              // Tactical override
-  "Derelict Warehouse": "Atlanta Emergency Zone",               // Tactical override
-  "General Location - Dangerous Terrain": "Atlanta Emergency Zone", // Tactical override
-  "General Location - Urban Ruins": "Atlanta Emergency Zone",   // Tactical override
-  "General Location - Decommissioned Outpost": "Atlanta Emergency Zone", // Tactical override
-  "Derelict Medical Clinic": "Atlanta Emergency Zone",          // Tactical override - Episode 2
-  "General Location - Derelict Medical Clinic": "Atlanta Emergency Zone", // Tactical override - Episode 2
-  
-  // OFFICE LOCATIONS - Business casual futuristic
-  "OmniGen HQ": "Office Professional",                          // Corporate headquarters
-  "Dr. Chen's Enhancement Facility": "Office Professional",     // Corporate lab
-  "Archives Level 4": "Office Professional",                   // Corporate archive
-  "Medical Lab": "Office Professional",                        // Corporate medical
-  "Radiology Wing": "Office Professional",                     // Corporate medical
-  "Mobile Medical Base": "Office Professional",                // Corporate mobile
-  
-  // SAFEHOUSE LOCATIONS - Casual, sexy, relaxed
-  "Dan's Safehouse": "Safehouse Casual",                       // Direct match
-  "Rumored Safe Haven": "Safehouse Casual",                    // Safe haven
-  
-  // SPECIAL LOCATIONS - Unique styling
-  "Ghost's Digital Lair": "Ghost Digital"                      // Digital/tech environment
-};
+// REMOVED: locationOverrideMapping - this was broken legacy code that mapped to non-existent locations
+// Character appearances are now driven entirely by the Episode Context JSON which contains
+// location-specific character_appearances with swarmui_prompt_override for each scene
 
 // Database connection configuration
 // Support both Vite (import.meta.env) and Node.js (process.env) environments
@@ -256,8 +229,7 @@ export async function generateEnhancedEpisodeContext(
             key_features: '[]',
             visual_reference_url: '',
             significance_level: 'medium',
-            artifacts: [],
-            tactical_override_location: ''
+            artifacts: []
           },
           character_appearances: []
         }))
@@ -340,7 +312,6 @@ export async function generateEnhancedEpisodeContext(
         );
 
         const location = locationResolution.locationData;
-        const tacticalOverride = locationResolution.tacticalOverride;
 
         if (!location) {
           console.warn(`No database location found for scene ${scene.scene_number}`);
@@ -362,8 +333,7 @@ export async function generateEnhancedEpisodeContext(
               key_features: scene.location?.key_features || '',
               visual_reference_url: scene.location?.visual_reference_url || '',
               significance_level: scene.location?.significance_level || '',
-              artifacts: scene.location?.artifacts || [],
-              tactical_override_location: tacticalOverride || ''
+              artifacts: scene.location?.artifacts || []
             },
             character_appearances: []
           };
@@ -380,13 +350,8 @@ export async function generateEnhancedEpisodeContext(
           scene_specific: artifact.scene_specific
         }));
 
-        // Apply tactical overrides to character appearances
-        const tacticalCharacterAppearances = applyTacticalOverrides(
-          locationResolution.characterAppearances,
-          tacticalOverride
-        );
-
-        const characterAppearances: CharacterAppearance[] = tacticalCharacterAppearances.map(context => ({
+        // Map character appearances directly from the resolved location
+        const characterAppearances: CharacterAppearance[] = locationResolution.characterAppearances.map(context => ({
           character_name: context.character_name,
           location_context: {
             location_name: context.location_name,
@@ -396,12 +361,11 @@ export async function generateEnhancedEpisodeContext(
             swarmui_prompt_override: context.swarmui_prompt_override,
             temporal_context: context.temporal_context,
             lora_weight_adjustment: context.lora_weight_adjustment
-          },
-          tactical_override_applied: !!tacticalOverride
+          }
         }));
 
         // Generate location-specific prompt fragments
-        const locationPromptFragments = generateLocationPromptFragments(location, tacticalOverride);
+        const locationPromptFragments = generateLocationPromptFragments(location);
 
         return {
           scene_number: scene.scene_number,
@@ -421,8 +385,7 @@ export async function generateEnhancedEpisodeContext(
             key_features: location.key_features,
             visual_reference_url: location.visual_reference_url,
             significance_level: location.significance_level,
-            artifacts,
-            tactical_override_location: tacticalOverride || ''
+            artifacts
           },
           character_appearances: characterAppearances
         };
@@ -448,8 +411,7 @@ export async function generateEnhancedEpisodeContext(
             key_features: scene.location?.key_features || '',
             visual_reference_url: scene.location?.visual_reference_url || '',
             significance_level: scene.location?.significance_level || '',
-            artifacts: scene.location?.artifacts || [],
-            tactical_override_location: ''
+            artifacts: scene.location?.artifacts || []
           },
           character_appearances: []
         };
@@ -475,10 +437,8 @@ export async function generateEnhancedEpisodeContext(
   }
 }
 
-// Utility function to get location override mapping
-export function getLocationOverrideMapping(): LocationOverrideMapping {
-  return locationOverrideMapping;
-}
+// REMOVED: getLocationOverrideMapping() - no longer needed
+// Character appearances are now driven by Episode Context JSON
 
 // Utility function to clear cache
 export function clearDatabaseCache(): void {

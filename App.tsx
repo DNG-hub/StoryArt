@@ -327,8 +327,7 @@ function App() {
               artifact_type: artifact.type || artifact.artifact_type || 'prop',
               always_present: artifact.always_present || false,
               scene_specific: artifact.scene_specific !== false
-            })) || [],
-            tactical_override_location: contextScene.location.tactical_override_location || ''
+            })) || []
           } : {
             id: `scene-${scene.sceneNumber}-fallback`,
             name: 'Location Not Available',
@@ -342,8 +341,7 @@ function App() {
             key_features: '[]',
             visual_reference_url: '',
             significance_level: 'medium',
-            artifacts: [],
-            tactical_override_location: ''
+            artifacts: []
           },
           character_appearances: contextScene?.character_appearances || [],
           characters_present: contextScene?.characters_present || contextScene?.characters || [],
@@ -540,8 +538,19 @@ function App() {
           const data = response.data;
           // Only restore if we have actual data (not just defaults)
           if (data.scriptText && data.scriptText !== DEFAULT_SCRIPT) {
-            setScriptText(data.scriptText);
-            if (data.episodeContext) setEpisodeContext(data.episodeContext);
+            // Only restore scriptText and episodeContext if:
+            // 1. We're in Manual mode, OR
+            // 2. We're in Database mode but no episode is selected
+            // This prevents overwriting database-loaded values when an episode is selected
+            const shouldRestoreScriptAndContext = 
+              retrievalMode === 'manual' || 
+              (retrievalMode === 'database' && selectedEpisodeNumber === null);
+            
+            if (shouldRestoreScriptAndContext) {
+              setScriptText(data.scriptText);
+              if (data.episodeContext) setEpisodeContext(data.episodeContext);
+            }
+            
             if (data.storyUuid) {
               const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
               if (uuidRegex.test(data.storyUuid)) {
@@ -704,8 +713,19 @@ function App() {
 
     if (response.success && response.data) {
       const data = response.data;
-      setScriptText(data.scriptText);
-      setEpisodeContext(data.episodeContext);
+      
+      // Only restore scriptText and episodeContext if:
+      // 1. We're in Manual mode, OR
+      // 2. We're in Database mode but no episode is selected
+      // This prevents overwriting database-loaded values when an episode is selected
+      const shouldRestoreScriptAndContext = 
+        retrievalMode === 'manual' || 
+        (retrievalMode === 'database' && selectedEpisodeNumber === null);
+      
+      if (shouldRestoreScriptAndContext) {
+        setScriptText(data.scriptText);
+        setEpisodeContext(data.episodeContext);
+      }
       
       // Validate UUID from restored session
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -746,8 +766,19 @@ function App() {
 
       if (response.success && response.data) {
         const data = response.data;
-        setScriptText(data.scriptText);
-        setEpisodeContext(data.episodeContext);
+        
+        // Only restore scriptText and episodeContext if:
+        // 1. We're in Manual mode, OR
+        // 2. We're in Database mode but no episode is selected
+        // This prevents overwriting database-loaded values when an episode is selected
+        const shouldRestoreScriptAndContext = 
+          retrievalMode === 'manual' || 
+          (retrievalMode === 'database' && selectedEpisodeNumber === null);
+        
+        if (shouldRestoreScriptAndContext) {
+          setScriptText(data.scriptText);
+          setEpisodeContext(data.episodeContext);
+        }
         
         // Validate UUID from restored session
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

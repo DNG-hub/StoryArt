@@ -161,7 +161,6 @@ export interface LocationContext {
   visual_reference_url: string;     // From location_arcs
   significance_level: string;       // From location_arcs
   artifacts: ArtifactContext[];     // Enhanced with database data
-  tactical_override_location: string; // NEW: Mapped tactical location
 }
 
 export interface ArtifactContext {
@@ -176,7 +175,6 @@ export interface ArtifactContext {
 export interface CharacterAppearance {
   character_name: string;
   location_context: CharacterLocationContext; // Matched to scene location
-  tactical_override_applied: boolean;          // NEW: Whether tactical override used
 }
 
 // Database service interfaces
@@ -242,10 +240,7 @@ export interface StoryContextData {
   core_themes: string;     // Thematic elements for visual symbolism (150-300 chars recommended)
 }
 
-// Location override mapping for tactical appearances
-export interface LocationOverrideMapping {
-  [locationName: string]: string;
-}
+// REMOVED: LocationOverrideMapping - character appearances now come directly from Episode Context JSON
 
 // Retrieval mode type
 export type RetrievalMode = 'manual' | 'database';

@@ -1,10 +1,11 @@
 // services/roadmapService.ts
+// Simplified roadmap service - character appearances come from Episode Context JSON
+// No phantom location mappings - the Episode Context contains all location-specific data
+
 import {
   DatabaseLocationData,
-  DatabaseCharacterLocationData,
-  LocationOverrideMapping
+  DatabaseCharacterLocationData
 } from '../types';
-import { getLocationOverrideMapping } from './databaseContextService';
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
 
@@ -44,8 +45,6 @@ export interface RoadmapSceneData {
   scene_number: number;
   location_name: string;
   location_type: string;
-  tactical_override_applied: boolean;
-  override_location: string;
   // Extended fields from database
   scene_title?: string;
   scene_summary?: string;
@@ -59,7 +58,6 @@ export interface RoadmapSceneData {
 export interface LocationResolutionResult {
   originalLocation: string;
   resolvedLocation: string;
-  tacticalOverride: string | null;
   characterAppearances: DatabaseCharacterLocationData[];
   locationData: DatabaseLocationData | null;
 }
@@ -99,28 +97,7 @@ function normalizeLocationName(locationName: string | null): string {
 }
 
 /**
- * Determine tactical override based on location name
- * Uses the location override mapping from databaseContextService
- */
-function determineTacticalOverride(locationName: string, overrideMapping: LocationOverrideMapping): string | null {
-  const normalizedName = normalizeLocationName(locationName);
-
-  // Check if this location has a tactical override
-  if (overrideMapping[normalizedName]) {
-    return overrideMapping[normalizedName];
-  }
-
-  // Check the original name too
-  if (overrideMapping[locationName]) {
-    return overrideMapping[locationName];
-  }
-
-  return null;
-}
-
-/**
  * Query the actual roadmap_scenes table from the database
- * This replaces the mock data implementation
  */
 async function getRoadmapScenesData(storyId: string, episodeNumber: number): Promise<RoadmapSceneData[]> {
   const cacheKey = `roadmap_${storyId}_${episodeNumber}`;
@@ -164,14 +141,10 @@ async function getRoadmapScenesData(storyId: string, episodeNumber: number): Pro
       return [];
     }
 
-    // Get location override mapping for tactical override determination
-    const overrideMapping = getLocationOverrideMapping();
-
     // Transform database rows to RoadmapSceneData format
     const roadmapData: RoadmapSceneData[] = result.rows.map((row: any) => {
       const locationName = row.location_name || (row.locations && row.locations[0]) || 'Unknown Location';
       const normalizedLocation = normalizeLocationName(locationName);
-      const tacticalOverride = determineTacticalOverride(locationName, overrideMapping);
 
       return {
         scene_id: row.scene_id,
@@ -179,8 +152,6 @@ async function getRoadmapScenesData(storyId: string, episodeNumber: number): Pro
         scene_number: row.scene_number,
         location_name: normalizedLocation,
         location_type: locationName.startsWith('General Location') ? 'GENERAL' : 'SPECIFIC',
-        tactical_override_applied: tacticalOverride !== null,
-        override_location: tacticalOverride || '',
         // Extended fields
         scene_title: row.scene_title,
         scene_summary: row.scene_summary,
@@ -193,7 +164,7 @@ async function getRoadmapScenesData(storyId: string, episodeNumber: number): Pro
 
     console.log(`Found ${roadmapData.length} roadmap scenes for episode ${episodeNumber}`);
     roadmapData.forEach(scene => {
-      console.log(`  Scene ${scene.scene_number}: ${scene.location_name} (override: ${scene.override_location || 'none'})`);
+      console.log(`  Scene ${scene.scene_number}: ${scene.location_name}`);
     });
 
     setCachedData(cacheKey, roadmapData);
@@ -206,7 +177,10 @@ async function getRoadmapScenesData(storyId: string, episodeNumber: number): Pro
   }
 }
 
-// Resolve location for a specific scene
+/**
+ * Resolve location for a specific scene
+ * Character appearances are matched by the actual location name from the database
+ */
 export async function resolveSceneLocation(
   storyId: string,
   episodeNumber: number,
@@ -228,36 +202,26 @@ export async function resolveSceneLocation(
       return {
         originalLocation: 'Unknown Location',
         resolvedLocation: 'Unknown Location',
-        tacticalOverride: null,
         characterAppearances: [],
         locationData: null
       };
     }
 
-    // Get location override mapping
-    const locationOverrideMapping = getLocationOverrideMapping();
-
-    // Determine tactical override (already computed in getRoadmapScenesData, but check mapping too)
-    const tacticalOverride = roadmapScene.tactical_override_applied
-      ? roadmapScene.override_location
-      : locationOverrideMapping[roadmapScene.location_name] || null;
-
     // Find matching location data with flexible matching
-    const locationInfo = findMatchingLocation(roadmapScene.location_name, locationData, tacticalOverride);
+    const locationInfo = findMatchingLocation(roadmapScene.location_name, locationData);
 
-    // Find character appearances for this location (with flexible matching)
+    // Find character appearances for this location (direct match by location name)
     const characterAppearances = characterLocationData.filter(charLoc => {
       const charLocNormalized = normalizeLocationName(charLoc.location_name);
       return charLocNormalized === roadmapScene.location_name ||
-             charLoc.location_name === roadmapScene.location_name ||
-             charLocNormalized === tacticalOverride ||
-             charLoc.location_name === tacticalOverride;
+             charLoc.location_name === roadmapScene.location_name;
     });
+
+    console.log(`Scene ${sceneNumber} at "${roadmapScene.location_name}": found ${characterAppearances.length} character appearance(s)`);
 
     return {
       originalLocation: roadmapScene.location_name,
-      resolvedLocation: tacticalOverride || roadmapScene.location_name,
-      tacticalOverride,
+      resolvedLocation: roadmapScene.location_name,
       characterAppearances,
       locationData: locationInfo || null
     };
@@ -274,18 +238,11 @@ export async function resolveSceneLocation(
  */
 function findMatchingLocation(
   locationName: string,
-  locationData: DatabaseLocationData[],
-  tacticalOverride: string | null
+  locationData: DatabaseLocationData[]
 ): DatabaseLocationData | null {
   // Try exact match first
   let match = locationData.find(loc => loc.name === locationName);
   if (match) return match;
-
-  // Try tactical override location
-  if (tacticalOverride) {
-    match = locationData.find(loc => loc.name === tacticalOverride);
-    if (match) return match;
-  }
 
   // Try case-insensitive match
   const lowerName = locationName.toLowerCase();
@@ -331,30 +288,9 @@ export async function getEpisodeRoadmapScenes(
   return await getRoadmapScenesData(storyId, episodeNumber);
 }
 
-// Apply tactical overrides to character appearances
-export function applyTacticalOverrides(
-  characterAppearances: DatabaseCharacterLocationData[],
-  tacticalOverride: string | null
-): DatabaseCharacterLocationData[] {
-  if (!tacticalOverride) {
-    return characterAppearances;
-  }
-
-  // Apply tactical override to character appearances
-  return characterAppearances.map(appearance => ({
-    ...appearance,
-    location_name: tacticalOverride,
-    swarmui_prompt_override: appearance.swarmui_prompt_override?.replace(
-      appearance.location_name,
-      tacticalOverride
-    ) || ''
-  }));
-}
-
-// Generate location-specific prompt fragments
+// Generate location-specific prompt fragments from location data
 export function generateLocationPromptFragments(
-  locationData: DatabaseLocationData | null,
-  tacticalOverride: string | null
+  locationData: DatabaseLocationData | null
 ): string[] {
   if (!locationData) {
     return [];
@@ -370,11 +306,6 @@ export function generateLocationPromptFragments(
   // Add atmosphere
   if (locationData.atmosphere) {
     fragments.push(locationData.atmosphere);
-  }
-
-  // Add tactical override context
-  if (tacticalOverride) {
-    fragments.push(`tactical environment: ${tacticalOverride}`);
   }
 
   // Add geographical context

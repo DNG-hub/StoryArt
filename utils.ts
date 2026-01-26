@@ -134,7 +134,14 @@ export function applyLoraTriggerSubstitution(
     if (!character_name || !base_trigger) {
       return; // Skip invalid entries
     }
-    
+
+    // CRITICAL: Check if the prompt already contains this LORA trigger
+    // If it does, the prompt came from a database swarmui_prompt_override and should NOT be modified
+    if (substituted.includes(base_trigger)) {
+      console.log(`LORA Substitution: Skipping "${character_name}" - trigger "${base_trigger}" already present in prompt (likely from database override)`);
+      return; // Skip this character - prompt already has the trigger
+    }
+
     // Build list of all names to match, prioritizing full name over aliases
     // This ensures "Catherine Mitchell" is replaced before "Cat" to avoid partial matches
     const allNames = [character_name, ...aliases].filter(name => name && name.trim().length > 0);
@@ -181,9 +188,9 @@ export function applyLoraTriggerSubstitution(
       // Pattern 3: Name with quote on one side (handles "Catherine or Cat")
       const pattern3 = `["']${escapedName}\\b|\\b${escapedName}["']`;
       
-      // Pattern 4: Case-insensitive match without word boundaries (more aggressive)
-      // This catches names that might be part of other words or have punctuation
-      const pattern4 = escapedName;
+      // Pattern 4: Case-insensitive match WITH word boundaries
+      // Fixed: Added word boundaries to prevent matching "Cat" inside "Catches"
+      const pattern4 = `\\b${escapedName}\\b`;
       
       // Try patterns in order
       const patterns: Array<{ pattern: string; removeQuotes: boolean; description: string }> = [
