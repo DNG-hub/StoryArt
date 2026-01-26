@@ -193,66 +193,6 @@ const CLOTHING_SEGMENT_MAP: Array<{
 ];
 
 /**
- * Gear fragment definitions for Aegis suit system.
- * Used for beat-level auto-detection of helmet states and equipment.
- */
-const GEAR_FRAGMENTS = {
-    // Helmet states
-    helmet_off: 'Wraith tactical helmet mag-locked to hip',
-    helmet_visor_up: 'wearing matte black Wraith tactical helmet with raised transparent visor exposing face, reflective black visor surface, angular aggressive design with side-mounted sensors',
-    helmet_visor_down: 'wearing matte black Wraith tactical helmet with reflective black visor fully down concealing face, angular aggressive helmet design with side-mounted sensors',
-    helmet_hud_active: 'wearing matte black Wraith tactical helmet with reflective black visor displaying holographic HUD elements, glowing tactical data visible on visor interior',
-
-    // Character-specific loadouts
-    cat_loadout: 'Wraith pistol in thigh holster, compact medical kit on utility belt',
-    daniel_loadout: 'M4 carbine on tactical sling, Wraith pistol in chest holster',
-
-    // Base suits - mesh/armor hybrid design
-    cat_aegis_suit: 'ultra-tight compression black tactical bodysuit with semi-transparent mesh base layer, molded armored bust panels with hexagonal pattern and blue LED underglow, soft blue light pulsing from seams, compression leggings with contoured thigh panels, integrated utility belt with illuminated controls, forearm gauntlets with multicolor LEDs, high collar with front zipper, sleek aerodynamic body-contouring silhouette',
-    daniel_aegis_suit: 'ultra-tight compression black tactical bodysuit with semi-transparent mesh base layer, molded chest armor plates with hexagonal pattern and blue LED underglow, soft blue light pulsing from seams, compression fit contouring muscular frame, integrated utility belt with illuminated controls, forearm gauntlets with multicolor LEDs, high collar with front zipper, sleek aerodynamic body-contouring silhouette'
-};
-
-/**
- * Detect helmet state from beat narrative text.
- * Returns the appropriate helmet fragment or null if no clear indicator.
- */
-function detectHelmetState(beatText: string): string | null {
-    const lower = beatText.toLowerCase();
-
-    // Explicit helmet removal
-    if (lower.includes('removed helmet') || lower.includes('took off helmet') ||
-        lower.includes('helmet off') || lower.includes('pulled off') ||
-        lower.includes('without helmet') || lower.includes('bare head')) {
-        return GEAR_FRAGMENTS.helmet_off;
-    }
-
-    // HUD active - looking at HUD display
-    if (lower.includes('hud') || lower.includes('display showed') ||
-        lower.includes('readout') || lower.includes('targeting') ||
-        lower.includes('scanner') || lower.includes('thermal') ||
-        lower.includes('night vision active')) {
-        return GEAR_FRAGMENTS.helmet_hud_active;
-    }
-
-    // Visor up - face visible, speaking, eating, etc.
-    if (lower.includes('visor up') || lower.includes('visor raised') ||
-        lower.includes('lifted visor') || lower.includes('retracted visor') ||
-        lower.includes('face visible') || lower.includes('eyes met') ||
-        lower.includes('looked into') || lower.includes('eye contact')) {
-        return GEAR_FRAGMENTS.helmet_visor_up;
-    }
-
-    // Visor down - tactical, concealed, breach
-    if (lower.includes('visor down') || lower.includes('visor snapped') ||
-        lower.includes('sealed helmet') || lower.includes('face concealed') ||
-        lower.includes('breach') || lower.includes('combat ready')) {
-        return GEAR_FRAGMENTS.helmet_visor_down;
-    }
-
-    return null; // No clear indicator - use scene default
-}
-
-/**
  * Detect clothing items in description and generate corresponding segment tags.
  * @param clothingDescription - The character's clothing description from Episode Context
  * @returns Array of segment tags to append to prompt (before YOLO face segment)
@@ -590,6 +530,16 @@ photo of [TRIGGER] [AGE] [PHYSICAL], [CLOTHING], [ACTION] in [LOCATION], [LIGHTI
 ${episodeContextSection}
 **FIELD MAPPING (from Episode Context JSON):**
 
+**CHARACTER VISUAL (UNIFIED APPROACH):**
+
+FIRST, check for \`swarmui_prompt_override\`:
+- Find in: \`character.location_context.swarmui_prompt_override\`
+- If present and non-empty, this is the COMPLETE character visual prompt
+- Contains: LoRA trigger, physical traits, clothing/gear, hair, accessories
+- Use it DIRECTLY for [TRIGGER], [PHYSICAL], and [CLOTHING] combined
+
+ONLY if swarmui_prompt_override is empty/missing, build from individual fields:
+
 1. **[TRIGGER]**: Character's \`base_trigger\` (e.g., "HSCEIA man", "JRUMLV woman")
    - Find in: \`episode.scenes[N].characters[].base_trigger\` or \`episode.characters[].base_trigger\`
 
@@ -600,8 +550,7 @@ ${episodeContextSection}
    - Find in: \`character.location_context.physical_description\` or \`character.visual_description\`
 
 4. **[CLOTHING]**: Location-specific clothing (e.g., "wearing tactical vest over olive shirt")
-   - Find in: \`character.location_context.clothing_description\` (REQUIRED - this is scene-specific)
-   - CRITICAL: Use clothing_description, NOT generic visual_description
+   - Find in: \`character.location_context.clothing_description\`
 
 5. **[ACTION]**: What the character is DOING in this beat
    - Extract from: \`beat.beat_script_text\` - identify the primary visual action
@@ -686,30 +635,15 @@ photo of HSCEIA man 35 years old with short cropped white hair, fit athletic bui
 
 ---
 
-**AEGIS TACTICAL SUIT SYSTEM (Sci-Fi Aesthetic):**
+**TACTICAL GEAR (Database-Driven):**
 
-Both Cat (JRUMLV woman) and Daniel (HSCEIA man) wear Aegis tactical bodysuits in tactical scenes.
+Character gear (Aegis suits, helmets, loadouts) comes from \`swarmui_prompt_override\`.
+The database provides complete, pre-assembled gear descriptions - use them directly.
 
-**Cat's Aegis Suit (Mesh + Armor Hybrid):**
-\`ultra-tight compression black tactical bodysuit with semi-transparent mesh base layer, molded armored bust panels with hexagonal pattern and blue LED underglow, soft blue light pulsing from seams, compression leggings with contoured thigh panels, integrated utility belt with illuminated controls, forearm gauntlets with multicolor LEDs, high collar with front zipper, Wraith pistol in thigh holster, compact medical kit on belt, sleek aerodynamic body-contouring silhouette\`
-
-**Daniel's Aegis Suit (Mesh + Armor Hybrid):**
-\`ultra-tight compression black tactical bodysuit with semi-transparent mesh base layer, molded chest armor plates with hexagonal pattern and blue LED underglow, soft blue light pulsing from seams, compression fit contouring muscular frame, integrated utility belt with illuminated controls, forearm gauntlets with multicolor LEDs, high collar with front zipper, M4 carbine on tactical sling, Wraith pistol in chest holster, sleek aerodynamic body-contouring silhouette\`
-
-**Key Suit Differences:**
-- **Cat:** Molded armored BUST PANELS (feminine), NO rifle, medical kit
-- **Daniel:** Molded CHEST ARMOR PLATES (masculine), M4 carbine, no medical kit
-
-**WRAITH HELMET STATES (Auto-Detect from Beat):**
-
-| Beat Contains | Helmet State | Prompt Fragment |
-|---------------|--------------|-----------------|
-| "removed helmet", "helmet off", "bare head" | OFF | \`Wraith tactical helmet mag-locked to hip\` |
-| "visor up", "face visible", "eyes met", "looked into" | VISOR UP | \`matte black Wraith helmet with raised visor exposing face, reflective black visor surface\` |
-| "visor down", "breach", "combat ready", "sealed" | VISOR DOWN | \`matte black Wraith helmet with reflective black visor fully down concealing face\` |
-| "HUD", "display", "readout", "targeting", "scanner" | HUD ACTIVE | \`matte black Wraith helmet with reflective black visor displaying holographic HUD elements\` |
-
-**CRITICAL: ALL visors are REFLECTIVE BLACK - never transparent or clear.**
+**HELMET STATE DETECTION:**
+- If \`swarmui_prompt_override\` contains helmet description, use it as-is
+- The database already determines the correct helmet state based on scene context
+- Only apply inference rules below if helmet state is ambiguous in the override
 
 **HAIR SUPPRESSION RULE:**
 - **HELMET ON (visor up, visor down, HUD active):** OMIT all hair descriptions (no ponytail, no hair color, no hair style). The helmet covers the hair.
