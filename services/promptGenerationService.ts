@@ -103,12 +103,36 @@ const CLOTHING_SEGMENT_MAP: Array<{
     creativity: number;
     description: string;
 }> = [
-    // === AEGIS TACTICAL SUIT (Sci-Fi) ===
+    // === AEGIS TACTICAL SUIT (Sci-Fi) - Updated mesh/armor hybrid ===
     {
-        keywords: ['aegis', 'bodysuit', 'aegis bodysuit', 'tactical bodysuit'],
-        segment: 'matte black tactical bodysuit hexagonal pattern',
+        keywords: ['aegis', 'tactical bodysuit', 'compression black tactical bodysuit'],
+        segment: 'ultra-tight compression black tactical bodysuit semi-transparent mesh',
         creativity: 0.4,
-        description: 'Aegis suit with hexagonal weave pattern, soft blue glow at seams'
+        description: 'Aegis suit with mesh base layer and armor panels'
+    },
+    {
+        keywords: ['molded armored bust panels', 'bust panels', 'armored bust'],
+        segment: 'molded armored bust panels with blue LED underglow',
+        creativity: 0.4,
+        description: 'Cat-specific molded chest armor with LED lighting'
+    },
+    {
+        keywords: ['molded chest armor plates', 'chest armor plates', 'chest plates'],
+        segment: 'molded chest armor plates with blue LED underglow',
+        creativity: 0.4,
+        description: 'Daniel-specific molded chest armor with LED lighting'
+    },
+    {
+        keywords: ['high collar', 'collar with front zipper', 'front zipper'],
+        segment: 'high collar tactical bodysuit front zipper',
+        creativity: 0.4,
+        description: 'High collar with front zipper detail'
+    },
+    {
+        keywords: ['forearm gauntlets', 'gauntlets with led', 'gauntlets with multicolor'],
+        segment: 'forearm gauntlets with multicolor LED indicators',
+        creativity: 0.4,
+        description: 'Tech gauntlets with LED displays'
     },
     // === WRAITH HELMET STATES ===
     {
@@ -180,11 +204,12 @@ const GEAR_FRAGMENTS = {
     helmet_hud_active: 'wearing matte black Wraith tactical helmet with reflective black visor displaying holographic HUD elements, glowing tactical data visible on visor interior',
 
     // Character-specific loadouts
-    cat_loadout: 'Wraith pistol in thigh holster, compact medical kit on utility belt, clean sleek silhouette',
-    daniel_loadout: 'black plate carrier with armor plating, M4 carbine on tactical sling, Wraith pistol in chest holster, multiple magazine pouches',
+    cat_loadout: 'Wraith pistol in thigh holster, compact medical kit on utility belt',
+    daniel_loadout: 'M4 carbine on tactical sling, Wraith pistol in chest holster',
 
-    // Base suits
-    aegis_base: 'skin-tight matte charcoal-black Aegis tactical bodysuit with hexagonal weave pattern, soft blue light pulsing from hexagonal seams'
+    // Base suits - mesh/armor hybrid design
+    cat_aegis_suit: 'ultra-tight compression black tactical bodysuit with semi-transparent mesh base layer, molded armored bust panels with hexagonal pattern and blue LED underglow, soft blue light pulsing from seams, compression leggings with contoured thigh panels, integrated utility belt with illuminated controls, forearm gauntlets with multicolor LEDs, high collar with front zipper, sleek aerodynamic body-contouring silhouette',
+    daniel_aegis_suit: 'ultra-tight compression black tactical bodysuit with semi-transparent mesh base layer, molded chest armor plates with hexagonal pattern and blue LED underglow, soft blue light pulsing from seams, compression fit contouring muscular frame, integrated utility belt with illuminated controls, forearm gauntlets with multicolor LEDs, high collar with front zipper, sleek aerodynamic body-contouring silhouette'
 };
 
 /**
@@ -665,15 +690,15 @@ photo of HSCEIA man 35 years old with short cropped white hair, fit athletic bui
 
 Both Cat (JRUMLV woman) and Daniel (HSCEIA man) wear Aegis tactical bodysuits in tactical scenes.
 
-**Base Suit Description:**
-\`skin-tight matte charcoal-black Aegis tactical bodysuit with hexagonal weave pattern, soft blue light pulsing from hexagonal seams\`
+**Cat's Aegis Suit (Mesh + Armor Hybrid):**
+\`ultra-tight compression black tactical bodysuit with semi-transparent mesh base layer, molded armored bust panels with hexagonal pattern and blue LED underglow, soft blue light pulsing from seams, compression leggings with contoured thigh panels, integrated utility belt with illuminated controls, forearm gauntlets with multicolor LEDs, high collar with front zipper, Wraith pistol in thigh holster, compact medical kit on belt, sleek aerodynamic body-contouring silhouette\`
 
-**Character-Specific Loadouts:**
-- **Cat (JRUMLV woman):** NOTHING over the suit - skin-tight Aegis bodysuit from head to toe. Wraith pistol in thigh holster, compact medical kit attached to utility belt. NO vest. NO plate carrier. NO rifle. Clean sleek silhouette.
-- **Daniel (HSCEIA man):** Black plate carrier with armor plating OVER Aegis suit, M4 carbine on tactical sling, Wraith pistol in chest holster, multiple magazine pouches on plate carrier.
+**Daniel's Aegis Suit (Mesh + Armor Hybrid):**
+\`ultra-tight compression black tactical bodysuit with semi-transparent mesh base layer, molded chest armor plates with hexagonal pattern and blue LED underglow, soft blue light pulsing from seams, compression fit contouring muscular frame, integrated utility belt with illuminated controls, forearm gauntlets with multicolor LEDs, high collar with front zipper, M4 carbine on tactical sling, Wraith pistol in chest holster, sleek aerodynamic body-contouring silhouette\`
 
-**UTILITY BELT (Both Characters):**
-Both wear a low-profile utility belt around waist. User may specify additional belt details (controls, status lights, interface panels) manually when needed.
+**Key Suit Differences:**
+- **Cat:** Molded armored BUST PANELS (feminine), NO rifle, medical kit
+- **Daniel:** Molded CHEST ARMOR PLATES (masculine), M4 carbine, no medical kit
 
 **WRAITH HELMET STATES (Auto-Detect from Beat):**
 
