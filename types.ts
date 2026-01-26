@@ -38,7 +38,11 @@ export interface SwarmUIPrompt {
   steps: number;
   cfgscale: number;
   seed: number;
-  // Add other SwarmUI specific parameters as needed
+  // Additional SwarmUI parameters (populated from Episode Context image_config)
+  sampler?: string;
+  scheduler?: string;
+  loras?: string;
+  loraweights?: string;
 }
 
 export interface BeatPrompts {
@@ -106,6 +110,26 @@ export interface EpisodeStyleConfig {
   verticalAspectRatio: string; // Now included for both long-form and marketing use cases
 }
 
+// Image generation configuration from database (stories.image_config)
+export interface ImageConfigPreset {
+  width: number;
+  height: number;
+}
+
+export interface ImageConfig {
+  model: string;
+  steps: number;
+  cfgscale: number;
+  sampler: string;
+  scheduler: string;
+  loras: string;
+  lora_weights: string;
+  presets: {
+    cinematic: ImageConfigPreset;
+    vertical: ImageConfigPreset;
+  };
+}
+
 // Database-driven interfaces for enhanced episode context
 export interface EnhancedEpisodeContext {
   episode: {
@@ -115,6 +139,7 @@ export interface EnhancedEpisodeContext {
     story_context: string;           // From stories table
     narrative_tone: string;         // From stories table
     core_themes: string;            // From stories table
+    image_config?: ImageConfig;     // SwarmUI settings from stories table
     characters: CharacterContext[]; // Enhanced with location-specific data
     scenes: SceneContext[];         // Enhanced with database context
   }

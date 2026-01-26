@@ -215,31 +215,107 @@ const RetrievalModeSwitch: React.FC<{
 const StyleConfigPanel: React.FC<{
   config: EpisodeStyleConfig;
   setConfig: (config: EpisodeStyleConfig) => void;
-}> = ({ config, setConfig }) => {
+  episodeContext?: string;
+  retrievalMode?: RetrievalMode;
+}> = ({ config, setConfig, episodeContext, retrievalMode }) => {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         setConfig({ ...config, [e.target.name]: e.target.value });
     }
 
+    // Extract image_config from Episode Context if available
+    const imageConfig = React.useMemo(() => {
+        if (episodeContext) {
+            try {
+                const parsed = JSON.parse(episodeContext);
+                return parsed.episode?.image_config || null;
+            } catch (e) {
+                return null;
+            }
+        }
+        return null;
+    }, [episodeContext]);
+
+    const isFromDatabase = retrievalMode === 'database' && imageConfig;
+
     return (
         <details className="bg-gray-900/50 border border-gray-700 rounded-lg" open>
             <summary className="px-4 py-3 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-800/50">
-                Episode Style Configuration
+                Image Generation Configuration
+                {isFromDatabase && (
+                    <span className="ml-2 text-xs text-green-400">(from database)</span>
+                )}
             </summary>
             <div className="p-4 border-t border-gray-700 space-y-4">
-                <div>
-                    <label htmlFor="model" className="block text-xs font-medium text-gray-400 mb-1">
-                        SwarmUI Model
-                    </label>
-                    <input
-                        type="text"
-                        id="model"
-                        name="model"
-                        value={config.model}
-                        onChange={handleChange}
-                        className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-xs text-gray-200 focus:ring-1 focus:ring-brand-blue focus:border-brand-blue"
-                        placeholder="e.g., flux1-dev-fp8"
-                    />
-                </div>
+                {imageConfig ? (
+                    /* Display image_config from Episode Context (read-only) */
+                    <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                                <span className="text-gray-500">Model:</span>
+                                <span className="ml-2 text-gray-200">{imageConfig.model}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">Steps:</span>
+                                <span className="ml-2 text-gray-200">{imageConfig.steps}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">CFG Scale:</span>
+                                <span className="ml-2 text-gray-200">{imageConfig.cfgscale}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">Scheduler:</span>
+                                <span className="ml-2 text-gray-200">{imageConfig.scheduler}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">Sampler:</span>
+                                <span className="ml-2 text-gray-200">{imageConfig.sampler}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">LoRAs:</span>
+                                <span className="ml-2 text-gray-200">{imageConfig.loras || 'none'}</span>
+                            </div>
+                        </div>
+                        <div className="border-t border-gray-700 pt-3">
+                            <div className="text-xs text-gray-400 mb-2">Presets:</div>
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                                <div className="bg-gray-800 rounded p-2">
+                                    <div className="text-gray-500 mb-1">Cinematic (16:9)</div>
+                                    <div className="text-gray-200">
+                                        {imageConfig.presets?.cinematic?.width || 1344} x {imageConfig.presets?.cinematic?.height || 768}
+                                    </div>
+                                </div>
+                                <div className="bg-gray-800 rounded p-2">
+                                    <div className="text-gray-500 mb-1">Vertical (9:16)</div>
+                                    <div className="text-gray-200">
+                                        {imageConfig.presets?.vertical?.width || 768} x {imageConfig.presets?.vertical?.height || 1344}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p className="text-xs text-gray-500 italic">
+                            Configuration loaded from database. Edit in pgAdmin or via API.
+                        </p>
+                    </div>
+                ) : (
+                    /* Fallback: Manual model input (original behavior) */
+                    <div>
+                        <label htmlFor="model" className="block text-xs font-medium text-gray-400 mb-1">
+                            SwarmUI Model
+                        </label>
+                        <input
+                            type="text"
+                            id="model"
+                            name="model"
+                            value={config.model}
+                            onChange={handleChange}
+                            className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-xs text-gray-200 focus:ring-1 focus:ring-brand-blue focus:border-brand-blue"
+                            placeholder="e.g., flux1-dev-fp8"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">
+                            Using fallback configuration. Add image_config to Episode Context for full control.
+                        </p>
+                    </div>
+                )}
             </div>
         </details>
     )
@@ -521,10 +597,12 @@ export const InputPanel: React.FC<InputPanelProps> = ({
         {/* AI Model Config */}
         <LLMProviderSelector selectedLLM={selectedLLM} onSelectedLLMChange={onSelectedLLMChange} />
 
-        {/* Style Config */}
-        <StyleConfigPanel 
-          config={styleConfig} 
-          setConfig={setStyleConfig} 
+        {/* Image Generation Config (from Episode Context or fallback) */}
+        <StyleConfigPanel
+          config={styleConfig}
+          setConfig={setStyleConfig}
+          episodeContext={episodeContext}
+          retrievalMode={retrievalMode}
         />
 
         {/* Episode Context Section */}

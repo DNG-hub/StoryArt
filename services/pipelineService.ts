@@ -96,13 +96,20 @@ export async function fetchPromptsFromRedis(
 
   const prompts: BeatPrompt[] = [];
 
+  console.log(`[Pipeline] ========== EXTRACTING PROMPTS FROM SESSION ==========`);
+  console.log(`[Pipeline] Episode: ${analyzedEpisode.episodeNumber} - ${analyzedEpisode.title}`);
+  console.log(`[Pipeline] Total scenes: ${analyzedEpisode.scenes.length}`);
+
   // Iterate through scenes and beats
   for (const scene of analyzedEpisode.scenes) {
     if (!scene.beats) continue;
 
+    console.log(`[Pipeline] --- Scene ${scene.sceneNumber}: ${scene.title} (${scene.beats.length} beats) ---`);
+
     for (const beat of scene.beats) {
       // Filter only NEW_IMAGE beats
       if (beat.imageDecision?.type !== 'NEW_IMAGE') {
+        console.log(`[Pipeline]   Beat ${beat.beatId}: SKIP (decision: ${beat.imageDecision?.type || 'none'})`);
         continue;
       }
 
@@ -117,6 +124,11 @@ export async function fetchPromptsFromRedis(
 
       // Add cinematic prompt if available
       if (beat.prompts.cinematic) {
+        const promptText = beat.prompts.cinematic.prompt;
+        console.log(`[Pipeline]   Beat ${beat.beatId}: NEW_IMAGE (cinematic)`);
+        console.log(`[Pipeline]     Prompt preview: "${promptText.substring(0, 150)}..."`);
+        console.log(`[Pipeline]     Full prompt length: ${promptText.length} chars`);
+
         prompts.push({
           beatId: beat.beatId,
           sceneNumber: scene.sceneNumber,
@@ -128,6 +140,10 @@ export async function fetchPromptsFromRedis(
 
       // Add vertical prompt if available
       if (beat.prompts.vertical) {
+        const promptText = beat.prompts.vertical.prompt;
+        console.log(`[Pipeline]   Beat ${beat.beatId}: NEW_IMAGE (vertical)`);
+        console.log(`[Pipeline]     Prompt preview: "${promptText.substring(0, 150)}..."`);
+
         prompts.push({
           beatId: beat.beatId,
           sceneNumber: scene.sceneNumber,
@@ -137,6 +153,19 @@ export async function fetchPromptsFromRedis(
         });
       }
     }
+  }
+
+  console.log(`[Pipeline] ========== TOTAL PROMPTS EXTRACTED: ${prompts.length} ==========`);
+
+  // DEBUG: Search for specific keywords to help debug prompt issues
+  const halterPrompts = prompts.filter(p => p.prompt.prompt.toLowerCase().includes('halter'));
+  if (halterPrompts.length > 0) {
+    console.log(`[Pipeline] ✅ Found ${halterPrompts.length} prompts containing "halter":`);
+    halterPrompts.forEach(p => {
+      console.log(`[Pipeline]   - Beat ${p.beatId}: "...${p.prompt.prompt.substring(0, 100)}..."`);
+    });
+  } else {
+    console.warn(`[Pipeline] ⚠️ NO prompts contain "halter" - this might indicate wrong data!`);
   }
 
   return prompts;
@@ -281,53 +310,35 @@ export async function generateImagesFromPrompts(
 
     try {
       // Generate images (default: 3 images per prompt)
-      console.log(`[Pipeline] Generating image ${i + 1}/${prompts.length} for beat ${prompt.beatId}`);
+      console.log(`[Pipeline] ========== GENERATING IMAGE ${i + 1}/${prompts.length} ==========`);
+      console.log(`[Pipeline] Beat: ${prompt.beatId} (Scene ${prompt.sceneNumber}, Format: ${prompt.format})`);
+      console.log(`[Pipeline] FULL PROMPT TEXT:`);
+      console.log(`[Pipeline] >>> ${prompt.prompt.prompt} <<<`);
+      console.log(`[Pipeline] Prompt length: ${prompt.prompt.prompt.length} chars`);
       
-      // Use explicit parameters (matching exact duplicate test config) - presets are unreliable
-      // Exact config: 1344x768, steps: 40, scheduler: simple, cfgscale: 1, sampler: euler
-      // Tested and verified - produces images matching manual generation
+      // Use parameters from prompt (populated from Episode Context image_config)
+      // Fallback to hardcoded defaults only if prompt doesn't have the values
+      // Priority: prompt values (from image_config) > format-specific defaults > hardcoded defaults
       const generationOptions: any = {
-        // Default to exact duplicate test config dimensions
-        width: 1344,
-        height: 768,
-        steps: 40,
-        scheduler: 'simple',
-        cfgscale: 1,
-        sampler: 'euler',
+        // Use prompt values as primary source (now populated from Episode Context image_config)
+        width: prompt.prompt.width || (prompt.format === 'vertical' ? 768 : 1344),
+        height: prompt.prompt.height || (prompt.format === 'vertical' ? 1344 : 768),
+        steps: prompt.prompt.steps || 40,
+        cfgscale: prompt.prompt.cfgscale !== undefined ? prompt.prompt.cfgscale : 1,
+        sampler: prompt.prompt.sampler || 'euler',
+        scheduler: prompt.prompt.scheduler || 'beta', // Default to 'beta' (from image_config default)
         automaticvae: true,
-        loras: 'gargan',
-        loraweights: '1',
+        loras: prompt.prompt.loras || 'gargan',
+        loraweights: prompt.prompt.loraweights || '1',
       };
 
-      // Override with format-specific dimensions if needed
-      if (prompt.format === 'vertical') {
-        generationOptions.width = 768;
-        generationOptions.height = 1344; // 9:16 vertical
-      } else if (prompt.format === 'cinematic') {
-        generationOptions.width = 1344;
-        generationOptions.height = 768; // 16:9 cinematic (manual frog config)
-      }
-
-      // Extract parameters from prompt if available (override defaults)
-      if (prompt.prompt.width && prompt.prompt.height) {
-        generationOptions.width = prompt.prompt.width;
-        generationOptions.height = prompt.prompt.height;
-      }
+      // Set model if available from prompt
       if (prompt.prompt.model) {
         generationOptions.model = prompt.prompt.model;
       }
-      if (prompt.prompt.steps) {
-        generationOptions.steps = prompt.prompt.steps;
-      }
-      if (prompt.prompt.cfgscale !== undefined) {
-        generationOptions.cfgscale = prompt.prompt.cfgscale;
-      }
-      if (prompt.prompt.scheduler) {
-        generationOptions.scheduler = prompt.prompt.scheduler;
-      }
-      if (prompt.prompt.sampler) {
-        generationOptions.sampler = prompt.prompt.sampler;
-      }
+
+      console.log(`[Pipeline] Using image_config values: ${generationOptions.width}x${generationOptions.height}, ` +
+        `steps=${generationOptions.steps}, cfgscale=${generationOptions.cfgscale}, scheduler=${generationOptions.scheduler}`);
       
       const result = await generateImages(
         prompt.prompt.prompt,
@@ -652,7 +663,7 @@ export async function processEpisodeCompletePipeline(
     }
 
     const analyzedEpisode: AnalyzedEpisode = sessionResponse.data.analyzedEpisode;
-    
+
     if (!analyzedEpisode) {
       throw new Error(
         `No analyzed episode data found in session.\n\n` +
@@ -662,6 +673,19 @@ export async function processEpisodeCompletePipeline(
         `3. Try re-analyzing the episode script\n` +
         `4. Check session data structure in Redis`
       );
+    }
+
+    console.log(`[Pipeline] ========== SESSION DATA LOADED ==========`);
+    console.log(`[Pipeline] Session timestamp: ${sessionTimestamp}`);
+    console.log(`[Pipeline] Episode: ${analyzedEpisode.episodeNumber} - ${analyzedEpisode.title}`);
+    console.log(`[Pipeline] Scenes count: ${analyzedEpisode.scenes?.length || 0}`);
+
+    // Log first beat prompt as sanity check
+    const firstScene = analyzedEpisode.scenes?.[0];
+    const firstBeat = firstScene?.beats?.find(b => b.imageDecision?.type === 'NEW_IMAGE' && b.prompts?.cinematic);
+    if (firstBeat) {
+      console.log(`[Pipeline] First NEW_IMAGE beat: ${firstBeat.beatId}`);
+      console.log(`[Pipeline] First prompt preview: "${firstBeat.prompts?.cinematic?.prompt?.substring(0, 200)}..."`);
     }
 
     // Fetch prompts from Redis
@@ -984,42 +1008,28 @@ export async function processSingleBeat(
       estimatedTimeRemaining,
     });
 
-    // Use explicit parameters (matching exact duplicate test config) - presets are unreliable
-    // Exact config: 1344x768, steps: 40, scheduler: simple, cfgscale: 1, sampler: euler
-    // Tested and verified - produces images matching manual generation
+    // Use parameters from prompt (populated from Episode Context image_config)
+    // Fallback to hardcoded defaults only if prompt doesn't have the values
     const generationOptions: any = {
-      // Default to exact duplicate test config dimensions
-      width: format === 'vertical' ? 768 : 1344,
-      height: format === 'vertical' ? 1344 : 768,
-      steps: 40,
-      scheduler: 'simple',
-      cfgscale: 1,
-      sampler: 'euler',
+      // Use prompt values as primary source (now populated from Episode Context image_config)
+      width: prompt.width || (format === 'vertical' ? 768 : 1344),
+      height: prompt.height || (format === 'vertical' ? 1344 : 768),
+      steps: prompt.steps || 40,
+      cfgscale: prompt.cfgscale !== undefined ? prompt.cfgscale : 1,
+      sampler: prompt.sampler || 'euler',
+      scheduler: prompt.scheduler || 'beta', // Default to 'beta' (from image_config default)
       automaticvae: true,
-      loras: 'gargan',
-      loraweights: '1',
+      loras: prompt.loras || 'gargan',
+      loraweights: prompt.loraweights || '1',
     };
 
-    // Override with parameters from prompt if available
-    if (prompt.width && prompt.height) {
-      generationOptions.width = prompt.width;
-      generationOptions.height = prompt.height;
-    }
+    // Set model if available from prompt
     if (prompt.model) {
       generationOptions.model = prompt.model;
     }
-    if (prompt.steps) {
-      generationOptions.steps = prompt.steps;
-    }
-    if (prompt.cfgscale !== undefined) {
-      generationOptions.cfgscale = prompt.cfgscale;
-    }
-    if (prompt.scheduler) {
-      generationOptions.scheduler = prompt.scheduler;
-    }
-    if (prompt.sampler) {
-      generationOptions.sampler = prompt.sampler;
-    }
+
+    console.log(`[Pipeline] Single beat using image_config values: ${generationOptions.width}x${generationOptions.height}, ` +
+      `steps=${generationOptions.steps}, cfgscale=${generationOptions.cfgscale}, scheduler=${generationOptions.scheduler}`);
     
     const generationResult = await generateImages(
       prompt.prompt,

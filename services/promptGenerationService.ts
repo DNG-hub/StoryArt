@@ -1,6 +1,6 @@
 // FIX: Corrected import path for Google GenAI SDK.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt } from '../types';
+import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig } from '../types';
 import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { getStoryContext } from './storyContextService';
 import { applyLoraTriggerSubstitution } from '../utils';
@@ -18,6 +18,79 @@ const swarmUIPromptSchema = {
     },
     required: ['prompt', 'model', 'width', 'height', 'steps', 'cfgscale', 'seed'],
 };
+
+/**
+ * Extract image_config from Episode Context JSON.
+ * Returns config from database if available, otherwise returns default values.
+ */
+function extractImageConfig(episodeContextJson: string): ImageConfig | null {
+    try {
+        const context = JSON.parse(episodeContextJson);
+        if (context.episode?.image_config) {
+            console.log('[ImageConfig] Using image_config from Episode Context');
+            return context.episode.image_config;
+        }
+    } catch (e) {
+        console.warn('[ImageConfig] Failed to parse Episode Context for image_config:', e);
+    }
+    return null;
+}
+
+/**
+ * Get generation parameters from image_config or environment variables.
+ * Priority: Episode Context image_config > Environment variables > Hardcoded defaults
+ */
+function getGenerationParams(imageConfig: ImageConfig | null, preset: 'cinematic' | 'vertical' = 'cinematic') {
+    // Environment variable helper
+    const getEnvVar = (key: string): string | undefined => {
+        if (typeof process !== 'undefined' && process.env) {
+            return process.env[key];
+        }
+        if (typeof import.meta !== 'undefined') {
+            try {
+                const env = import.meta.env;
+                if (env) return env[key];
+            } catch (e) {}
+        }
+        return undefined;
+    };
+
+    if (imageConfig) {
+        // Use image_config from database (via Episode Context)
+        const presetDimensions = imageConfig.presets[preset];
+        return {
+            model: imageConfig.model,
+            width: presetDimensions.width,
+            height: presetDimensions.height,
+            steps: imageConfig.steps,
+            cfgscale: imageConfig.cfgscale,
+            sampler: imageConfig.sampler,
+            scheduler: imageConfig.scheduler,
+            loras: imageConfig.loras,
+            loraweights: imageConfig.lora_weights,
+        };
+    }
+
+    // Fallback to environment variables
+    const width = preset === 'vertical'
+        ? parseInt(getEnvVar('SWARMUI_VERTICAL_WIDTH') || '768')
+        : parseInt(getEnvVar('SWARMUI_WIDTH') || '1344');
+    const height = preset === 'vertical'
+        ? parseInt(getEnvVar('SWARMUI_VERTICAL_HEIGHT') || '1344')
+        : parseInt(getEnvVar('SWARMUI_HEIGHT') || '768');
+
+    return {
+        model: getEnvVar('SWARMUI_MODEL') || 'flux1-dev-fp8',
+        width,
+        height,
+        steps: parseInt(getEnvVar('SWARMUI_STEPS') || '40'),
+        cfgscale: parseFloat(getEnvVar('SWARMUI_CFG_SCALE') || '1'),
+        sampler: getEnvVar('SWARMUI_SAMPLER') || 'euler',
+        scheduler: getEnvVar('SWARMUI_SCHEDULER') || 'beta',
+        loras: getEnvVar('SWARMUI_LORAS') || 'gargan',
+        loraweights: getEnvVar('SWARMUI_LORA_WEIGHTS') || '1',
+    };
+}
 
 // Response schema - only cinematic prompts are required for standard beat analysis (Phase C optimization)
 const responseSchema = {
@@ -98,6 +171,19 @@ async function generateSwarmUiPromptsWithGemini(
 
     onProgress?.(`Processing ${beatsForPrompting.length} NEW_IMAGE beats for prompt generation...`);
     console.log(`Processing ${beatsForPrompting.length} NEW_IMAGE beats for prompt generation`);
+
+    // Extract image_config from Episode Context (Phase 4 enhancement)
+    const imageConfig = extractImageConfig(episodeContextJson);
+    const cinematicParams = getGenerationParams(imageConfig, 'cinematic');
+    const verticalParams = getGenerationParams(imageConfig, 'vertical');
+
+    if (imageConfig) {
+        console.log(`[ImageConfig] Using database config: model=${imageConfig.model}, steps=${imageConfig.steps}, scheduler=${imageConfig.scheduler}`);
+        console.log(`[ImageConfig] Cinematic: ${cinematicParams.width}x${cinematicParams.height}`);
+        console.log(`[ImageConfig] Vertical: ${verticalParams.width}x${verticalParams.height}`);
+    } else {
+        console.log('[ImageConfig] No image_config in Episode Context, using environment/default values');
+    }
 
     // If we have too many beats, process them in batches to avoid token limits
     const BATCH_SIZE = 20; // Process 20 beats at a time
@@ -495,13 +581,16 @@ ${episodeContextSection}
 
             onProgress?.(`Sending batch ${batchIndex + 1} to Gemini API for prompt generation...`);
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3-flash-preview',
                 contents: batchContents,
                 config: {
                     systemInstruction,
                     responseMimeType: 'application/json',
                     responseSchema: responseSchema,
-                    temperature: 0.2,
+                    temperature: 1.0, // Gemini 3 Pro recommended default
+                    thinkingConfig: {
+                        thinkingLevel: 'low', // Faster responses for structured output
+                    },
                 },
             });
 
@@ -510,30 +599,36 @@ ${episodeContextSection}
             const batchResult = JSON.parse(jsonString) as any[];
             
             // Post-process: Ensure correct steps and FLUX-specific parameters (Phase C optimization)
+            // Now uses image_config from Episode Context when available (Phase 4 enhancement)
             const correctedBatch = batchResult.map(bp => {
-                // Ensure cinematic has correct values
+                // Ensure cinematic has correct values from image_config
                 const correctedCinematic = {
                     ...bp.cinematic,
-                    steps: 20, // Production standard: 20 (not 40 as previously)
-                    cfgscale: 1, // FLUX standard: 1 (not 7)
+                    width: cinematicParams.width,
+                    height: cinematicParams.height,
+                    steps: cinematicParams.steps,
+                    cfgscale: cinematicParams.cfgscale,
+                    model: cinematicParams.model,
                 };
 
                 // Handle optional vertical prompt (now optional in Phase C)
                 const correctedVertical = bp.vertical ? {
                     ...bp.vertical,
-                    width: verticalWidth,
-                    height: verticalHeight,
-                    steps: 20,
-                    cfgscale: 1,
+                    width: verticalParams.width,
+                    height: verticalParams.height,
+                    steps: verticalParams.steps,
+                    cfgscale: verticalParams.cfgscale,
+                    model: verticalParams.model,
                 } : undefined;
 
                 // Handle optional marketing vertical prompt (now optional in Phase C)
                 const correctedMarketingVertical = bp.marketingVertical ? {
                     ...bp.marketingVertical,
-                    width: verticalWidth,
-                    height: verticalHeight,
-                    steps: 20,
-                    cfgscale: 1,
+                    width: verticalParams.width,
+                    height: verticalParams.height,
+                    steps: verticalParams.steps,
+                    cfgscale: verticalParams.cfgscale,
+                    model: verticalParams.model,
                 } : undefined;
 
                 const corrected: BeatPrompts = {
@@ -543,19 +638,21 @@ ${episodeContextSection}
                     marketingVertical: correctedMarketingVertical,
                 };
 
-                // Log if values were corrected
-                if (bp.cinematic?.steps !== 20 || bp.cinematic?.cfgscale !== 1 ||
-                    (bp.vertical && (bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1)) ||
-                    (bp.marketingVertical && (bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1))) {
-                    console.log(`⚠️ Corrected steps/CFG for beat ${bp.beatId}:`);
-                    if (bp.cinematic?.steps !== 20 || bp.cinematic?.cfgscale !== 1) {
-                        console.log(`   Cinematic: steps ${bp.cinematic?.steps || 'missing'}→20, cfgscale ${bp.cinematic?.cfgscale || 'missing'}→1`);
+                // Log if values were corrected from AI response to image_config values
+                const expectedSteps = cinematicParams.steps;
+                const expectedCfgScale = cinematicParams.cfgscale;
+                if (bp.cinematic?.steps !== expectedSteps || bp.cinematic?.cfgscale !== expectedCfgScale ||
+                    (bp.vertical && (bp.vertical?.steps !== expectedSteps || bp.vertical?.cfgscale !== expectedCfgScale)) ||
+                    (bp.marketingVertical && (bp.marketingVertical?.steps !== expectedSteps || bp.marketingVertical?.cfgscale !== expectedCfgScale))) {
+                    console.log(`⚠️ Corrected steps/CFG for beat ${bp.beatId} to image_config values:`);
+                    if (bp.cinematic?.steps !== expectedSteps || bp.cinematic?.cfgscale !== expectedCfgScale) {
+                        console.log(`   Cinematic: steps ${bp.cinematic?.steps || 'missing'}→${expectedSteps}, cfgscale ${bp.cinematic?.cfgscale || 'missing'}→${expectedCfgScale}`);
                     }
-                    if (bp.vertical && (bp.vertical?.steps !== 20 || bp.vertical?.cfgscale !== 1)) {
-                        console.log(`   Vertical: steps ${bp.vertical?.steps || 'missing'}→20, cfgscale ${bp.vertical?.cfgscale || 'missing'}→1`);
+                    if (bp.vertical && (bp.vertical?.steps !== expectedSteps || bp.vertical?.cfgscale !== expectedCfgScale)) {
+                        console.log(`   Vertical: steps ${bp.vertical?.steps || 'missing'}→${expectedSteps}, cfgscale ${bp.vertical?.cfgscale || 'missing'}→${expectedCfgScale}`);
                     }
-                    if (bp.marketingVertical && (bp.marketingVertical?.steps !== 20 || bp.marketingVertical?.cfgscale !== 1)) {
-                        console.log(`   Marketing Vertical: steps ${bp.marketingVertical?.steps || 'missing'}→20, cfgscale ${bp.marketingVertical?.cfgscale || 'missing'}→1`);
+                    if (bp.marketingVertical && (bp.marketingVertical?.steps !== expectedSteps || bp.marketingVertical?.cfgscale !== expectedCfgScale)) {
+                        console.log(`   Marketing Vertical: steps ${bp.marketingVertical?.steps || 'missing'}→${expectedSteps}, cfgscale ${bp.marketingVertical?.cfgscale || 'missing'}→${expectedCfgScale}`);
                     }
                 }
 

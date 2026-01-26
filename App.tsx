@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 // import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom'; // Removed routing
 import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
@@ -425,6 +425,22 @@ function App() {
     cinematicAspectRatio: '16:9',
     verticalAspectRatio: '9:16',
   });
+
+  // Derive image_config from Episode Context (Phase 4 enhancement)
+  // This is used for display purposes - actual generation params come from Episode Context
+  const imageConfigFromContext = useMemo(() => {
+    try {
+      const parsed = JSON.parse(episodeContext);
+      const config = parsed.episode?.image_config;
+      if (config) {
+        console.log('[App] Using image_config from Episode Context:', config.model, config.presets);
+        return config;
+      }
+    } catch (e) {
+      // Expected for empty or invalid JSON
+    }
+    return null;
+  }, [episodeContext]);
 
 
   const [selectedLLM, setSelectedLLM] = useState<LLMProvider>('gemini'); // Default to Gemini as it's set as DEFAULT_AI_PROVIDER in .env
