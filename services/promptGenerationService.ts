@@ -92,6 +92,229 @@ function getGenerationParams(imageConfig: ImageConfig | null, preset: 'cinematic
     };
 }
 
+/**
+ * Clothing segment mapping for automatic segment tag generation.
+ * When clothing_description contains these keywords, append corresponding segment tags.
+ * Lower creativity (0.3-0.4) preserves original while cleaning artifacts.
+ */
+const CLOTHING_SEGMENT_MAP: Array<{
+    keywords: string[];
+    segment: string;
+    creativity: number;
+    description: string;
+}> = [
+    // === AEGIS TACTICAL SUIT (Sci-Fi) ===
+    {
+        keywords: ['aegis', 'bodysuit', 'aegis bodysuit', 'tactical bodysuit'],
+        segment: 'matte black tactical bodysuit hexagonal pattern',
+        creativity: 0.4,
+        description: 'Aegis suit with hexagonal weave pattern, soft blue glow at seams'
+    },
+    // === WRAITH HELMET STATES ===
+    {
+        keywords: ['helmet visor down', 'visor down', 'visor fully down', 'concealing face'],
+        segment: 'matte black tactical helmet reflective black visor down',
+        creativity: 0.4,
+        description: 'Wraith helmet with reflective black visor fully down'
+    },
+    {
+        keywords: ['helmet visor up', 'visor up', 'visor raised', 'visor retracted', 'exposing face'],
+        segment: 'matte black tactical helmet visor raised',
+        creativity: 0.4,
+        description: 'Wraith helmet with visor raised exposing face'
+    },
+    {
+        keywords: ['helmet off', 'helmet removed', 'helmet mag-locked', 'helmet at hip', 'without helmet'],
+        segment: 'tactical helmet clipped to hip',
+        creativity: 0.4,
+        description: 'Wraith helmet carried at hip'
+    },
+    {
+        keywords: ['hud active', 'hud display', 'holographic hud', 'targeting reticle'],
+        segment: 'tactical helmet with glowing hud elements on visor',
+        creativity: 0.4,
+        description: 'Wraith helmet with active HUD display'
+    },
+    // === STANDARD CLOTHING ===
+    {
+        keywords: ['tank top', 'tank-top', 'sleeveless tank', 'crop tank'],
+        segment: 'plain seamless tank top',
+        creativity: 0.4,
+        description: 'Reinforces clean seamless construction, removes unwanted seams/fasteners'
+    },
+    {
+        keywords: ['halter', 'halter top', 'halterneck'],
+        segment: 'halter top',
+        creativity: 0.4,
+        description: 'Clean halter neckline without artifacts'
+    },
+    {
+        keywords: ['crop top', 'cropped top', 'midriff'],
+        segment: 'crop top midriff',
+        creativity: 0.4,
+        description: 'Clean crop with exposed midriff'
+    },
+    {
+        keywords: ['sports bra', 'athletic bra'],
+        segment: 'sports bra',
+        creativity: 0.4,
+        description: 'Clean athletic top'
+    },
+    {
+        keywords: ['tactical vest', 'plate carrier', 'body armor'],
+        segment: 'tactical vest',
+        creativity: 0.5,
+        description: 'Tactical gear consistency'
+    }
+];
+
+/**
+ * Gear fragment definitions for Aegis suit system.
+ * Used for beat-level auto-detection of helmet states and equipment.
+ */
+const GEAR_FRAGMENTS = {
+    // Helmet states
+    helmet_off: 'Wraith tactical helmet mag-locked to hip',
+    helmet_visor_up: 'wearing matte black Wraith tactical helmet with raised transparent visor exposing face, reflective black visor surface, angular aggressive design with side-mounted sensors',
+    helmet_visor_down: 'wearing matte black Wraith tactical helmet with reflective black visor fully down concealing face, angular aggressive helmet design with side-mounted sensors',
+    helmet_hud_active: 'wearing matte black Wraith tactical helmet with reflective black visor displaying holographic HUD elements, glowing tactical data visible on visor interior',
+
+    // Character-specific loadouts
+    cat_loadout: 'Wraith pistol in thigh holster, compact medical kit on utility belt, clean sleek silhouette',
+    daniel_loadout: 'black plate carrier with armor plating, M4 carbine on tactical sling, Wraith pistol in chest holster, multiple magazine pouches',
+
+    // Base suits
+    aegis_base: 'skin-tight matte charcoal-black Aegis tactical bodysuit with hexagonal weave pattern, soft blue light pulsing from hexagonal seams'
+};
+
+/**
+ * Detect helmet state from beat narrative text.
+ * Returns the appropriate helmet fragment or null if no clear indicator.
+ */
+function detectHelmetState(beatText: string): string | null {
+    const lower = beatText.toLowerCase();
+
+    // Explicit helmet removal
+    if (lower.includes('removed helmet') || lower.includes('took off helmet') ||
+        lower.includes('helmet off') || lower.includes('pulled off') ||
+        lower.includes('without helmet') || lower.includes('bare head')) {
+        return GEAR_FRAGMENTS.helmet_off;
+    }
+
+    // HUD active - looking at HUD display
+    if (lower.includes('hud') || lower.includes('display showed') ||
+        lower.includes('readout') || lower.includes('targeting') ||
+        lower.includes('scanner') || lower.includes('thermal') ||
+        lower.includes('night vision active')) {
+        return GEAR_FRAGMENTS.helmet_hud_active;
+    }
+
+    // Visor up - face visible, speaking, eating, etc.
+    if (lower.includes('visor up') || lower.includes('visor raised') ||
+        lower.includes('lifted visor') || lower.includes('retracted visor') ||
+        lower.includes('face visible') || lower.includes('eyes met') ||
+        lower.includes('looked into') || lower.includes('eye contact')) {
+        return GEAR_FRAGMENTS.helmet_visor_up;
+    }
+
+    // Visor down - tactical, concealed, breach
+    if (lower.includes('visor down') || lower.includes('visor snapped') ||
+        lower.includes('sealed helmet') || lower.includes('face concealed') ||
+        lower.includes('breach') || lower.includes('combat ready')) {
+        return GEAR_FRAGMENTS.helmet_visor_down;
+    }
+
+    return null; // No clear indicator - use scene default
+}
+
+/**
+ * Detect clothing items in description and generate corresponding segment tags.
+ * @param clothingDescription - The character's clothing description from Episode Context
+ * @returns Array of segment tags to append to prompt (before YOLO face segment)
+ */
+function generateClothingSegments(clothingDescription: string): string[] {
+    if (!clothingDescription) return [];
+
+    const lowerDesc = clothingDescription.toLowerCase();
+    const segments: string[] = [];
+
+    for (const mapping of CLOTHING_SEGMENT_MAP) {
+        const matched = mapping.keywords.some(keyword => lowerDesc.includes(keyword));
+        if (matched) {
+            // Format: <segment:description,creativity,threshold>
+            segments.push(`<segment:${mapping.segment},${mapping.creativity},0.5>`);
+            console.log(`[ClothingSegment] Detected "${mapping.keywords.find(k => lowerDesc.includes(k))}" → adding ${mapping.segment} segment`);
+        }
+    }
+
+    return segments;
+}
+
+/**
+ * Extract clothing description for a character in a specific scene from Episode Context.
+ * @param episodeContext - Parsed Episode Context object
+ * @param sceneNumber - Scene number to look up
+ * @param characterTrigger - Character's base_trigger to identify them
+ * @returns Clothing description string or null
+ */
+function getCharacterClothingForScene(
+    episodeContext: any,
+    sceneNumber: number,
+    characterTrigger: string
+): string | null {
+    try {
+        const scene = episodeContext.episode?.scenes?.find(
+            (s: any) => s.scene_number === sceneNumber
+        );
+        if (!scene) return null;
+
+        // Check scene.characters
+        const charFromScene = scene.characters?.find(
+            (c: any) => c.base_trigger === characterTrigger
+        );
+        if (charFromScene?.location_context?.clothing_description) {
+            return charFromScene.location_context.clothing_description;
+        }
+
+        // Check scene.character_appearances
+        const charFromAppearances = scene.character_appearances?.find(
+            (c: any) => c.base_trigger === characterTrigger
+        );
+        if (charFromAppearances?.location_context?.clothing_description) {
+            return charFromAppearances.location_context.clothing_description;
+        }
+
+        return null;
+    } catch (e) {
+        console.warn('[ClothingSegment] Error extracting clothing:', e);
+        return null;
+    }
+}
+
+/**
+ * Apply clothing segments to a prompt based on detected clothing items.
+ * Inserts clothing segments BEFORE the YOLO face segment.
+ * @param prompt - The generated prompt string
+ * @param clothingDescription - Character's clothing description
+ * @returns Modified prompt with clothing segments inserted
+ */
+function applyClothingSegmentsToPrompt(prompt: string, clothingDescription: string): string {
+    const clothingSegments = generateClothingSegments(clothingDescription);
+    if (clothingSegments.length === 0) return prompt;
+
+    // Find the YOLO face segment position
+    const yoloMatch = prompt.match(/<segment:yolo-face/);
+    if (yoloMatch && yoloMatch.index !== undefined) {
+        // Insert clothing segments before YOLO segment
+        const beforeYolo = prompt.substring(0, yoloMatch.index);
+        const yoloAndAfter = prompt.substring(yoloMatch.index);
+        return `${beforeYolo}${clothingSegments.join(' ')} ${yoloAndAfter}`;
+    }
+
+    // No YOLO segment found, append clothing segments at end
+    return `${prompt} ${clothingSegments.join(' ')}`;
+}
+
 // Response schema - only cinematic prompts are required for standard beat analysis (Phase C optimization)
 const responseSchema = {
     type: Type.ARRAY,
@@ -329,163 +552,165 @@ You now have access to high-level story intelligence to enrich your prompts:
     console.log(`[Phase B] Building system instruction ${systemInstructionLength}`);
 
     // Build base system instruction (without episodeContextSection) for comparison
-    const baseSystemInstructionStart = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate a cinematic (16:9) prompt. This is used for long-form storytelling.
+    const baseSystemInstructionStart = `You are a SwarmUI prompt generator. Generate clean, token-efficient prompts.`;
 
-**Your Mandate: THINK LIKE A CINEMATOGRAPHER. Compose the shot by weaving together stylistic elements with the narrative.**
+    // CLEAN PROMPT TEMPLATE (v3.0 - Simplified Structure)
+    // Structure: photo of [trigger] [age] [physical], [clothing], [action] in [location], [lighting], [atmosphere] <segment>
+    const systemInstruction = `You are a SwarmUI prompt generator. Generate clean, token-efficient prompts following this EXACT structure:
 
-**CRITICAL NEW PRODUCTION STANDARDS (Based on 135 tested prompts, Version 2.0):**`;
-
-    const systemInstruction = `You are an expert **Virtual Cinematographer and Visual Translator**. Your job is to create visually potent, token-efficient SwarmUI prompts following the LATEST PRODUCTION-STANDARD prompt construction techniques from Episode 1. These techniques have been tested across 135 prompts with superior visual results. For each beat, generate a cinematic (16:9) prompt. This is used for long-form storytelling.
-
-**Your Mandate: THINK LIKE A CINEMATOGRAPHER. Compose the shot by weaving together stylistic elements with the narrative.**
-
-**CRITICAL NEW PRODUCTION STANDARDS (Based on 135 tested prompts, Version 2.0):**
-1.  **Facial Expressions INSTEAD of Heavy Camera Direction:**
-    - OLD: \`(((facing camera:2.0)))\`
-    - NEW: \`"alert, tactical expression on her face"\`
-2.  **Atmosphere-Specific Face Lighting** (Always Include):
-    - Tactical scenes: \`"dramatic tactical lighting on face, high contrast face shadows"\`
-    - Medical scenes: \`"harsh medical lighting on face, stark white face illumination"\`
-3.  **YOLO Face Segments** (Precise Control):
-    - Single character: \`<segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
-    - Two characters: Add segment for each face
-4.  **Character Physique Emphasis** (Critical for Proper Rendering):
-    - ALWAYS include: \`"lean athletic build, toned arms"\`
-    - Prevents bulky appearance from tactical gear
-5.  **FLUX-Specific Settings**:
-    - cfgscale: 1 (NOT 7!)
-    - fluxguidancescale: 3.5
-    - seed: -1 (random for batch generation)
+**PROMPT TEMPLATE:**
+\`\`\`
+photo of [TRIGGER] [AGE] [PHYSICAL], [CLOTHING], [ACTION] in [LOCATION], [LIGHTING], [ATMOSPHERE] <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
+\`\`\`
 ${episodeContextSection}
-**Strict Content Rules (NON-NEGOTIABLE):**
-1.  **NO NARRATIVE NAMES (with Override Exception):** You MUST NOT use character's actual names (e.g., "Catherine Mitchell", "Cat", "O'Brien") UNLESS a \`swarmui_prompt_override\` is provided. If \`swarmui_prompt_override\` exists, it may contain character names and you MUST use it exactly as written. Otherwise, you MUST ONLY use their assigned \`base_trigger\` from the context (e.g., "JRUMLV woman").
-2.  **NO LOCATION NAMES:** You MUST NOT use the proper name of a location (e.g., "NHIA Facility 7"). Instead, you MUST visually describe the environment based on its \`visual_description\`, \`locationAttributes\`, and \`artifacts\` from the context. Translate the *idea* of the location into what a camera would see.
+**FIELD MAPPING (from Episode Context JSON):**
 
-**Inputs:**
-1.  **Beat Analysis JSON:** This is the primary input. Each beat now includes a \`styleGuide\` object containing categorized cinematic terms. You MUST use this as your palette. It also contains the 'core_action', 'beat_script_text', 'visual_anchor', and character positions.
-2.  **Episode Context JSON:** The "Director's Bible." Your primary source for character and location details. **Context Source: ${contextSource}** - When using database context, you have access to rich location-specific character appearances, detailed artifacts with SwarmUI prompt fragments, and atmospheric context.
-3.  **Episode Style Config:** Contains the global 'model' and aspect ratios.
+1. **[TRIGGER]**: Character's \`base_trigger\` (e.g., "HSCEIA man", "JRUMLV woman")
+   - Find in: \`episode.scenes[N].characters[].base_trigger\` or \`episode.characters[].base_trigger\`
 
-**Your Detailed Workflow for EACH Beat:**
+2. **[AGE]**: Character age + "years old" (e.g., "35 years old")
+   - Find in: \`character.location_context.age_at_context\` or derive from character description
 
-1.  **Deconstruct the Style Guide:** For each beat, review the provided \`styleGuide\` object. This is your shot list and technical spec.
-    -   \`camera\`: Instructions on shot type, lens effects, and movement (e.g., "wide shot, shallow depth of field").
-    -   \`lighting\`: The lighting scheme (e.g., "dramatic rim light").
-    -   \`environmentFX\`: Visual effects present in the scene (e.g., "desaturated color grade, volumetric dust").
-    -   \`atmosphere\`: Keywords describing the mood and feel of the environment.
+3. **[PHYSICAL]**: Physical attributes from character (e.g., "with short cropped white hair, fit athletic build")
+   - Find in: \`character.location_context.physical_description\` or \`character.visual_description\`
 
-2.  **Synthesize Core Visual Elements (Characters & Environment):**
-    a.  **Characters:**
-        i.  **Identify using Aliases (CRITICAL):** Cross-reference names in 'beat_script_text' with 'character_name' and 'aliases' in the Episode Context to find the correct profile.
+4. **[CLOTHING]**: Location-specific clothing (e.g., "wearing tactical vest over olive shirt")
+   - Find in: \`character.location_context.clothing_description\` (REQUIRED - this is scene-specific)
+   - CRITICAL: Use clothing_description, NOT generic visual_description
 
-        ii. **Location-Specific Override Priority (CRITICAL - HIGHEST PRIORITY):**
-            - **STEP 1 - CHECK FOR OVERRIDE:** For each character in the current scene, you MUST check for \`location_context.swarmui_prompt_override\`. The override can be found in these locations (check in order):
-              1. \`episode.scenes[sceneNumber].characters[characterIndex].location_context.swarmui_prompt_override\` (primary path for database context)
-              2. \`episode.scenes[sceneNumber].character_appearances[characterIndex].location_context.swarmui_prompt_override\` (alternative path)
-              3. \`episode.characters[characterIndex].location_contexts[].swarmui_prompt_override\` where the location matches the scene location (fallback path)
-            - **STEP 2 - IF OVERRIDE EXISTS:** You MUST use the ENTIRE \`swarmui_prompt_override\` string EXACTLY as written. This COMPLETELY REPLACES and OVERRIDES the base_trigger syntax. DO NOT:
-              * Use base_trigger (e.g., "JRUMLV woman")
-              * Modify the override text
-              * Add to or supplement the override
-              * Replace character names in the override with triggers
-            - **STEP 3 - IF NO OVERRIDE EXISTS:** Only then use the character's 'base_trigger' followed by a parenthetical group of key visual descriptors. NEW STANDARD: Include specific "form-fitting" and "lean athletic build" and "toned arms" to prevent bulky appearance from gear. Example: \`JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun)\`. Do NOT use weighted syntax.
+5. **[ACTION]**: What the character is DOING in this beat
+   - Extract from: \`beat.beat_script_text\` - identify the primary visual action
+   - Examples: "examining data on a tablet", "speaking into a radio", "standing alert"
 
-        iii. **Contextualize Appearance (only if no override):** If no \`swarmui_prompt_override\` exists, adapt the character's 'visual_description' to the scene's context. A 'pristine lab coat' in a 'bombed-out ruin' becomes a 'torn, dust-covered lab coat'.
+6. **[LOCATION]**: The scene's visual environment
+   - Find in: \`episode.scenes[N].location.visual_description\` (REQUIRED)
+   - This is the curated visual description - use it directly
+   - Include relevant artifacts from \`episode.scenes[N].location.artifacts[].swarmui_prompt_fragment\`
 
-        iv. **Example Override Usage:** If \`swarmui_prompt_override\` contains "Catherine 'Cat' Mitchell as field investigator, 32, dark brown tactical bun, green eyes alert and focused, wearing MultiCam woodland camo tactical pants, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms...", you MUST use that ENTIRE string in your prompt. Do NOT replace "Catherine" with "JRUMLV woman" - the override is already complete and formatted correctly.
-    b.  **Environment:**
-        i. **Location Visual Description (CRITICAL):** You MUST use the 'visual_description' field from \`episode.scenes[sceneNumber].location.visual_description\` in the Episode Context JSON. This is NOT optional - it contains the detailed visual description of the location that must appear in your prompts.
-        ii. **Artifacts (CRITICAL):** You MUST include relevant artifacts from \`episode.scenes[sceneNumber].location.artifacts[]\` in the Episode Context JSON. Each artifact has a \`swarmui_prompt_fragment\` field that contains visual elements you MUST incorporate. If artifacts are present, they are part of the location's visual identity and MUST be described.
-        iii. **Location Attributes:** Use 'locationAttributes' from the beat analysis and the 'atmosphere' from the style guide as additional set dressing.
-        iv. **Interior Shots:** **All scenes are interior shots.** You MUST include terms like "interior shot," "inside the facility," to prevent outdoor scenes.
-        v. **Database Context Priority:** When Episode Context shows "Context Source: database", you MUST prioritize the location's \`visual_description\` and \`artifacts\` over generic location names. Do NOT say "NHIA Facility 7" - instead describe what the \`visual_description\` tells you about the location.
-    c.  **Composition & Character Positioning Intelligence (Flux Model Targeting - CRITICAL):**
-        This is a critical step to counteract known Flux/Flux1 model deficiencies using the LATEST PRODUCTION STANDARDS:
-        i.  **MANDATORY: Shot Type at Prompt Start (NEW PRODUCTION STANDARD):**
-            - **ALWAYS** start with shot type: "medium shot of a", "wide shot of a", "close-up of a"
-            - **DO NOT** start with positioning directives as previously recommended (this is old method)
-            - **Example:** \`"medium shot of a JRUMLV woman (...), alert expression on her face, moving through..."\`
-        ii. **Facial Expression Integration (NEW PRODUCTION STANDARD):**
-            - Always include facial expression AFTER character description
-            - Use natural language: \`"alert, tactical expression on her face"\`, \`"focused combat readiness on his face"\`, \`"concentrated medical expression on her face"\`
-            - This replaces heavy weighted camera direction syntax (e.g., \`(((facing camera:2.0)))\`)
-        iii. **BEAT-NARRATIVE DRIVEN Face Lighting (PRINCIPLE-BASED LIGHTING EXTRACTION):**
-            - **CRITICAL:** The beat narrative is the **SOURCE OF TRUTH** for all lighting.
-            - **PRINCIPLE:** READ beat narrative for ANY lighting-related details, EXTRACT those details and adapt to face lighting. ONLY FALLBACK to location atmosphere if beat has NO lighting details.
-            - **Lighting Extraction Categories:** Look for Light Sources (generators, flashes, explosions), Qualities (bright, subdued, harsh), Colors (green, red, orange), Environmental Effects (gunsmoke, dust, fog), Time Indicators (dawn, dusk, night), Intensity Modifiers (barely visible, blinding).
-            - **Then adapt to face lighting** using the SAME descriptive words from beat: \`PRINCIPLE: If beat says it, face lighting echoes it.\`
-            - **Example Extraction:** Beat: "heavy gunsmoke, bright muzzle flashes illuminating the haze" → Face Lighting: "bright intermittent muzzle flashes on face, subdued by thick gunsmoke"
-            - **Example Extraction:** Beat: "bathed in eerie green light from backup generators" → Face Lighting: "eerie green light on face, sickly green illumination"
-            - **Example Fallback:** Beat: "moving through damaged tactical facility" (no lighting details) → Use: "dramatic tactical lighting on face"
-        iv. **Dynamic Weapon Positioning (NEW PRODUCTION STANDARD):**
-            - **For Daniel (HSCEIA man):** Weapon positioning is beat-specific action, NOT a character trait. Include M4 carbine position in the action portion of the prompt based on context.
-            - **Examples:** \`"advancing with M4 carbine at ready position"\`, \`"aiming M4 carbine"\`, \`"with M4 carbine slung across chest"\`, \`"with M4 carbine at low ready"\`
-            - **Do NOT:** Include weapon position in character description (e.g., "M4 carbine slung across chest" as static trait).
-        v. **Narrative Override:** Override normal facing only when narrative context demands it. BUT still describe facing explicitly: "in profile view," "looking at the console," "looking away from camera," "gaze turned toward window," etc.
-        vi. **Multi-Character Spacing & Gaze Control:**
-            - **Spatial Separation:** Use explicit spatial language like "[Character A] on the left," "[Character B] on the right," "standing apart with distance between them," "positioned on opposite sides of the frame," "characters separated by [distance/element]."
-            - **Individual Gaze Control:** Control each character's gaze independently with YOLO segments (see below)
-            - **Prevent Clustering:** Explicitly state they are NOT positioned face-to-face: "not facing each other," "characters are not making eye contact with each other," "positioned at angles to each other."
+7. **[LIGHTING]**: Lighting derived from beat context OR location atmosphere
+   - FIRST: Check beat narrative for lighting cues (flickering monitors, emergency lights, etc.)
+   - FALLBACK: Use \`episode.scenes[N].location.atmosphere\` lighting keywords
+   - Examples: "harsh fluorescent lighting", "dim emergency lighting", "clinical white light"
 
-3.  **Visually Translate the Action (Visual Filter Rule):**
-    Read the 'core_action' and 'beat_script_text' for intent, then describe only what a camera sees. Use the 'visual_anchor' as the shot's focus.
-    -   **OMIT:** Sounds, smells, internal feelings, abstract verbs.
-    -   **TRANSLATE:** Convert abstract concepts into concrete visuals. INSTEAD OF \`unnerving silence\`, USE \`an atmosphere of eerie stillness\`.
+8. **[ATMOSPHERE]**: Mood/atmosphere from location
+   - Find in: \`episode.scenes[N].location.atmosphere\`
+   - Adapt to beat emotional context if different from default location mood
 
-4.  **Compose the Prompts (CRITICAL STEP - NEW PRODUCTION STANDARD):**
-    **Do NOT just list keywords.** Weave the elements from the \`styleGuide\` and your synthesis into a cohesive, descriptive paragraph that paints a picture.
+**YOLO SEGMENT (CRITICAL):**
+- Single character: \`<segment:yolo-face_yolov9c.pt-0,0.35,0.5>\`
+- Two characters: \`<segment:yolo-face_yolov9c.pt-0,0.35,0.5> <segment:yolo-face_yolov9c.pt-1,0.35,0.5>\`
+- Index starts at 0, NOT 1
+- NO segment for establishing shots (no faces to detect)
 
-    **A. Cinematic Prompt (16:9):**
-    -   **Focus:** Wide, narrative. Emphasizes horizontal composition and environmental storytelling.
-    -   **Structure:** \`[shot_type] of [character_description], [facial_expression], [action_verb] [environment_description with beat narrative lighting]. [face_lighting_extracted_from_beat_narrative]. [composition_directives]. <yolo_segments>\`
-    -   **Character Details:** Include specific clothing (MultiCam woodland camo, form-fitting tactical vest, fitted olive long-sleeved shirt), physique (lean athletic build, toned arms), and gear details (dual holsters, tactical watch).
-    -   **Facial Expression:** \`"alert, tactical expression on her face"\`, \`"focused combat readiness on his face"\`
-    -   **Dynamic Weapon Positioning (Daniel):** Include weapon position in action based on beat narrative: \`"advancing with M4 carbine at ready position"\`, \`"with M4 carbine slung on tactical sling"\`
-    -   **Face Lighting Extraction:** READ beat narrative first, extract lighting keywords, adapt to face lighting using same descriptive words. FALLBACK to atmosphere lighting only if beat has no lighting details.
-    -   **Example:** \`wide shot of a JRUMLV woman (MultiCam woodland camo tactical pants tucked into combat boots, form-fitting tactical vest over fitted olive long-sleeved shirt, lean athletic build, toned arms, dual holsters, tactical watch, dark brown tactical bun), alert, tactical expression on her face, moving through CDC archive bathed in eerie green light from backup generators. eerie green light on face, sickly green illumination, Dramatic rim light, desaturated color grade, shallow depth of field. <segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`
+---
 
-5.  **YOLO Face Refinement (Multi-Character):** You MUST apply a unique YOLO segmentation tag for **each character** whose face is visible in the shot.
-    a.  **Identify Characters:** Count the number of distinct characters you are describing in the prompt.
-    b.  **Append Indexed Tags:** For each character, append an indexed tag to the end of the prompt. The first character gets index 1, the second gets index 2, and so on.
-    c.  **Use Exact Syntax:** The tag format MUST be \`<segment:yolo-face_yolov9c.pt-INDEX, 0.35, 0.5>\`.
-    d.  **For Two Characters:** Include engaging commands: \`<segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> engaging viewer, looking at camera\`
-    e.  **Example (2 characters):** A prompt describing a woman and a man would end with: \`...<segment:yolo-face_yolov9c.pt-1, 0.35, 0.5> HSCEIA man, engaging viewer, looking at camera <segment:yolo-face_yolov9c.pt-2, 0.35, 0.5> JRUMLV woman, engaging viewer, looking at camera\`.
-    f.  **Example (1 character):** A prompt describing only a woman would end with: \`...<segment:yolo-face_yolov9c.pt-1, 0.35, 0.5>\`.
-    g.  **Parameter Explanation:**
-        - **Confidence (0.35):** Minimum confidence to accept face detection. Lower values catch more faces but may include false positives.
-        - **IoU (0.5):** Overlap threshold for non-maximum suppression. Higher values keep more overlapping faces.
-        - **Model (face_yolov9c.pt):** YOLOv9 face detection model optimized for face segmentation tasks.
+**ESTABLISHING SHOTS (No Character Present):**
 
-6.  **Composition Directives (Standard Set):** Always include this standard set:
-    - \`Dramatic rim light, desaturated color grade, shallow depth of field\`
-    - **Why:**
-        - **Dramatic rim light:** Separates character from background, adds depth
-        - **Desaturated color grade:** Post-apocalyptic mood, gritty tone
-        - **Shallow depth of field:** Professional photography look, focus on character
+Some beats are pure atmosphere/mood-setting with NO character action. Detect these by:
+- No character names or pronouns in beat text
+- Beat describes environment, silence, tension, or mood
+- Beat is scene-opening or transition
 
-7.  **Negative Prompt (Production Standard):** The negative prompt MUST include: \`blurry, low quality, distorted faces, extra limbs, cartoon, anime, bright cheerful colors, fantasy elements, unrealistic proportions, multiple faces, deformed anatomy, artificial appearance, oversaturated, childish style, background characters, faces hidden, back to camera, civilian clothes, peaceful setting, relaxed postures, bright cheerful lighting, fantasy weapons, unrealistic tactics, superhero poses, explosive special effects\`
+**ESTABLISHING SHOT TEMPLATE:**
+\`\`\`
+[SHOT_TYPE] of [LOCATION], [ENVIRONMENTAL_DETAILS], [ARTIFACTS], [LIGHTING], [ATMOSPHERE], cinematic establishing shot
+\`\`\`
 
-8.  **FLUX Model Settings (CRITICAL):**
-    - **cfgscale:** You MUST use **1** for FLUX models. Never use 7 or other values.
-    - **fluxguidancescale:** You MUST use **3.5** for FLUX models.
-    - **seed:** Use **-1** for random generation.
-    - **steps:** Use **20** (production standard from tested prompts).
-    - **model:** Use the model specified in the Episode Style Config (typically 'flux1-dev-fp8').
+**Field mapping for establishing shots:**
+- **[SHOT_TYPE]**: "wide interior shot", "detail shot", "slow pan across"
+- **[LOCATION]**: From \`episode.scenes[N].location.visual_description\`
+- **[ENVIRONMENTAL_DETAILS]**: Translate beat's sensory descriptions to VISUAL elements
+- **[ARTIFACTS]**: ALL artifacts from \`location.artifacts[].swarmui_prompt_fragment\`
+- **[LIGHTING]**: From beat cues or \`location.atmosphere\`
+- **[ATMOSPHERE]**: Translate abstract mood to visual atmosphere
 
-**CRITICAL REMINDER - Prompt Structure:**
-- **DO start with shot type:** \`"medium shot of a"\`, \`"wide shot of a"\`, \`"close-up of a"\`
-- **DO include facial expression** after character description
-- **DO include atmosphere-specific face lighting** after environment description
-- **DO end with YOLO segments** for precise camera control
-- **DO NOT start with weighted positioning** (old method, new method uses facial expressions and YOLO)
+**SENSORY-TO-VISUAL TRANSLATION (for establishing shots):**
+| Beat Describes | Translate To |
+|----------------|--------------|
+| "silence", "quiet" | "still air, motionless equipment, undisturbed dust" |
+| "pressurized", "heavy" | "cramped tight space, low ceiling, close walls" |
+| "thick air" | "visible dust particles suspended in air, hazy atmosphere" |
+| "tension" | "harsh shadows, high contrast lighting, stark emptiness" |
+| "cold/sterile" | "clinical white surfaces, sharp edges, antiseptic gleam" |
 
-**Output:**
-- Your entire response MUST be a single JSON array of objects. Each object represents one beat and contains the 'beatId' and the 'cinematic' prompt object.
-- **CRITICAL:** Every prompt string in your response MUST follow the new production standard structure: [shot_type] of [character_description], [facial_expression], [action], [environment]. [face_lighting], [composition].
-- **CRITICAL:** Every prompt object MUST have \`steps: 20\`, \`cfgscale: 1\`, and \`fluxguidancescale: 3.5\` (for FLUX models). These are non-negotiable and must be used for all prompts.
-- **REQUIRED PROMPTS:**
-  - **cinematic (16:9):** Long-form narrative storytelling with wide composition
-- **Note:** Vertical (9:16) prompts are NO LONGER generated per beat as they are now handled by a separate marketing-specific process.`;
+**ESTABLISHING SHOT EXAMPLE:**
+
+Beat: "The silence in the Mobile Medical Base was not empty; it was pressurized, a physical weight that pressed against the eardrums and made the recycled air feel thick as syrup."
+
+Output:
+\`\`\`
+wide interior shot of cramped converted military trailer with salvaged server racks and multiple monitors on reinforced walls, IV bags hanging motionless from ceiling tracks, modular storage bins of medical supplies, cables running across floor, still recycled air with visible dust particles suspended, dim emergency LED strips casting clinical blue glow, oppressive claustrophobic atmosphere, cinematic establishing shot
+\`\`\`
+
+NO YOLO segment needed - no faces in frame.
+
+---
+
+**CHARACTER SHOT EXAMPLE:**
+\`\`\`
+photo of HSCEIA man 35 years old with short cropped white hair, fit athletic build, wearing tactical vest over fitted olive shirt with dual holsters, examining encrypted data on a tablet in a sterile government facility with rows of server racks and blinking status lights, harsh fluorescent overhead lighting, tense high-security atmosphere <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
+\`\`\`
+
+**RULES:**
+1. NO character names (Cat, Daniel, etc.) - ONLY use base_trigger
+2. NO location names (NHIA Facility 7, etc.) - ONLY use visual_description
+3. NO contradictory moods (cannot be "relaxed" AND "tense")
+4. NO weighted syntax like (((term:1.5))) - use natural language
+5. Keep prompts under 200 tokens
+6. Include ALL relevant artifacts from location
+
+---
+
+**AEGIS TACTICAL SUIT SYSTEM (Sci-Fi Aesthetic):**
+
+Both Cat (JRUMLV woman) and Daniel (HSCEIA man) wear Aegis tactical bodysuits in tactical scenes.
+
+**Base Suit Description:**
+\`skin-tight matte charcoal-black Aegis tactical bodysuit with hexagonal weave pattern, soft blue light pulsing from hexagonal seams\`
+
+**Character-Specific Loadouts:**
+- **Cat (JRUMLV woman):** NOTHING over the suit - skin-tight Aegis bodysuit from head to toe. Wraith pistol in thigh holster, compact medical kit attached to utility belt. NO vest. NO plate carrier. NO rifle. Clean sleek silhouette.
+- **Daniel (HSCEIA man):** Black plate carrier with armor plating OVER Aegis suit, M4 carbine on tactical sling, Wraith pistol in chest holster, multiple magazine pouches on plate carrier.
+
+**UTILITY BELT (Both Characters):**
+Both wear a low-profile utility belt around waist. User may specify additional belt details (controls, status lights, interface panels) manually when needed.
+
+**WRAITH HELMET STATES (Auto-Detect from Beat):**
+
+| Beat Contains | Helmet State | Prompt Fragment |
+|---------------|--------------|-----------------|
+| "removed helmet", "helmet off", "bare head" | OFF | \`Wraith tactical helmet mag-locked to hip\` |
+| "visor up", "face visible", "eyes met", "looked into" | VISOR UP | \`matte black Wraith helmet with raised visor exposing face, reflective black visor surface\` |
+| "visor down", "breach", "combat ready", "sealed" | VISOR DOWN | \`matte black Wraith helmet with reflective black visor fully down concealing face\` |
+| "HUD", "display", "readout", "targeting", "scanner" | HUD ACTIVE | \`matte black Wraith helmet with reflective black visor displaying holographic HUD elements\` |
+
+**CRITICAL: ALL visors are REFLECTIVE BLACK - never transparent or clear.**
+
+**INFERENCE RULES (when beat doesn't specify):**
+- Combat/breach scenes → Default to VISOR DOWN
+- Speaking/dialogue scenes → Default to VISOR UP (need to see face for emotion)
+- Investigation/scanning → Default to HUD ACTIVE
+- Safe location/aftermath → Default to HELMET OFF
+
+**HUD POV SHOTS (Special Case):**
+If beat describes character SEEING something on HUD (readouts, targeting data, threat indicators):
+- Use FIRST-PERSON POV shot looking OUT through the visor
+- Template: \`first-person POV through Wraith helmet visor, holographic HUD overlay showing [data type], reflective black visor edges visible, [environment] visible through HUD display\`
+- NO character visible - this is what they SEE
+- NO YOLO segment (no face in frame)
+
+---
+
+**FLUX SETTINGS (apply to all prompts):**
+- model: from Episode Style Config
+- cfgscale: 1
+- steps: from image_config or 40
+- seed: -1
+
+**OUTPUT FORMAT:**
+Return JSON array: \`[{ "beatId": "s1-b1", "cinematic": { "prompt": "...", "model": "...", "width": ..., "height": ..., "steps": ..., "cfgscale": 1, "seed": -1 } }]\`
+
+Context Source: ${contextSource}`;
 
     // Token tracking: Measure system instruction size impact
     // Calculate base system instruction size (without episode context section)
@@ -770,28 +995,54 @@ ${episodeContextSection}
         
         // Only apply substitution if we have character contexts
         if (characterContexts.length > 0) {
-            console.log(`🔍 LORA Substitution: Processing ${characterContexts.length} character context(s):`, 
+            console.log(`🔍 LORA Substitution: Processing ${characterContexts.length} character context(s):`,
                 characterContexts.map(c => `${c.character_name} -> ${c.base_trigger}`).join(', '));
-            
+
             const finalResults = allResults.map(bp => {
                 const originalCinematic = bp.cinematic.prompt;
-                
-                const substitutedCinematic = applyLoraTriggerSubstitution(bp.cinematic.prompt, characterContexts);
-                
-                // Log if substitution occurred
-                if (originalCinematic !== substitutedCinematic) {
-                    console.log(`✅ LORA Substitution applied for beat ${bp.beatId}`);
-                    console.log(`   Cinematic: "${originalCinematic.substring(0, 100)}..." -> "${substitutedCinematic.substring(0, 100)}..."`);
-                } else {
-                    console.warn(`⚠️ LORA Substitution: No changes for beat ${bp.beatId}`);
-                    console.log(`   Original cinematic prompt: "${originalCinematic.substring(0, 150)}..."`);
+
+                // Step 1: Apply LORA trigger substitution
+                let processedCinematic = applyLoraTriggerSubstitution(bp.cinematic.prompt, characterContexts);
+
+                // Step 2: Apply clothing segments based on character's clothing_description
+                // Extract scene number from beatId (e.g., "s1-b2" → 1)
+                const sceneMatch = bp.beatId.match(/s(\d+)-/);
+                const sceneNumber = sceneMatch ? parseInt(sceneMatch[1]) : null;
+
+                if (sceneNumber) {
+                    // Find which character's trigger appears in this prompt
+                    for (const charCtx of characterContexts) {
+                        if (processedCinematic.includes(charCtx.base_trigger)) {
+                            const clothingDesc = getCharacterClothingForScene(
+                                contextObj,
+                                sceneNumber,
+                                charCtx.base_trigger
+                            );
+                            if (clothingDesc) {
+                                const beforeSegments = processedCinematic;
+                                processedCinematic = applyClothingSegmentsToPrompt(processedCinematic, clothingDesc);
+                                if (beforeSegments !== processedCinematic) {
+                                    console.log(`👕 Clothing segments applied for ${charCtx.character_name} in beat ${bp.beatId}`);
+                                }
+                            }
+                            break; // Only apply for first matched character (primary subject)
+                        }
+                    }
                 }
-                
+
+                // Log if substitution occurred
+                if (originalCinematic !== processedCinematic) {
+                    console.log(`✅ Processing applied for beat ${bp.beatId}`);
+                    console.log(`   Final: "${processedCinematic.substring(0, 120)}..."`);
+                } else {
+                    console.warn(`⚠️ No changes for beat ${bp.beatId}`);
+                }
+
                 return {
                     ...bp,
                     cinematic: {
                         ...bp.cinematic,
-                        prompt: substitutedCinematic,
+                        prompt: processedCinematic,
                     }
                 };
             });
