@@ -686,6 +686,10 @@ Both wear a low-profile utility belt around waist. User may specify additional b
 
 **CRITICAL: ALL visors are REFLECTIVE BLACK - never transparent or clear.**
 
+**HAIR SUPPRESSION RULE:**
+- **HELMET ON (visor up, visor down, HUD active):** OMIT all hair descriptions (no ponytail, no hair color, no hair style). The helmet covers the hair.
+- **HELMET OFF:** INCLUDE hair description (ponytail, hair color, style visible).
+
 **INFERENCE RULES (when beat doesn't specify):**
 - Combat/breach scenes → Default to VISOR DOWN
 - Speaking/dialogue scenes → Default to VISOR UP (need to see face for emotion)
