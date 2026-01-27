@@ -737,9 +737,21 @@ The database provides complete, pre-assembled gear descriptions - use them direc
 - The database already determines the correct helmet state based on scene context
 - Only apply inference rules below if helmet state is ambiguous in the override
 
-**HAIR SUPPRESSION RULE:**
-- **HELMET ON (visor up, visor down, HUD active):** OMIT all hair descriptions (no ponytail, no hair color, no hair style). The helmet covers the hair.
-- **HELMET OFF:** INCLUDE hair description (ponytail, hair color, style visible).
+**HAIR SUPPRESSION RULE (CRITICAL - ZERO TOLERANCE):**
+When generating a prompt for a character wearing ANY helmet state (visor up, visor down, HUD active):
+- **NEVER include**: ponytail, hair color, hair style, flowing hair, hair texture, "brown hair", "white hair", "military-cut hair", "hair in ponytail", or ANY hair descriptors
+- **The helmet physically covers the head** - hair is INVISIBLE in the image
+- **FAIL CONDITION**: If your prompt mentions hair AND helmet, you have FAILED. Remove the hair descriptor.
+
+**CORRECT EXAMPLES:**
+- "JRUMLV woman in tactical mode, lean athletic build, wearing bodysuit with helmet visor down" (NO HAIR)
+- "HSCEIA man field operative, muscular build, helmet with blue visor glow" (NO HAIR)
+
+**INCORRECT EXAMPLES (DO NOT GENERATE):**
+- "JRUMLV woman, dark brown hair in ponytail, wearing helmet visor down" (WRONG - hair visible through helmet is impossible)
+- "HSCEIA man, stark white military-cut hair, helmet HUD active" (WRONG - hair is under the helmet)
+
+**HELMET OFF only:** INCLUDE hair description (ponytail, hair color, style visible) because the character's head is uncovered.
 
 **INFERENCE RULES (when beat doesn't specify):**
 - Combat/breach scenes → Default to VISOR DOWN
@@ -1085,12 +1097,32 @@ Context Source: ${contextSource}`;
                     }
                 }
 
-                // Log if substitution occurred
+                // Step 3: Hair suppression enforcement (belt-and-suspenders)
+                // If helmet segment present, strip any hair descriptions Gemini may have included
+                if (processedCinematic.includes('<segment:helmet') || processedCinematic.includes('helmet visor')) {
+                    const beforeHairStrip = processedCinematic;
+                    // Remove common hair descriptions
+                    processedCinematic = processedCinematic
+                        .replace(/,?\s*dark brown hair in (?:practical )?ponytail/gi, '')
+                        .replace(/,?\s*stark white military-cut hair/gi, '')
+                        .replace(/,?\s*white hair/gi, '')
+                        .replace(/,?\s*brown hair/gi, '')
+                        .replace(/,?\s*hair in (?:low )?ponytail/gi, '')
+                        .replace(/,?\s*flowing hair/gi, '')
+                        .replace(/,?\s*hair visible/gi, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    if (beforeHairStrip !== processedCinematic) {
+                        console.log(`[HairSuppression] Stripped hair description for helmet-on beat ${bp.beatId}`);
+                    }
+                }
+
+                // Log if any processing occurred
                 if (originalCinematic !== processedCinematic) {
-                    console.log(`✅ Processing applied for beat ${bp.beatId}`);
+                    console.log(`[PostProcess] Applied for beat ${bp.beatId}`);
                     console.log(`   Final: "${processedCinematic.substring(0, 120)}..."`);
                 } else {
-                    console.warn(`⚠️ No changes for beat ${bp.beatId}`);
+                    console.warn(`[PostProcess] No changes for beat ${bp.beatId}`);
                 }
 
                 return {
