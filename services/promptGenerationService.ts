@@ -558,7 +558,8 @@ ONLY if swarmui_prompt_override is empty/missing, build from individual fields:
 
 6. **[LOCATION]**: The scene's visual environment
    - Find in: \`episode.scenes[N].location.visual_description\` (REQUIRED)
-   - This is the curated visual description - use it directly
+   - **CRITICAL: Copy the visual_description text VERBATIM - do NOT summarize, paraphrase, or interpret**
+   - This is professionally curated visual description - trust it exactly as written
    - Include relevant artifacts from \`episode.scenes[N].location.artifacts[].swarmui_prompt_fragment\`
 
 7. **[LIGHTING]**: Lighting derived from beat context OR location atmosphere
@@ -592,7 +593,7 @@ Some beats are pure atmosphere/mood-setting with NO character action. Detect the
 
 **Field mapping for establishing shots:**
 - **[SHOT_TYPE]**: "wide interior shot", "detail shot", "slow pan across"
-- **[LOCATION]**: From \`episode.scenes[N].location.visual_description\`
+- **[LOCATION]**: Copy VERBATIM from \`episode.scenes[N].location.visual_description\` - do NOT paraphrase
 - **[ENVIRONMENTAL_DETAILS]**: Translate beat's sensory descriptions to VISUAL elements
 - **[ARTIFACTS]**: ALL artifacts from \`location.artifacts[].swarmui_prompt_fragment\`
 - **[LIGHTING]**: From beat cues or \`location.atmosphere\`
@@ -627,11 +628,12 @@ photo of HSCEIA man 35 years old with short cropped white hair, fit athletic bui
 
 **RULES:**
 1. NO character names (Cat, Daniel, etc.) - ONLY use base_trigger
-2. NO location names (NHIA Facility 7, etc.) - ONLY use visual_description
+2. NO location names (NHIA Facility 7, etc.) - use visual_description VERBATIM (do not summarize)
 3. NO contradictory moods (cannot be "relaxed" AND "tense")
 4. NO weighted syntax like (((term:1.5))) - use natural language
 5. Keep prompts under 200 tokens
 6. Include ALL relevant artifacts from location
+7. NEVER paraphrase visual_description - it is professionally curated, copy exactly
 
 ---
 
