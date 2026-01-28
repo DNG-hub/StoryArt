@@ -62,7 +62,7 @@ export const getGeminiTemperature = (): number => {
     return (process.env as any).VITE_GEMINI_TEMPERATURE ||
            (process.env as any).GEMINI_TEMPERATURE;
   })();
-  return temp ? parseFloat(temp) : 0.7;
+  return temp ? parseFloat(temp) : 0.1; // Low temp for structured JSON output
 };
 
 // Read Gemini max tokens from .env
