@@ -4,6 +4,7 @@ import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, E
 import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { getStoryContext } from './storyContextService';
 import { applyLoraTriggerSubstitution } from '../utils';
+import { getGeminiModel, getGeminiTemperature } from './geminiService';
 
 const swarmUIPromptSchema = {
     type: Type.OBJECT,
@@ -871,18 +872,15 @@ Context Source: ${contextSource}`;
                 tokenMetrics.totalPromptTokensEstimate = batchPromptTokensEstimate;
             }
 
-            onProgress?.(`Sending batch ${batchIndex + 1} to Gemini API for prompt generation...`);
+            onProgress?.(`Sending batch ${batchIndex + 1} to Gemini API (model: ${getGeminiModel()}, temp: ${getGeminiTemperature()})...`);
             const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
+                model: getGeminiModel(),
                 contents: batchContents,
                 config: {
                     systemInstruction,
                     responseMimeType: 'application/json',
                     responseSchema: responseSchema,
-                    temperature: 1.0, // Gemini 3 Pro recommended default
-                    thinkingConfig: {
-                        thinkingLevel: 'low', // Faster responses for structured output
-                    },
+                    temperature: getGeminiTemperature(),
                 },
             });
 

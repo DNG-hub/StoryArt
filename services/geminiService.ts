@@ -40,6 +40,47 @@ export const refreshGeminiClient = () => {
   ai = getGeminiClient();
 };
 
+// Read Gemini model from .env — NEVER hardcode the model
+export const getGeminiModel = (): string => {
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env.VITE_GEMINI_MODEL ||
+           import.meta.env.GEMINI_MODEL ||
+           'gemini-2.0-flash';
+  }
+  return (process.env as any).VITE_GEMINI_MODEL ||
+         (process.env as any).GEMINI_MODEL ||
+         'gemini-2.0-flash';
+};
+
+// Read Gemini temperature from .env — NEVER hardcode the temperature
+export const getGeminiTemperature = (): number => {
+  const temp = (() => {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return import.meta.env.VITE_GEMINI_TEMPERATURE ||
+             import.meta.env.GEMINI_TEMPERATURE;
+    }
+    return (process.env as any).VITE_GEMINI_TEMPERATURE ||
+           (process.env as any).GEMINI_TEMPERATURE;
+  })();
+  return temp ? parseFloat(temp) : 0.7;
+};
+
+// Read Gemini max tokens from .env
+export const getGeminiMaxTokens = (): number => {
+  const tokens = (() => {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return import.meta.env.VITE_GEMINI_MAX_TOKENS ||
+             import.meta.env.GEMINI_MAX_TOKENS;
+    }
+    return (process.env as any).VITE_GEMINI_MAX_TOKENS ||
+           (process.env as any).GEMINI_MAX_TOKENS;
+  })();
+  return tokens ? parseInt(tokens) : 8192;
+};
+
+// Log active Gemini config on startup
+console.log(`[Gemini Config] Model: ${getGeminiModel()}, Temperature: ${getGeminiTemperature()}, MaxTokens: ${getGeminiMaxTokens()}`);
+
 const responseSchema = {
   type: Type.OBJECT,
   properties: {
@@ -348,17 +389,17 @@ export const analyzeScript = async (
 
     if (wordCount <= maxWordsPerRequest) {
       // Process as single chunk
-      onProgress?.('Sending script to Gemini for analysis...');
+      onProgress?.(`Sending script to Gemini for analysis (model: ${getGeminiModel()}, temp: ${getGeminiTemperature()})...`);
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: getGeminiModel(),
         contents: `Analyze the following script using the provided visually-focused Episode Context as your guide.\n\n---SCRIPT---\n${scriptText}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`,
         config: {
           systemInstruction,
           responseMimeType: 'application/json',
           responseSchema: responseSchema,
-          temperature: 0.1,
-          maxOutputTokens: 200000, // Increase token limit to prevent truncation
-          candidateCount: 1, // Ensure single response
+          temperature: getGeminiTemperature(),
+          maxOutputTokens: getGeminiMaxTokens(),
+          candidateCount: 1,
         },
       });
 
@@ -379,14 +420,14 @@ export const analyzeScript = async (
 **IMPORTANT: This is chunk ${i + 1} of ${chunks.length} from a larger script. Focus on creating complete, detailed beats for the scenes in this chunk. Maintain consistent scene numbering and character continuity.**`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: getGeminiModel(),
           contents: `Analyze the following script chunk using the provided visually-focused Episode Context as your guide.\n\n---SCRIPT CHUNK ${i + 1}---\n${chunks[i]}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`,
           config: {
             systemInstruction: chunkSystemInstruction,
             responseMimeType: 'application/json',
             responseSchema: responseSchema,
-            temperature: 0.1,
-            maxOutputTokens: 200000,
+            temperature: getGeminiTemperature(),
+            maxOutputTokens: getGeminiMaxTokens(),
             candidateCount: 1,
           },
         });
@@ -553,13 +594,13 @@ export const analyzeScript = async (
 export const geminiGenerateContent = async (
   prompt: string,
   systemInstruction?: string,
-  temperature: number = 0.7,
-  maxTokens: number = 2048
+  temperature: number = getGeminiTemperature(),
+  maxTokens: number = getGeminiMaxTokens()
 ): Promise<{ content: string }> => {
   const ai = getGeminiClient();
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: getGeminiModel(),
     contents: prompt,
     config: {
       systemInstruction: systemInstruction || 'You are a helpful AI assistant.',
