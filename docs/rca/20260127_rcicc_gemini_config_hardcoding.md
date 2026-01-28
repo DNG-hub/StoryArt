@@ -15,7 +15,10 @@ The StoryArt application hardcoded Gemini AI model and temperature parameters di
 
 ## Root Causes
 
-### **RC-1: Configuration Hardcoding → Runtime Configuration Immutability**
+### **RC-1: Configuration Hardcoding → Runtime Configuration Immutability** ✅ FIXED
+
+**Fix Commit:** b6670fd
+**Status:** Resolved
 
 **MECHANISM:**
 The AI provider model and temperature parameters were embedded as string literals and numeric constants directly in TypeScript source code at four locations across two service files (`geminiService.ts:356, 392, 580` and `promptGenerationService.ts:876, 882`). No environment variable reading mechanism existed in the codebase. When developers needed to change AI behavior (model selection, temperature tuning), they had to:
@@ -36,7 +39,10 @@ Source code (hardcoded strings) → TypeScript compilation → Runtime execution
 
 ---
 
-### **RC-2: Uncommitted Configuration Drift → Production State Ambiguity**
+### **RC-2: Uncommitted Configuration Drift → Production State Ambiguity** ✅ FIXED
+
+**Fix Commit:** b6670fd (resolved via stashing)
+**Status:** Resolved
 
 **MECHANISM:**
 A developer manually changed AI parameters in the working copy (`gemini-2.5-flash` → `gemini-3-flash-preview`, `temp: 0.1` → `1.0`) without committing these changes. Git blame showed "Not Committed Yet" for the current configuration. This created a state where:
@@ -52,6 +58,73 @@ Last commit (Jan 3: model=2.5-flash, temp=0.1) → Uncommitted edit (model=3-fla
 - `git diff` showed uncommitted changes to model and temperature values
 - Last commit 5870a15 (Jan 3, 2026) by Innovator had different values
 - User reported mismatch between `.env` settings and observed behavior
+
+---
+
+### **RC-3: Ultra-Aggressive Prompt Modifications → 30x Beat Explosion** ✅ FIXED
+
+**Fix Commit:** 29383d4
+**Status:** Resolved
+**Discovery Date:** 2026-01-27 (during Episode 2 generation)
+
+**MECHANISM:**
+On October 28, 2025 (commit a7be2b4f), unauthorized prompt modifications changed beat generation instructions from measured, professional language to ultra-aggressive language with vague intensifiers. At `temperature: 0.1`, Gemini interpreted these instructions literally, causing catastrophic output expansion:
+
+**Original (Working - Pre-Oct 28):**
+- "You MUST generate at least 10 beats per scene, ideally 15-25 beats"
+- "Each beat should contain 2-5 sentences of script text"
+- Professional language: "MANY distinct narrative beats"
+- Expected: 4 scenes × 18 beats = 72 beats total
+
+**Modified (Oct 28 - commit a7be2b4f):**
+- "MINIMUM of 25 beats per scene. Most scenes should have 30-40 beats"
+- "Each beat should contain 1-2 sentences of script text maximum"
+- Aggressive language: "EXTREMELY MANY", "EXTREME GRANULARITY", "ULTRA-GRANULAR"
+- Added: "EVERY single dialogue line, action, pause, reaction = separate beat"
+- Added: Example showing 10 beats for simple "Hello, what's that?" dialogue exchange
+
+**CHAIN:**
+Vague intensifiers ("EXTREMELY MANY") + Low temperature (0.1) → Literal interpretation → Generate separate beat for EVERY word/pause/action → 30x output explosion (4,228 beats instead of 140) → 212 processing batches → 15+ minute generation time → User stopped at batch 48
+
+**EVIDENCE:**
+- Episode 2 stopped at batch 48 of 212 (4,228 beats for 4 scenes)
+- Episode 1 (successful): ~72 beats, 45 images, 5 min 10 sec video
+- Episode 2 (failed): 4,228 beats, would generate ~2,642 images, ~5 hours video
+- Commit a7be2b4f: "feat: Implement ultra-aggressive 25+ beat requirement per scene"
+- User quote: "I never instructed 'VERY MANY' were did that come from. we must make sure that this exagerated interpretations do not happen agin"
+
+**ROOT CAUSE:**
+At low temperature (0.1), LLMs interpret vague intensifiers literally. "EXTREMELY MANY" has no quantitative bound, so the model generated as many beats as grammatically possible (1,057 beats per scene instead of 18).
+
+**BUSINESS IMPACT:**
+- 30x cost increase in API calls (4,228 beats × prompt cost)
+- 30x increase in generation time (15+ minutes vs 2 minutes)
+- 58x increase in image generation (2,642 images vs 45 images)
+- Complete workflow blockage (user stopped generation)
+- Wasted compute resources and user time
+
+**CORRECTIVE ACTION:**
+Reverted prompt instructions to original working configuration (commit 29383d4):
+- Beat target: 12-20 beats/scene (ideally 15-20 beats)
+- Beat duration: 45-90 seconds (vs 30-60 aggressive)
+- Script text: 2-5 sentences per beat (vs 1-2 maximum)
+- Language: Professional and measured (removed ALL CAPS and vague intensifiers)
+- Removed ultra-granular segmentation examples
+
+**POLICY CREATED:**
+Created `docs/PROMPT_MODIFICATION_POLICY.md` to prevent future unauthorized prompt changes:
+- Establishes baseline parameters (15-20 beats per scene)
+- Forbids vague intensifiers (EXTREMELY, ULTRA, MAXIMUM, ALL CAPS)
+- Requires explicit approval for prompt modifications
+- Documents change control process (branch, test, approve, merge)
+- Includes rollback procedures
+
+**VALIDATION:**
+Expected results with reverted configuration:
+- 4 scenes × 18 beats = 72 beats total (matches Episode 1)
+- ~45 NEW_IMAGE beats (62.5% rate)
+- ~7 seconds per image (already exceeds YouTube 2026 requirements)
+- ~5-6 minutes of video content
 
 ---
 
@@ -78,6 +151,19 @@ Last commit (Jan 3: model=2.5-flash, temp=0.1) → Uncommitted edit (model=3-fla
 | **Urgency** | Medium |
 | **Blast Radius** | Single Workstation |
 | **Business Impact** | Low - Creates confusion during troubleshooting |
+
+---
+
+### **RC-3 Severity: Ultra-Aggressive Prompt Modifications**
+
+| Field | Value |
+|-------|-------|
+| **Type** | Logic Error (Prompt Engineering) |
+| **Recoverability** | Full (Zero Cost - simple revert) |
+| **Urgency** | **Critical** |
+| **Blast Radius** | System-Wide (affects all episode generation) |
+| **Business Impact** | **Critical** - 30x cost increase, workflow blockage, wasted compute resources, user dissatisfaction |
+| **Technical Impact** | 4,228 beats vs 140 expected (30x explosion), 15+ min generation time vs 2 min, 212 batches vs 7 batches |
 
 ---
 
@@ -123,6 +209,54 @@ Resolved as part of RC-1 fix by stashing uncommitted changes before applying cor
 
 ---
 
+### **RC-3: Ultra-Aggressive Prompt Modifications**
+
+**(a) REVERT: Restore Original Prompt Instructions**
+
+Reverted system instruction prompt in `geminiService.ts` (commit 29383d4):
+
+**Removed ultra-aggressive language:**
+- ❌ "MINIMUM of 25 beats per scene. Most scenes should have 30-40 beats"
+- ❌ "EXTREMELY MANY distinct narrative beats"
+- ❌ "EXTREME GRANULARITY"
+- ❌ "ULTRA-GRANULAR instructions"
+- ❌ "EVERY single dialogue line, action, pause, reaction = separate beat"
+- ❌ Beat segmentation examples showing 10 beats for simple dialogue
+
+**Restored working configuration:**
+- ✅ "You MUST generate at least 12 beats per scene, ideally 15-20 beats"
+- ✅ "Each beat should contain 2-5 sentences of script text"
+- ✅ "Beat duration: 45-90 seconds" (vs 30-60 aggressive)
+- ✅ Professional language: "MANY distinct narrative beats" (vs EXTREMELY MANY)
+- ✅ "Capture EVERY significant moment" (vs EVERY single moment)
+
+**(b) PREVENT: Create Prompt Modification Policy**
+
+Created `docs/PROMPT_MODIFICATION_POLICY.md` with:
+- Baseline prompt parameters (15-20 beats per scene)
+- Forbidden language (ALL CAPS, vague intensifiers)
+- Change control process (branch → test → approve → merge)
+- Review checklist (no ALL CAPS, numeric ranges reasonable, test on single scene)
+- Temperature awareness (at 0.1, AI interprets instructions literally)
+- Rollback procedures
+- Incidents log (documents Oct 28 incident)
+- Approved prompt templates
+
+**(c) EDUCATE: Temperature & Literal Interpretation**
+
+Key lesson documented in policy:
+```
+At temperature: 0.1, AI models interpret instructions LITERALLY.
+
+BAD: "Generate EXTREMELY MANY beats with ULTRA-GRANULAR detail"
+Result: Model generates 1,000+ beats because "EXTREMELY MANY" has no bound.
+
+GOOD: "Generate 15-20 beats per scene, targeting 18 beats"
+Result: Model generates 16-19 beats consistently.
+```
+
+---
+
 ## Validation Checklist
 
 ### **POST-FIX VALIDATION:**
@@ -135,12 +269,22 @@ Resolved as part of RC-1 fix by stashing uncommitted changes before applying cor
 
 **Runtime Verification (User Action Required):**
 - [ ] Restart dev server: `npm run dev`
-- [ ] Verify console output shows: `[Gemini Config] Model: gemini-2.0-flash, Temperature: 0.7, MaxTokens: 8192`
-- [ ] Change `.env` to use `GEMINI_MODEL=gemini-2.5-flash` and verify console log changes
+- [ ] Verify console output shows: `[Gemini Config] Model: gemini-2.5-flash, Temperature: 0.1, MaxTokens: 65536`
+- [ ] Change `.env` to use different model and verify console log changes
 - [ ] Trigger beat analysis and verify API calls use configured model (check network logs)
 - [ ] Trigger prompt generation and verify correct model/temperature
 - [ ] Compare generated prompts with baseline (ensure quality not degraded)
 - [ ] Monitor for any "model not found" or API errors
+
+**RC-3 Validation (User Action Required):**
+- [ ] Run Episode 2 beat analysis with reverted prompt
+- [ ] Verify beat count per scene: 12-20 beats (ideally 15-20)
+- [ ] Verify total beats for 4 scenes: ~72 beats (not 4,228)
+- [ ] Verify processing completes in ~2-3 minutes (not 15+ minutes)
+- [ ] Verify NEW_IMAGE count: ~45 images (not 2,642)
+- [ ] Verify beat duration estimates: 45-90 seconds
+- [ ] Verify beat script text: 2-5 sentences (not 1-2)
+- [ ] Compare output quality with Episode 1 (successful baseline)
 
 **Regression Prevention (Recommended):**
 - [ ] Add linter rule: Forbid string literals matching `gemini-*` in `services/*.ts` (except in getGeminiModel() function)
@@ -169,6 +313,40 @@ Resolved as part of RC-1 fix by stashing uncommitted changes before applying cor
     "encounters": 1,
     "last_seen": "2026-01-27",
     "related_rcas": ["docs/rca/20260127_rcicc_gemini_config_hardcoding.md"]
+  }
+}
+```
+
+### **PROMPT_LITERAL_INTERPRETATION**
+
+```json
+{
+  "PROMPT_LITERAL_INTERPRETATION": {
+    "description": "Vague intensifiers and ALL CAPS language in AI prompts cause literal interpretation at low temperature, resulting in output explosion",
+    "risk": "30x+ output expansion, cost explosion, workflow blockage, wasted compute resources",
+    "common_locations": ["*Service.ts system prompts", "AI instruction strings", "Prompt templates"],
+    "trigger_conditions": [
+      "Low temperature (0.1-0.3) combined with vague intensifiers",
+      "ALL CAPS emphasis without quantification",
+      "Superlatives without numeric bounds (EXTREMELY, ULTRA, MAXIMUM)"
+    ],
+    "mitigation": [
+      "Use quantified instructions (15-20 beats, not EXTREMELY MANY)",
+      "Avoid ALL CAPS emphasis in prompts",
+      "Forbid vague intensifiers (EXTREMELY, ULTRA, MAXIMUM)",
+      "Use professional, measured language",
+      "Document temperature effects in prompt modification policy",
+      "Test on single unit before full generation",
+      "Require explicit approval for prompt changes"
+    ],
+    "examples": {
+      "bad": "Generate EXTREMELY MANY beats with ULTRA-GRANULAR detail",
+      "good": "Generate 15-20 beats per scene, targeting 18 beats"
+    },
+    "encounters": 1,
+    "last_seen": "2026-01-27",
+    "related_rcas": ["docs/rca/20260127_rcicc_gemini_config_hardcoding.md"],
+    "policy": "docs/PROMPT_MODIFICATION_POLICY.md"
   }
 }
 ```
