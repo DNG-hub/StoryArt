@@ -384,8 +384,9 @@ export const analyzeScript = async (
     onProgress?.('Compacting episode context...');
 
     // Check if script needs chunking based on word count
+    // Per-scene chunking prevents output token exhaustion with detailed beat analysis
     const wordCount = scriptText.split(' ').length;
-    const maxWordsPerRequest = 3000; // Conservative limit to avoid token issues
+    const maxWordsPerRequest = 1500; // Force per-scene chunking to keep output manageable
 
     if (wordCount <= maxWordsPerRequest) {
       // Process as single chunk
