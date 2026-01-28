@@ -75,7 +75,7 @@ export const getGeminiMaxTokens = (): number => {
     return (process.env as any).VITE_GEMINI_MAX_TOKENS ||
            (process.env as any).GEMINI_MAX_TOKENS;
   })();
-  return tokens ? parseInt(tokens) : 8192;
+  return tokens ? parseInt(tokens) : 65536; // Gemini 2.0/2.5 Flash max output token limit
 };
 
 // Log active Gemini config on startup
