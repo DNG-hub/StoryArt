@@ -28,18 +28,25 @@ const DatabaseContextIndicator: React.FC<{
         const artifacts = context.episode?.scenes?.reduce((total: number, scene: any) =>
           total + (scene.location?.artifacts?.length || 0), 0) || 0;
 
-        // Characters are nested in scenes, and location_context is a single object (not array)
-        const characterContexts = context.episode?.scenes?.reduce((total: number, scene: any) =>
-          total + (scene.characters?.filter((char: any) => char.location_context).length || 0), 0) || 0;
+        // Characters are nested in scenes in BOTH scene.characters and scene.character_appearances arrays
+        const characterContexts = context.episode?.scenes?.reduce((total: number, scene: any) => {
+          const fromCharacters = scene.characters?.filter((char: any) => char.location_context).length || 0;
+          const fromAppearances = scene.character_appearances?.filter((char: any) => char.location_context).length || 0;
+          return total + fromCharacters + fromAppearances;
+        }, 0) || 0;
 
         // Character overrides: check if characters have swarmui_prompt_override or lora_weight_adjustment
         // (these indicate location-specific appearance customization)
         const characterOverrides = context.episode?.scenes?.reduce((total: number, scene: any) => {
-          const charactersWithOverrides = scene.characters?.filter((char: any) =>
+          const fromCharacters = scene.characters?.filter((char: any) =>
             char.location_context?.swarmui_prompt_override ||
             char.location_context?.lora_weight_adjustment
           ).length || 0;
-          return total + charactersWithOverrides;
+          const fromAppearances = scene.character_appearances?.filter((char: any) =>
+            char.location_context?.swarmui_prompt_override ||
+            char.location_context?.lora_weight_adjustment
+          ).length || 0;
+          return total + fromCharacters + fromAppearances;
         }, 0) || 0;
 
         setContextMetrics({ locations, artifacts, characterContexts, characterOverrides });
