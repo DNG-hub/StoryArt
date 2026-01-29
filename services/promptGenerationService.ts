@@ -872,17 +872,67 @@ Context Source: ${contextSource}`;
                 tokenMetrics.totalPromptTokensEstimate = batchPromptTokensEstimate;
             }
 
-            onProgress?.(`Sending batch ${batchIndex + 1} to Gemini API (model: ${getGeminiModel()}, temp: ${getGeminiTemperature()})...`);
-            const response = await ai.models.generateContent({
-                model: getGeminiModel(),
-                contents: batchContents,
-                config: {
-                    systemInstruction,
-                    responseMimeType: 'application/json',
-                    responseSchema: responseSchema,
-                    temperature: getGeminiTemperature(),
-                },
-            });
+            // Retry logic for network failures
+            let response;
+            let lastError;
+            const maxRetries = 3;
+            const baseDelay = 2000; // 2 seconds
+
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    onProgress?.(`Sending batch ${batchIndex + 1} to Gemini API (model: ${getGeminiModel()}, temp: ${getGeminiTemperature()}) - attempt ${attempt}/${maxRetries}...`);
+
+                    response = await ai.models.generateContent({
+                        model: getGeminiModel(),
+                        contents: batchContents,
+                        config: {
+                            systemInstruction,
+                            responseMimeType: 'application/json',
+                            responseSchema: responseSchema,
+                            temperature: getGeminiTemperature(),
+                        },
+                    });
+
+                    // Success - break retry loop
+                    break;
+
+                } catch (error) {
+                    lastError = error;
+                    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+                    console.error(`[Retry ${attempt}/${maxRetries}] Batch ${batchIndex + 1} failed: ${errorMessage}`);
+
+                    // Check if this is a retryable error
+                    const isNetworkError = errorMessage.includes('Failed to fetch') ||
+                                          errorMessage.includes('ERR_NAME_NOT_RESOLVED') ||
+                                          errorMessage.includes('network') ||
+                                          errorMessage.includes('timeout') ||
+                                          errorMessage.includes('ECONNRESET');
+
+                    if (!isNetworkError) {
+                        // Non-retryable error (API key, quota, etc.) - fail immediately
+                        console.error(`Non-retryable error detected. Not retrying.`);
+                        throw error;
+                    }
+
+                    if (attempt < maxRetries) {
+                        // Calculate exponential backoff delay
+                        const delay = baseDelay * Math.pow(2, attempt - 1);
+                        console.log(`Waiting ${delay}ms before retry ${attempt + 1}/${maxRetries}...`);
+                        onProgress?.(`Network error. Retrying in ${delay / 1000} seconds... (${attempt}/${maxRetries})`);
+
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        // Final attempt failed
+                        console.error(`All ${maxRetries} attempts failed for batch ${batchIndex + 1}`);
+                        throw new Error(`Network error after ${maxRetries} attempts: ${errorMessage}`);
+                    }
+                }
+            }
+
+            if (!response) {
+                throw new Error(`Failed to get response after ${maxRetries} attempts: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`);
+            }
 
             onProgress?.(`Processing Gemini response for batch ${batchIndex + 1}...`);
             const jsonString = response.text.trim();
@@ -955,8 +1005,38 @@ Context Source: ${contextSource}`;
             console.log(`Batch ${batchIndex + 1} completed: ${correctedBatch.length} prompts generated`);
             
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             console.error(`Error processing batch ${batchIndex + 1}:`, error);
-            throw new Error(`Failed to generate prompts for batch ${batchIndex + 1}. ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+            // Save progress before failing
+            console.log(`\n⚠️ PARTIAL PROGRESS: ${allResults.length} prompts generated successfully before failure`);
+            console.log(`   Completed batches: ${batchIndex} of ${batches.length}`);
+            console.log(`   Failed at batch: ${batchIndex + 1}`);
+
+            // Provide helpful error guidance
+            if (errorMessage.includes('Failed to fetch') ||
+                errorMessage.includes('ERR_NAME_NOT_RESOLVED') ||
+                errorMessage.includes('network')) {
+                throw new Error(
+                    `Network error at batch ${batchIndex + 1} of ${batches.length}. ` +
+                    `${allResults.length} prompts generated successfully. ` +
+                    `Possible causes: DNS resolution failure, network connectivity issue, or Gemini API outage. ` +
+                    `Try: (1) Check network connection, (2) Verify DNS resolution for generativelanguage.googleapis.com, ` +
+                    `(3) Retry analysis to resume from this point.`
+                );
+            } else if (errorMessage.includes('quota') || errorMessage.includes('limit')) {
+                throw new Error(
+                    `API quota exceeded at batch ${batchIndex + 1} of ${batches.length}. ` +
+                    `${allResults.length} prompts generated successfully. ` +
+                    `Wait a few minutes and retry to resume.`
+                );
+            } else {
+                throw new Error(
+                    `Failed to generate prompts for batch ${batchIndex + 1} of ${batches.length}. ` +
+                    `${allResults.length} prompts generated successfully. ` +
+                    `Error: ${errorMessage}`
+                );
+            }
         }
     }
 
