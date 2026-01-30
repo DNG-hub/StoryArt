@@ -158,6 +158,9 @@ interface InputPanelProps {
   isEpisodeListLoading: boolean;
   episodeListError: string | null;
   isScriptFetching: boolean;
+  // Prompt generation mode props
+  promptMode: 'storyart' | 'storyswarm';
+  onPromptModeChange: (mode: 'storyart' | 'storyswarm') => void;
 }
 
 const LLMProviderSelector: React.FC<{
@@ -434,6 +437,9 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   isEpisodeListLoading = false,
   episodeListError = null,
   isScriptFetching = false,
+  // Prompt generation mode props
+  promptMode,
+  onPromptModeChange,
 }) => {
   const [isContextJsonValid, setIsContextJsonValid] = useState(true);
 
@@ -603,6 +609,92 @@ export const InputPanel: React.FC<InputPanelProps> = ({
 
         {/* AI Model Config */}
         <LLMProviderSelector selectedLLM={selectedLLM} onSelectedLLMChange={onSelectedLLMChange} />
+
+        {/* Prompt Generation Mode Toggle */}
+        <div className="bg-gray-900/50 border border-gray-700 rounded-lg mb-6 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-300">
+              Prompt Generation Mode
+            </label>
+            <div className="flex items-center space-x-2">
+              <span className={`text-xs ${promptMode === 'storyart' ? 'text-blue-400 font-medium' : 'text-gray-500'}`}>
+                StoryArt
+              </span>
+              <input
+                type="checkbox"
+                checked={promptMode === 'storyswarm'}
+                onChange={(e) => onPromptModeChange(e.target.checked ? 'storyswarm' : 'storyart')}
+                disabled={isLoading}
+                className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <span className={`text-xs ${promptMode === 'storyswarm' ? 'text-blue-400 font-medium' : 'text-gray-500'}`}>
+                StorySwarm
+              </span>
+            </div>
+          </div>
+          <div className="text-xs text-gray-400 mt-2">
+            {promptMode === 'storyswarm'
+              ? 'Beats-only mode: StoryArt generates beats and saves to Redis for StorySwarm consumption'
+              : 'Full pipeline: StoryArt generates beats and prompts locally'
+            }
+          </div>
+          {promptMode === 'storyswarm' && (
+            <>
+              <div className="text-xs text-blue-400 bg-blue-900/20 border border-blue-700 rounded p-2 mt-3">
+                StoryArt will save beats to Redis without prompts. Run StorySwarm separately to fetch beats and generate prompts using the multi-agent pipeline.
+              </div>
+
+              {/* Automation Pipeline Configuration */}
+              <div className="mt-4 pt-4 border-t border-gray-700">
+                <div className="text-xs font-medium text-gray-300 mb-3">
+                  Automation Pipeline (Experimental)
+                </div>
+
+                <div className="space-y-2">
+                  <label className="flex items-center space-x-2 text-xs text-gray-400 cursor-not-allowed">
+                    <input
+                      type="checkbox"
+                      disabled
+                      className="w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded opacity-50"
+                    />
+                    <span>Enable full automation (requires backend APIs)</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2 text-xs text-gray-400 cursor-not-allowed ml-5">
+                    <input
+                      type="checkbox"
+                      disabled
+                      className="w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded opacity-50"
+                    />
+                    <span>Wait for GPU availability before generation</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2 text-xs text-gray-400 cursor-not-allowed ml-5">
+                    <input
+                      type="checkbox"
+                      disabled
+                      className="w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded opacity-50"
+                    />
+                    <span>Auto-start SwarmUI if not running</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2 text-xs text-gray-400 cursor-not-allowed ml-5">
+                    <input
+                      type="checkbox"
+                      disabled
+                      className="w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded opacity-50"
+                    />
+                    <span>Auto-trigger "Create All Images" workflow</span>
+                  </label>
+                </div>
+
+                <div className="text-xs text-amber-400 bg-amber-900/20 border border-amber-700 rounded p-2 mt-3">
+                  ⚠️ Automation pipeline requires backend APIs (see docs/BACKEND_API_REQUIREMENTS.md)
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Image Generation Config (from Episode Context or fallback) */}
         <StyleConfigPanel
