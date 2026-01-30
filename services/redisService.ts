@@ -194,11 +194,30 @@ export const getSessionTimestampFromLocalStorage = (): number | null => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return null;
-    
+
     const parsed = JSON.parse(stored);
     return parsed.timestamp || null;
   } catch (error) {
     console.warn('Failed to read session timestamp from localStorage:', error);
+    return null;
+  }
+};
+
+/**
+ * Gets the full session data from localStorage INCLUDING the timestamp.
+ * Used for syncing localStorage sessions to Redis.
+ */
+export const getFullLocalStorageSession = (): (SwarmUIExportData & { timestamp: number }) | null => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+
+    const parsed = JSON.parse(stored);
+    if (!parsed.timestamp) return null;
+
+    return parsed as (SwarmUIExportData & { timestamp: number });
+  } catch (error) {
+    console.warn('Failed to read full session from localStorage:', error);
     return null;
   }
 };

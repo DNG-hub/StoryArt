@@ -121,7 +121,8 @@ app.post('/api/v1/session/save', async (req, res) => {
       });
     }
 
-    const timestamp = Date.now();
+    // Use provided timestamp (for syncing from localStorage) or generate new one
+    const timestamp = sessionData.timestamp || Date.now();
     const sessionKey = `${SESSION_KEY_PREFIX}${timestamp}`;
     const sessionValue = JSON.stringify({
       ...sessionData,

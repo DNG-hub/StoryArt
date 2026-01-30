@@ -27,7 +27,8 @@ export interface EpisodeScriptResponse {
 }
 
 /**
- * Fetches the list of episodes for a given story from the StoryTeller API (V2)
+ * Fetches the list of episodes for a given story from the StoryTeller API
+ * Uses the V2 StoryArt endpoint which queries roadmap_episodes (canonical table)
  */
 export async function getEpisodeList(storyId: string): Promise<EpisodeListItem[]> {
   let token: string;
@@ -40,8 +41,8 @@ export async function getEpisodeList(storyId: string): Promise<EpisodeListItem[]
     throw error;
   }
 
-  // Use V2 endpoint for episode list
-  const url = `${BASE_URL}/api/v2/stories/${storyId}/episodes`;
+  // Use V2 StoryArt endpoint - queries roadmap_episodes (canonical table)
+  const url = `${BASE_URL}/api/v2/storyart/episodes/${storyId}`;
 
   try {
     const response = await fetch(url, {
@@ -58,16 +59,20 @@ export async function getEpisodeList(storyId: string): Promise<EpisodeListItem[]
       throw new Error(`Failed to fetch episode list. ${errorMessage}`);
     }
 
-    const episodes = await response.json();
+    const result = await response.json();
 
-    // V2 response format (list of EpisodeV2 objects)
-    return episodes.map((ep: any) => ({
-      episode_id: ep.id,
-      episode_number: ep.episode_number,
-      episode_title: ep.episode_title,
-      scene_count: ep.scene_count || 0,
-      status: ep.status,
-    }));
+    // Response format: { success, story_id, total_episodes, episodes: [...] }
+    if (result.success && result.episodes && Array.isArray(result.episodes)) {
+      return result.episodes.map((ep: any) => ({
+        episode_id: ep.episode_id,
+        episode_number: ep.episode_number,
+        episode_title: ep.episode_title,
+        scene_count: 4, // Standard 4 scenes per episode
+        status: 'active',
+      }));
+    }
+
+    return [];
   } catch (error) {
     console.error("Episode list request failed:", error);
     throw error;
@@ -132,32 +137,31 @@ export async function getEpisodeContext(storyId: string, episodeNumber: number):
     throw error;
   }
 
-  const url = `${BASE_URL}/api/v1/scene-context/extract-episode-context`;
+  // Use V2 StoryArt-specific endpoint (reads from canonical tables)
+  const url = `${BASE_URL}/api/v2/storyart/episode-context/${storyId}/${episodeNumber}`;
 
   try {
     const response = await fetch(url, {
-      method: 'POST',
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        story_id: storyId,
-        episode_number: episodeNumber,
-      }),
     });
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
-      const errorMessage = errorBody.error || `HTTP Error: ${response.status}`;
+      const errorMessage = errorBody.detail || errorBody.error || `HTTP Error: ${response.status}`;
       throw new Error(`Failed to fetch episode context. ${errorMessage}`);
     }
 
     const result = await response.json();
-    if (result.success && result.data) {
+
+    // V2 StoryArt response format: { success, context: { episode: {...} } }
+    if (result.success && result.context) {
       // Enhanced logging for location override debugging
-      const episode = result.data.episode;
-      console.log('📋 StoryTeller API Response Structure:', {
+      const episode = result.context.episode;
+      console.log('StoryTeller API Response Structure:', {
         hasEpisode: !!episode,
         episodeKeys: episode ? Object.keys(episode) : [],
         hasScenes: !!episode?.scenes,
@@ -168,7 +172,7 @@ export async function getEpisodeContext(storyId: string, episodeNumber: number):
 
       // Analyze location overrides in response
       if (episode?.scenes) {
-        console.log('\n🔍 LOCATION OVERRIDE ANALYSIS:');
+        console.log('\nLOCATION OVERRIDE ANALYSIS:');
         episode.scenes.forEach((scene: any, idx: number) => {
           const sceneChars = scene.characters || [];
           const sceneApps = scene.character_appearances || [];
@@ -179,20 +183,20 @@ export async function getEpisodeContext(storyId: string, episodeNumber: number):
             const locCtx = char.location_context || char;
             if (locCtx?.swarmui_prompt_override) {
               overrideCount++;
-              console.log(`   ✅ Scene ${scene.scene_number}: ${char.name || char.character_name} has override`);
+              console.log(`   OK Scene ${scene.scene_number}: ${char.name || char.character_name} has override`);
               const preview = locCtx.swarmui_prompt_override.substring(0, 60) + '...';
               console.log(`      "${preview}"`);
             }
           });
 
           if (totalChars > 0 && overrideCount === 0) {
-            console.log(`   ⚠️  Scene ${scene.scene_number}: ${totalChars} character(s) but NO overrides found`);
+            console.log(`   WARN Scene ${scene.scene_number}: ${totalChars} character(s) but NO overrides found`);
           }
         });
         console.log('');
       }
 
-      return result.data;
+      return result.context;
     } else {
       throw new Error(`API Error: ${result.error || 'Unknown error occurred while fetching context.'}`);
     }

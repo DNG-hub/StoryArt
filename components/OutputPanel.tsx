@@ -4,7 +4,7 @@ import { LightbulbIcon, LinkIcon, ClockIcon, CopyIcon, CheckIcon } from './icons
 import { PipelineProgressModal } from './PipelineProgressModal';
 import { NewImageModal } from './NewImageModal';
 import { processEpisodeCompletePipeline } from '../services/pipelineClientService';
-import { getLatestSession, getSessionTimestampFromLocalStorage } from '../services/redisService';
+import { getLatestSession, getSessionTimestampFromLocalStorage, getFullLocalStorageSession, saveSessionToRedis, getSessionByTimestamp } from '../services/redisService';
 import type { ProgressCallback } from '../services/pipelineService';
 import type { PipelineResult } from '../types';
 
@@ -344,6 +344,155 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
       }
       
       console.log('[OutputPanel] Using session timestamp:', timestamp);
+
+      // Ensure session exists in Redis before calling pipeline
+      // This handles the case where session was saved to localStorage but not Redis
+      const sessionCheck = await getSessionByTimestamp(timestamp);
+      if (!sessionCheck.success) {
+        console.log('[OutputPanel] Session not found in Redis, attempting to sync from localStorage...');
+        const fullLocalSession = getFullLocalStorageSession();
+
+        // DEBUG: Log what's in localStorage
+        if (fullLocalSession) {
+          console.log('[OutputPanel] ========== LOCALSTORAGE SESSION DATA ==========');
+          console.log('[OutputPanel] Timestamp:', fullLocalSession.timestamp);
+          console.log('[OutputPanel] Episode:', fullLocalSession.analyzedEpisode?.episodeNumber, '-', fullLocalSession.analyzedEpisode?.title);
+          console.log('[OutputPanel] Scenes count:', fullLocalSession.analyzedEpisode?.scenes?.length);
+
+          // Log first beat prompt to verify data integrity
+          const firstScene = fullLocalSession.analyzedEpisode?.scenes?.[0];
+          const firstBeatWithPrompt = firstScene?.beats?.find((b: any) => b.prompts?.cinematic);
+          if (firstBeatWithPrompt) {
+            console.log('[OutputPanel] First beat with prompt:', firstBeatWithPrompt.beatId);
+            console.log('[OutputPanel] First prompt preview:', firstBeatWithPrompt.prompts?.cinematic?.prompt?.substring(0, 300));
+          } else {
+            console.warn('[OutputPanel] ⚠️ No beats with cinematic prompts found in localStorage session!');
+          }
+          console.log('[OutputPanel] ================================================');
+        }
+
+        if (fullLocalSession && fullLocalSession.timestamp === timestamp) {
+          console.log('[OutputPanel] Found matching localStorage session, syncing to Redis...');
+
+          // Ensure required fields exist (localStorage might be missing some)
+          const sessionToSync = {
+            ...fullLocalSession,
+            scriptText: fullLocalSession.scriptText || `[Restored session - Episode ${fullLocalSession.analyzedEpisode?.episodeNumber}]`,
+            episodeContext: fullLocalSession.episodeContext || `[Restored context for ${fullLocalSession.analyzedEpisode?.title}]`,
+            storyUuid: fullLocalSession.storyUuid || `restored-${timestamp}`,
+            timestamp: timestamp,
+          };
+
+          console.log('[OutputPanel] Session data to sync:', {
+            hasScriptText: !!sessionToSync.scriptText,
+            hasEpisodeContext: !!sessionToSync.episodeContext,
+            hasStoryUuid: !!sessionToSync.storyUuid,
+            hasAnalyzedEpisode: !!sessionToSync.analyzedEpisode,
+          });
+
+          const saveResult = await saveSessionToRedis(sessionToSync);
+          if (saveResult.success && saveResult.storage !== 'localStorage') {
+            console.log('[OutputPanel] ✅ Session synced to Redis successfully');
+          } else if (saveResult.storage === 'localStorage') {
+            // It fell back to localStorage, which means Redis save failed
+            // This won't help us - the pipeline needs Redis
+            throw new Error('Failed to sync to Redis - only saved to localStorage. Check if Redis server is running.');
+          } else {
+            throw new Error(`Failed to sync session to Redis: ${saveResult.error || 'Unknown error'}`);
+          }
+        } else if (fullLocalSession) {
+          // localStorage has a different session - use that timestamp instead
+          console.log('[OutputPanel] localStorage has different timestamp, using localStorage session...');
+          timestamp = fullLocalSession.timestamp;
+          const saveResult = await saveSessionToRedis(fullLocalSession);
+          if (saveResult.success) {
+            console.log('[OutputPanel] ✅ Session synced to Redis with timestamp:', timestamp);
+          } else {
+            throw new Error(`Failed to sync session to Redis: ${saveResult.error || 'Unknown error'}`);
+          }
+        } else {
+          throw new Error('Session not found in Redis and no valid session in localStorage');
+        }
+      } else {
+        console.log('[OutputPanel] ✅ Session found in Redis');
+        // DEBUG: Log what Redis has for comparison
+        console.log('[OutputPanel] ========== REDIS SESSION DATA ==========');
+        console.log('[OutputPanel] Episode:', sessionCheck.data?.analyzedEpisode?.episodeNumber, '-', sessionCheck.data?.analyzedEpisode?.title);
+        console.log('[OutputPanel] Scenes count:', sessionCheck.data?.analyzedEpisode?.scenes?.length);
+
+        const firstScene = sessionCheck.data?.analyzedEpisode?.scenes?.[0];
+        const firstBeatWithPrompt = firstScene?.beats?.find((b: any) => b.prompts?.cinematic);
+        if (firstBeatWithPrompt) {
+          console.log('[OutputPanel] First beat with prompt:', firstBeatWithPrompt.beatId);
+          console.log('[OutputPanel] First prompt preview:', firstBeatWithPrompt.prompts?.cinematic?.prompt?.substring(0, 300));
+        } else {
+          console.warn('[OutputPanel] ⚠️ No beats with cinematic prompts found in Redis session!');
+        }
+        console.log('[OutputPanel] ===========================================');
+
+        // CRITICAL: Check if Redis data matches what we expect (from analysis prop or localStorage)
+        // If Redis has DIFFERENT data (e.g., old test session), force sync from localStorage
+        const fullLocalSession = getFullLocalStorageSession();
+        const redisTitle = sessionCheck.data?.analyzedEpisode?.title;
+        const localTitle = fullLocalSession?.analyzedEpisode?.title;
+        const analysisTitle = analysis?.title;
+
+        console.log('[OutputPanel] Checking for data mismatch...');
+        console.log('[OutputPanel]   fullLocalSession exists:', !!fullLocalSession);
+        console.log('[OutputPanel]   redisTitle:', redisTitle);
+        console.log('[OutputPanel]   localTitle:', localTitle);
+        console.log('[OutputPanel]   analysisTitle:', analysisTitle);
+
+        // Check mismatch against BOTH localStorage and current analysis
+        const shouldForceSync = (localTitle && redisTitle !== localTitle) ||
+                                (analysisTitle && redisTitle !== analysisTitle);
+
+        if (shouldForceSync) {
+          console.warn(`[OutputPanel] ⚠️ DATA MISMATCH DETECTED!`);
+          console.warn(`[OutputPanel]   Redis has: "${redisTitle}"`);
+          console.warn(`[OutputPanel]   localStorage has: "${localTitle}"`);
+          console.warn(`[OutputPanel]   Current analysis: "${analysisTitle}"`);
+
+          // Prefer localStorage if it has correct data, otherwise build from analysis prop
+          if (localTitle && localTitle !== redisTitle && localTitle === analysisTitle) {
+            // localStorage has the correct data, sync it
+            console.log('[OutputPanel] Syncing from localStorage (has correct data)...');
+            const saveResult = await saveSessionToRedis(fullLocalSession);
+            if (saveResult.success) {
+              console.log('[OutputPanel] ✅ Force-synced localStorage to Redis');
+            } else {
+              throw new Error(`Failed to force-sync session: ${saveResult.error || 'Unknown error'}`);
+            }
+          } else {
+            // localStorage doesn't have correct data either - need to create new session
+            // We only have the analysis prop, not scriptText/episodeContext/storyUuid
+            // Generate a NEW timestamp and save with minimal data
+            console.log('[OutputPanel] ⚠️ localStorage also has stale data!');
+            console.log('[OutputPanel] Creating NEW session from current analysis...');
+
+            const newTimestamp = Date.now();
+            const minimalSessionData = {
+              scriptText: `[Auto-saved from pipeline - Episode ${analysis?.episodeNumber}]`,
+              episodeContext: `[Auto-saved context for ${analysis?.title}]`,
+              storyUuid: 'auto-generated-' + newTimestamp,
+              analyzedEpisode: analysis,
+              timestamp: newTimestamp,
+            };
+
+            const saveResult = await saveSessionToRedis(minimalSessionData as any);
+            if (saveResult.success) {
+              console.log('[OutputPanel] ✅ Created new session with timestamp:', newTimestamp);
+              // Update the timestamp we'll use for the pipeline
+              timestamp = newTimestamp;
+              console.log('[OutputPanel] Pipeline will now use new timestamp:', timestamp);
+            } else {
+              throw new Error(`Failed to create new session: ${saveResult.error || 'Unknown error'}`);
+            }
+          }
+        } else {
+          console.log('[OutputPanel] No mismatch detected, using Redis data as-is');
+        }
+      }
 
       const progressCallback: ProgressCallback = (progressData) => {
         setBulkProgress({

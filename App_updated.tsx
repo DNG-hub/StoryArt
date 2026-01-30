@@ -104,13 +104,13 @@ function App() {
       // Add Gemini if available
       if (import.meta.env.VITE_GEMINI_API_KEY) {
         configs.push({
-          name: 'Gemini 2.0 Flash',
+          name: 'Gemini 3 Flash',
           provider: AIProvider.GEMINI,
           apiKey: import.meta.env.VITE_GEMINI_API_KEY,
-          model: 'models/gemini-2.0-flash',
-          maxTokens: 8192,
-          temperature: 0.7,
-          costPer1kTokens: 0.00075,
+          model: 'gemini-3-flash-preview',
+          maxTokens: 65536, // Gemini 3 Flash max output
+          temperature: 1.0, // Gemini 3 recommended default
+          costPer1kTokens: 0.0005, // $0.50 per million input tokens
           isAvailable: true,
           priority: 1,
           supportedTasks: [

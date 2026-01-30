@@ -561,6 +561,13 @@ export const generateImages = async (
         if (rawInput.loraweights) requestBody.loraweights = rawInput.loraweights;
         if (rawInput.negativeprompt) requestBody.negativeprompt = rawInput.negativeprompt;
 
+        console.log(`[SwarmUI] ========== SENDING TO SWARMUI ==========`);
+        console.log(`[SwarmUI] PROMPT BEING SENT:`);
+        console.log(`[SwarmUI] >>> ${requestBody.prompt} <<<`);
+        console.log(`[SwarmUI] Request body keys:`, Object.keys(requestBody));
+        console.log(`[SwarmUI] Images requested: ${requestBody.images}`);
+        console.log(`[SwarmUI] Dimensions: ${requestBody.width}x${requestBody.height}`);
+
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: {

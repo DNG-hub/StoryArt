@@ -21,7 +21,15 @@
     "migrate:redis:1-to-0:dry-run": "DRY_RUN=true tsx scripts/migrate-redis-database-1-to-0.js",
     "generate-shorts": "tsx scripts/generate-episode1-shorts.js",
     "generate-marketing": "tsx scripts/generate-episode1-marketing.ts",
-    "enhance-shorts": "tsx scripts/enhance-existing-shorts.ts"
+    "enhance-shorts": "tsx scripts/enhance-existing-shorts.ts",
+    "edit:character-description": "node scripts/bulk-edit-character-description.js",
+    "edit:character-description:dry-run": "DRY_RUN=true node scripts/bulk-edit-character-description.js",
+    "edit:character:multi": "node scripts/bulk-edit-multiple-descriptions.js",
+    "edit:character:multi:dry-run": "DRY_RUN=true node scripts/bulk-edit-multiple-descriptions.js",
+    "list:sessions": "node scripts/list-redis-sessions.js",
+    "search:character": "node scripts/search-character-descriptions.js",
+    "check:overrides": "node scripts/check-episode-context-overrides.js",
+    "check:locations": "node scripts/check-location-descriptions.js"
   },
   "dependencies": {
     "@google/genai": "^1.27.0",

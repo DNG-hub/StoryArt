@@ -4,18 +4,19 @@
   - Enhanced process tree management and health checks
   - Optimized for StoryArt React/Vite application
 
-  Note: Redis Session API server is disabled by default.
-        Session data is stored in localStorage (browser).
-        PostgreSQL (via StoryTeller API) stores generation results.
+  Starts:
+  - Frontend (Vite dev server) on port 3000
+  - Redis Session API Server on port 7802 (for Browse & Restore sessions)
 
   Usage:
-    .\start-storyart.ps1 [-UseEdge] [-NoBrowser] [-Help]
+    .\start-storyart.ps1 [-UseEdge] [-NoBrowser] [-NoBackend] [-Help]
 #>
 
 [CmdletBinding()]
 param(
   [switch]$UseEdge,
   [switch]$NoBrowser,
+  [switch]$NoBackend,
   [switch]$Help
 )
 
@@ -24,15 +25,17 @@ if ($Help) {
   Write-Host "Options:"
   Write-Host "  -UseEdge         Open Microsoft Edge instead of Chrome"
   Write-Host "  -NoBrowser       Do not launch a browser"
+  Write-Host "  -NoBackend       Skip starting Redis Session API server (port 7802)"
   Write-Host "  -Help            Show this help"
   Write-Host ""
   Write-Host "What it does:"
-  Write-Host "  1) Clean shutdown: kill process trees on port 3000; wait until port is free"
-  Write-Host "  2) Start StoryArt React/Vite dev server + wait for readiness"
-  Write-Host "  3) Open app in a fresh, throwaway browser profile"
+  Write-Host "  1) Clean shutdown: kill process trees on ports 3000 and 7802"
+  Write-Host "  2) Start Redis Session API server (port 7802) for Browse & Restore"
+  Write-Host "  3) Start StoryArt React/Vite dev server (port 3000)"
+  Write-Host "  4) Open app in a fresh, throwaway browser profile"
   Write-Host ""
   Write-Host "Storage:"
-  Write-Host "  - Sessions: localStorage (browser) - survives refresh, not browser data clear"
+  Write-Host "  - Sessions: Redis (via port 7802) with localStorage fallback"
   Write-Host "  - Results:  PostgreSQL (via StoryTeller API) - permanent storage"
   exit 0
 }
@@ -48,16 +51,14 @@ $Frontend = @{
   HealthUrl = 'http://localhost:3000'                   # vite responds at /
 }
 
-# Redis Session API Server - DISABLED (using localStorage instead)
-# Session data persists in browser localStorage
-# Generation results persist to PostgreSQL via StoryTeller API
-# $Backend = @{
-#   Name      = 'Redis Session API Server'
-#   Port      = 7802
-#   WorkDir   = 'E:\REPOS\StoryArt'
-#   StartCmd  = 'npm run dev:server'
-#   HealthUrl = 'http://localhost:7802/health'
-# }
+# Redis Session API Server - provides Browse & Restore session functionality
+$Backend = @{
+  Name      = 'Redis Session API Server'
+  Port      = 7802
+  WorkDir   = 'E:\REPOS\StoryArt'
+  StartCmd  = 'npm run dev:server'
+  HealthUrl = 'http://localhost:7802/health'
+}
 
 $OpenUrl = 'http://localhost:3000'
 
@@ -303,6 +304,11 @@ Stop-StoryArtProcesses
 # Clear frontend port
 Stop-ProcessOnPort -Port $Frontend.Port -ServiceName $Frontend.Name
 
+# Clear backend port (if not skipping backend)
+if (-not $NoBackend) {
+  Stop-ProcessOnPort -Port $Backend.Port -ServiceName $Backend.Name
+}
+
 # Give processes extra time to fully terminate
 Write-Host "Waiting for processes to fully terminate..." -ForegroundColor Yellow
 Start-Sleep -Seconds 3
@@ -313,11 +319,32 @@ Start-Sleep -Seconds 3
 Ensure-NodeModules -Dir $Frontend.WorkDir
 
 # =========================
-# 3) START FRONTEND
+# 3) START BACKEND (Redis Session API)
 # =========================
-# Note: Redis Session API server is disabled - using localStorage for sessions
-#       Generation results persist to PostgreSQL via StoryTeller API
-Write-Host "`nStarting StoryArt frontend…" -ForegroundColor Green
+if (-not $NoBackend) {
+  Write-Host "`nStarting Redis Session API Server (port $($Backend.Port))..." -ForegroundColor Green
+  $backendArgs = @("-NoExit", "-Command", $Backend.StartCmd)
+  try {
+    Start-Process -FilePath "powershell" -ArgumentList $backendArgs -WorkingDirectory $Backend.WorkDir | Out-Null
+  }
+  catch {
+    Write-Host "Failed to start Redis Session API server." -ForegroundColor Red
+  }
+  
+  # Wait for backend to be ready
+  $backendReady = Wait-HttpReady -Url $Backend.HealthUrl -TimeoutSeconds 30
+  if (-not $backendReady) {
+    Write-Host "WARNING: Redis Session API may not be ready. Browse & Restore may not work." -ForegroundColor Yellow
+  }
+}
+else {
+  Write-Host "`nSkipping Redis Session API Server (-NoBackend)" -ForegroundColor Yellow
+}
+
+# =========================
+# 4) START FRONTEND
+# =========================
+Write-Host "`nStarting StoryArt frontend (port $($Frontend.Port))..." -ForegroundColor Green
 $frontendArgs = @("-NoExit", "-Command", $Frontend.StartCmd)
 try {
   Start-Process -FilePath "powershell" -ArgumentList $frontendArgs -WorkingDirectory $Frontend.WorkDir | Out-Null
@@ -329,7 +356,7 @@ catch {
 [void](Wait-HttpReady -Url $Frontend.HealthUrl -TimeoutSeconds 90)
 
 # =========================
-# 4) OPEN BROWSER (fresh profile)
+# 5) OPEN BROWSER (fresh profile)
 # =========================
 if (-not $NoBrowser) {
   Open-BrowserTempProfile -Url $OpenUrl -Edge:$UseEdge
@@ -340,14 +367,22 @@ else {
 
 Write-Host "`nStoryArt development environment started:" -ForegroundColor Green
 Write-Host ("  Frontend: {0}" -f $OpenUrl) -ForegroundColor Cyan
-Write-Host "  Sessions: localStorage (browser)" -ForegroundColor Cyan
+if (-not $NoBackend) {
+  Write-Host ("  Backend:  http://localhost:{0}" -f $Backend.Port) -ForegroundColor Cyan
+  Write-Host "  Sessions: Redis (Browse & Restore enabled)" -ForegroundColor Cyan
+}
+else {
+  Write-Host "  Sessions: localStorage only (Browse & Restore disabled)" -ForegroundColor Yellow
+}
 Write-Host "  Results:  PostgreSQL (via StoryTeller API)" -ForegroundColor Cyan
 Write-Host ("=" * 64) -ForegroundColor DarkCyan
 
 Write-Host "`nDevelopment Tips:" -ForegroundColor Yellow
 Write-Host "  - Vite dev server will auto-reload on file changes" -ForegroundColor White
-Write-Host "  - Session data persists in browser localStorage" -ForegroundColor White
-Write-Host "  - Use Ctrl+C in the terminal to stop the server" -ForegroundColor White
+if (-not $NoBackend) {
+  Write-Host "  - Browse & Restore retrieves sessions from Redis" -ForegroundColor White
+}
+Write-Host "  - Use Ctrl+C in the terminal windows to stop servers" -ForegroundColor White
 Write-Host "  - Fresh browser profile prevents cache issues" -ForegroundColor White
 
 Write-Host "`nStoryArt Features:" -ForegroundColor Yellow
