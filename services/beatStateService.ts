@@ -70,6 +70,13 @@ import {
   type BeatVisualGuidance,
 } from './sceneContextService';
 
+// Import Time Progression Service
+import {
+  processEpisodeTimeProgression,
+  getEpisodeEndTime,
+  type SceneTimeContext,
+} from './timeProgressionService';
+
 // ============================================================================
 // EXTENDED TYPES
 // ============================================================================
@@ -584,31 +591,83 @@ export function processSceneWithState(scene: AnalyzedScene): AnalyzedScene {
 }
 
 /**
+ * Result of processing an episode with full context.
+ * Includes the ending time for cross-episode continuity.
+ */
+export interface ProcessedEpisodeResult {
+  episode: AnalyzedEpisode;
+  timeProgression: SceneTimeContext[];
+  endingTimeOfDay: TimeOfDay | null;
+  stats: {
+    totalBeats: number;
+    carryoverApplied: number;
+    varietyApplied: number;
+    fluxValidated: number;
+    timeJumps: number;
+  };
+}
+
+/**
  * Processes an entire episode with full SKILL.md compliance.
  *
  * @param episode - The episode to process
- * @param episodeOptions - Options for each scene (by scene number)
+ * @param options - Processing options
+ * @param options.previousEpisodeEndTime - Time of day at end of previous episode (for continuity)
+ * @param options.sceneOverrides - Manual overrides for scene options (by scene number)
  */
 export function processEpisodeWithFullContext(
   episode: AnalyzedEpisode,
-  episodeOptions: Record<number, {
-    timeOfDay?: string | null;
-    intensity?: number;
-    pacing?: string;
-    arcPhase?: string | null;
-  }> = {}
-): AnalyzedEpisode {
-  console.log(`[BeatState] Processing episode ${episode.episodeNumber}: "${episode.title}" (FULL CONTEXT)`);
+  options: {
+    previousEpisodeEndTime?: TimeOfDay | null;
+    sceneOverrides?: Record<number, {
+      timeOfDay?: string | null;
+      intensity?: number;
+      pacing?: string;
+      arcPhase?: string | null;
+    }>;
+  } = {}
+): ProcessedEpisodeResult {
+  const { previousEpisodeEndTime = null, sceneOverrides = {} } = options;
 
-  const processedScenes = episode.scenes.map(scene => {
-    const sceneOpts = episodeOptions[scene.sceneNumber] || {};
+  console.log(`[BeatState] Processing episode ${episode.episodeNumber}: "${episode.title}" (FULL CONTEXT)`);
+  if (previousEpisodeEndTime) {
+    console.log(`[BeatState] Continuing from previous episode ending: ${previousEpisodeEndTime}`);
+  }
+
+  // Step 1: Determine time progression for all scenes
+  const scenesForTimeProgression = episode.scenes.map(scene => ({
+    sceneNumber: scene.sceneNumber,
+    title: scene.title,
+    description: scene.beats[0]?.beat_script_text || scene.title,
+    explicitTimeOfDay: sceneOverrides[scene.sceneNumber]?.timeOfDay,
+  }));
+
+  const timeProgression = processEpisodeTimeProgression(
+    scenesForTimeProgression,
+    previousEpisodeEndTime
+  );
+
+  // Log time progression
+  console.log(`[BeatState] Time progression:`);
+  for (const tc of timeProgression) {
+    const jumpInfo = tc.isTimeJump ? ` [JUMP: ${tc.jumpDescription}]` : '';
+    console.log(`  Scene ${tc.sceneNumber}: ${tc.timeOfDay} (${tc.source})${jumpInfo}`);
+  }
+
+  // Step 2: Process each scene with its determined time of day
+  const processedScenes = episode.scenes.map((scene, index) => {
+    const timeContext = timeProgression[index];
+    const sceneOpts = sceneOverrides[scene.sceneNumber] || {};
+
     return processSceneWithFullContext(scene, {
       ...sceneOpts,
+      // Use time from progression (unless explicitly overridden)
+      timeOfDay: sceneOpts.timeOfDay || timeContext?.timeOfDay || null,
       totalScenes: episode.scenes.length,
     });
   });
 
-  // Log summary
+  // Step 3: Collect stats
   let totalBeats = 0;
   let carryoverApplied = 0;
   let varietyApplied = 0;
@@ -630,15 +689,31 @@ export function processEpisodeWithFullContext(
     }
   }
 
+  const timeJumps = timeProgression.filter(tc => tc.isTimeJump).length;
+  const endingTimeOfDay = getEpisodeEndTime(timeProgression);
+
   console.log(`[BeatState] Episode complete (FULL CONTEXT):`);
   console.log(`  Total beats: ${totalBeats}`);
   console.log(`  Carryover applied: ${carryoverApplied}`);
   console.log(`  Variety adjustments: ${varietyApplied}`);
   console.log(`  FLUX validated: ${fluxValidated}/${totalBeats}`);
+  console.log(`  Time jumps: ${timeJumps}`);
+  console.log(`  Episode ends at: ${endingTimeOfDay}`);
 
   return {
-    ...episode,
-    scenes: processedScenes
+    episode: {
+      ...episode,
+      scenes: processedScenes
+    },
+    timeProgression,
+    endingTimeOfDay,
+    stats: {
+      totalBeats,
+      carryoverApplied,
+      varietyApplied,
+      fluxValidated,
+      timeJumps,
+    }
   };
 }
 

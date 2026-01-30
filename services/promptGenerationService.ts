@@ -1,6 +1,7 @@
 // FIX: Corrected import path for Google GenAI SDK.
 import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig, BeatAnalysisWithState } from '../types';
+import type { FullyProcessedBeat } from './beatStateService';
 import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { getStoryContext } from './storyContextService';
 import { applyLoraTriggerSubstitution } from '../utils';
@@ -886,6 +887,42 @@ If beat has \`carryoverContext.varietyAdjusted: true\`, the shot type in \`style
 
 ---
 
+**FLUX-VALIDATED FIELDS:**
+
+Some beats include pre-validated FLUX.1-Dev vocabulary fields:
+
+- \`fluxExpression\`: Character-specific expression (e.g., "analytical gaze, intense focus" for Cat)
+- \`fluxPose\`: FLUX-compliant pose description (e.g., "standing tall", "leaning against wall")
+
+Use these fields DIRECTLY in your prompts when present - they are already validated against FLUX vocabulary.
+
+---
+
+**VISUAL GUIDANCE (Scene Context):**
+
+Some beats include \`visualGuidance\` with scene-level context:
+
+\`\`\`json
+{
+  "visualGuidance": {
+    "isHookBeat": true,
+    "isClimaxBeat": false,
+    "isAdBreakBeat": false,
+    "recommendedShotType": "close-up shot",
+    "intensityLevel": "high"
+  }
+}
+\`\`\`
+
+**How to use visual guidance:**
+- \`isHookBeat\`: Beat 1 of each scene - make visually striking for 3-second retention
+- \`isClimaxBeat\`: Final beat of climax scene - dramatic, impactful framing
+- \`isAdBreakBeat\`: Near 8-minute mark - medium framing, breath moment
+- \`intensityLevel\`: "low", "medium", or "high" - affects expression intensity
+- \`recommendedShotType\`: Scene-appropriate shot type (consider using if styleGuide.camera differs)
+
+---
+
 **ESTABLISHING SHOTS (No Character Present):**
 
 Some beats are pure atmosphere/mood-setting with NO character action. Detect these by:
@@ -1029,7 +1066,7 @@ Context Source: ${contextSource}`;
         console.log(`Processing batch ${batchIndex + 1}/${batches.length} with ${batch.length} beats`);
         
         // DEV: Enhance beats with a dynamic, structured style guide for more contextual prompts.
-        // Also includes carryover state from beatStateService (SKILL.md Section 4.5)
+        // Also includes carryover state and FLUX-validated fields from beatStateService
         const beatsWithStyleGuide = batch.map(beat => {
             const styleGuide = {
                 camera: new Set<string>(),
@@ -1038,14 +1075,22 @@ Context Source: ${contextSource}`;
                 atmosphere: new Set<string>()
             };
 
-            // Cast to BeatAnalysisWithState to access carryover fields
-            const beatWithState = beat as BeatAnalysisWithState;
+            // Cast to FullyProcessedBeat to access FLUX-validated and carryover fields
+            const beatWithState = beat as FullyProcessedBeat;
 
-            // --- Camera ---
-            // Use variety-adjusted shot type if available (from beatStateService)
-            const effectiveCameraSuggestion = beatWithState.suggestedShotType || beat.cameraAngleSuggestion;
-            if (effectiveCameraSuggestion) {
-                styleGuide.camera.add(effectiveCameraSuggestion);
+            // --- Camera (use FLUX-validated fields when available) ---
+            // Priority: FLUX shot type > variety-adjusted > original suggestion
+            if (beatWithState.fluxShotType) {
+                styleGuide.camera.add(beatWithState.fluxShotType);
+                // Add camera angle if not default eye-level
+                if (beatWithState.fluxCameraAngle && beatWithState.fluxCameraAngle !== 'eye-level shot') {
+                    styleGuide.camera.add(beatWithState.fluxCameraAngle);
+                }
+            } else {
+                const effectiveCameraSuggestion = beatWithState.suggestedShotType || beat.cameraAngleSuggestion;
+                if (effectiveCameraSuggestion) {
+                    styleGuide.camera.add(effectiveCameraSuggestion);
+                }
             }
             styleGuide.camera.add('shallow depth of field');
             // Add handheld feel for more dynamic scenes, could be based on a new 'energy' field in future.
@@ -1053,8 +1098,12 @@ Context Source: ${contextSource}`;
                 styleGuide.camera.add('handheld feel');
             }
 
-            // --- Lighting ---
-            styleGuide.lighting.add('dramatic rim light');
+            // --- Lighting (use FLUX lighting from time of day when available) ---
+            if (beatWithState.fluxLighting && beatWithState.fluxLighting.length > 0) {
+                beatWithState.fluxLighting.forEach(light => styleGuide.lighting.add(light));
+            } else {
+                styleGuide.lighting.add('dramatic rim light');
+            }
 
             // --- Environment & Atmosphere ---
             styleGuide.environmentFX.add('desaturated color grade');
@@ -1090,6 +1139,15 @@ Context Source: ${contextSource}`;
                 console.log(`[PromptGen] Beat ${beat.beatId}: Using variety-adjusted shot type "${beatWithState.suggestedShotType}"`);
             }
 
+            // Build visual guidance context (from sceneContextService)
+            const visualGuidance = beatWithState.beatVisualGuidance ? {
+                isHookBeat: beatWithState.beatVisualGuidance.isHookBeat,
+                isClimaxBeat: beatWithState.beatVisualGuidance.isClimaxBeat,
+                isAdBreakBeat: beatWithState.beatVisualGuidance.isAdBreakBeat,
+                recommendedShotType: beatWithState.beatVisualGuidance.recommendedShotType,
+                intensityLevel: beatWithState.beatVisualGuidance.intensityLevel,
+            } : undefined;
+
             return {
                 ...beat,
                 styleGuide: {
@@ -1098,8 +1156,14 @@ Context Source: ${contextSource}`;
                     environmentFX: Array.from(styleGuide.environmentFX).join(', '),
                     atmosphere: Array.from(styleGuide.atmosphere).join(', '),
                 },
+                // FLUX-validated expression (from characterExpressionService)
+                fluxExpression: beatWithState.fluxExpression || undefined,
+                // FLUX-validated pose (from beatStateService)
+                fluxPose: beatWithState.fluxPose || undefined,
                 // Include carryover context for the AI to use
-                carryoverContext: carryoverContext.hasCarryover ? carryoverContext : undefined
+                carryoverContext: carryoverContext.hasCarryover ? carryoverContext : undefined,
+                // Include visual guidance for hook/climax emphasis
+                visualGuidance,
             };
         });
 

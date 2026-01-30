@@ -256,16 +256,31 @@ export const FLUX_QUALITY = {
 // TIME OF DAY -> LIGHTING MAPPING (Section 13.2)
 // ============================================================================
 
-export type TimeOfDay = 'pre_dawn' | 'morning' | 'midday' | 'golden_hour' | 'dusk' | 'night_interior' | 'night_exterior';
+export type TimeOfDay =
+  | 'pre_dawn'
+  | 'morning'
+  | 'midday'
+  | 'golden_hour'
+  | 'dusk'
+  | 'early_night'      // Just after dusk, some ambient sky glow remains
+  | 'night_interior'
+  | 'night_exterior'
+  | 'deep_night'       // Darkest part of night, minimal ambient light
+  | 'deep_night_interior'
+  | 'deep_night_exterior';
 
 export const TIME_OF_DAY_LIGHTING: Record<TimeOfDay, string[]> = {
   pre_dawn: ['blue hour', 'cold light', 'cold blue lighting'],
   morning: ['soft natural lighting', 'warm', 'natural lighting'],
   midday: ['harsh overhead', 'high contrast', 'harsh midday sun'],
   golden_hour: ['golden hour', 'warm amber', 'warm amber lighting'],
-  dusk: ['blue hour', 'fading light'],
+  dusk: ['blue hour', 'fading light', 'warm to cool transition'],
+  early_night: ['twilight remnants', 'emerging stars', 'deep blue ambient'],
   night_interior: ['artificial lighting', 'screen glow', 'cold blue lighting'],
-  night_exterior: ['moonlight', 'deep shadows', 'dramatic lighting'],
+  night_exterior: ['moonlight', 'deep shadows', 'cool blue tones'],
+  deep_night: ['minimal ambient light', 'deep shadows', 'isolated light sources'],
+  deep_night_interior: ['harsh artificial contrast', 'deep shadows', 'isolated pools of light'],
+  deep_night_exterior: ['faint moonlight', 'near-darkness', 'silhouette lighting'],
 };
 
 /**
@@ -274,8 +289,59 @@ export const TIME_OF_DAY_LIGHTING: Record<TimeOfDay, string[]> = {
 export function getLightingForTimeOfDay(timeOfDay: string | null | undefined): string[] {
   if (!timeOfDay) return [FLUX_LIGHTING.NATURAL];
 
-  const normalized = timeOfDay.toLowerCase().replace(/\s+/g, '_') as TimeOfDay;
-  return TIME_OF_DAY_LIGHTING[normalized] || [FLUX_LIGHTING.NATURAL];
+  const normalized = timeOfDay.toLowerCase().replace(/\s+/g, '_');
+
+  // Direct match
+  if (TIME_OF_DAY_LIGHTING[normalized as TimeOfDay]) {
+    return TIME_OF_DAY_LIGHTING[normalized as TimeOfDay];
+  }
+
+  // Partial matches for common shorthand (order matters - check specific before general)
+
+  // Night progression (check specific variants first)
+  if (normalized.includes('deep') && normalized.includes('night')) {
+    if (normalized.includes('exterior') || normalized.includes('outside')) {
+      return TIME_OF_DAY_LIGHTING.deep_night_exterior;
+    }
+    if (normalized.includes('interior') || normalized.includes('inside')) {
+      return TIME_OF_DAY_LIGHTING.deep_night_interior;
+    }
+    return TIME_OF_DAY_LIGHTING.deep_night;
+  }
+  if (normalized.includes('early') && normalized.includes('night')) {
+    return TIME_OF_DAY_LIGHTING.early_night;
+  }
+  if (normalized.includes('night')) {
+    if (normalized.includes('exterior') || normalized.includes('outside')) {
+      return TIME_OF_DAY_LIGHTING.night_exterior;
+    }
+    // Default to interior for just "night"
+    return TIME_OF_DAY_LIGHTING.night_interior;
+  }
+
+  // Twilight transitions
+  if (normalized.includes('twilight')) {
+    return TIME_OF_DAY_LIGHTING.dusk;
+  }
+  if (normalized.includes('dusk') || normalized.includes('evening')) {
+    return TIME_OF_DAY_LIGHTING.dusk;
+  }
+  if (normalized.includes('dawn') || normalized.includes('pre-dawn')) {
+    return TIME_OF_DAY_LIGHTING.pre_dawn;
+  }
+
+  // Day times
+  if (normalized.includes('golden')) {
+    return TIME_OF_DAY_LIGHTING.golden_hour;
+  }
+  if (normalized.includes('morning')) {
+    return TIME_OF_DAY_LIGHTING.morning;
+  }
+  if (normalized.includes('midday') || normalized.includes('noon')) {
+    return TIME_OF_DAY_LIGHTING.midday;
+  }
+
+  return [FLUX_LIGHTING.NATURAL];
 }
 
 // ============================================================================
