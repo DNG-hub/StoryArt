@@ -1,6 +1,6 @@
 // FIX: Corrected import path for Google GenAI SDK.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig } from '../types';
+import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig, BeatAnalysisWithState } from '../types';
 import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { getStoryContext } from './storyContextService';
 import { applyLoraTriggerSubstitution } from '../utils';
@@ -386,6 +386,192 @@ const responseSchema = {
     }
 };
 
+/**
+ * StorySwarm API Response Types
+ */
+interface StorySwarmPromptResponse {
+    success: boolean;
+    prompts: Array<{
+        beatId: string;
+        prompt: {
+            positive: string;
+            negative: string;
+        };
+        generation_metadata: {
+            agents_consulted: string[];
+            database_sources: {
+                character?: string;
+                location?: string;
+            };
+            continuity_notes: string;
+            generation_time_ms?: number;
+        };
+    }>;
+    stats: {
+        beats_processed: number;
+        generation_time_ms: number;
+        cache_hits?: number;
+    };
+    error?: {
+        message: string;
+        failed_beats?: string[];
+    };
+}
+
+/**
+ * Generate prompts via StorySwarm multi-agent pipeline API
+ * Implements V2 integration with automatic fallback to local generation
+ *
+ * @param analyzedEpisode - Episode with beats needing prompts
+ * @param episodeContext - Episode context JSON
+ * @param styleConfig - Image generation style configuration
+ * @returns StorySwarm response with generated prompts
+ * @throws Error if all retries exhausted
+ */
+export async function generatePromptsViaStorySwarm(
+    analyzedEpisode: AnalyzedEpisode,
+    episodeContext: string,
+    styleConfig: EpisodeStyleConfig,
+    onProgress?: (message: string) => void
+): Promise<StorySwarmPromptResponse> {
+    // Get StorySwarm API URL from environment
+    const getEnvVar = (key: string): string | undefined => {
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            return import.meta.env[key];
+        }
+        if (typeof process !== 'undefined' && process.env) {
+            return (process.env as any)[key];
+        }
+        return undefined;
+    };
+
+    const apiUrl = getEnvVar('VITE_STORYSWARM_API_URL') ||
+                   getEnvVar('STORYSWARM_API_URL') ||
+                   'http://localhost:8050';
+
+    const endpoint = `${apiUrl}/api/v1/visual-prompt/generate-batch`;
+
+    // Parse episode context to get episode metadata
+    let episodeNumber = 1;
+    let episodeTitle = 'Unknown';
+    let storyId: string | undefined;
+
+    try {
+        const context = JSON.parse(episodeContext);
+        episodeNumber = context.episode?.episodeNumber || context.episode?.number || 1;
+        episodeTitle = context.episode?.title || context.episode?.name || 'Unknown';
+        storyId = context.story?.id || context.story?.story_id;
+    } catch (e) {
+        console.warn('[StorySwarm] Failed to parse episode context, using defaults');
+    }
+
+    // Build request payload
+    const beats = analyzedEpisode.scenes.flatMap(scene =>
+        scene.beats.map(beat => ({
+            beatId: beat.beatId,
+            sceneNumber: scene.sceneNumber,
+            beatNumber: beat.beatNumber,
+            scriptText: beat.scriptText,
+            characters: beat.characters || [],
+            locationId: beat.locationId || '',
+            emotionalTone: beat.emotionalTone || '',
+            visualElements: beat.visualElements || [],
+            shotSuggestion: beat.shotSuggestion,
+            cameraAngleSuggestion: beat.cameraAngleSuggestion
+        }))
+    );
+
+    const requestPayload = {
+        beats,
+        episode_context: {
+            episodeNumber,
+            title: episodeTitle,
+            storyId
+        },
+        style_config: {
+            model: styleConfig.model || 'flux1-dev-fp8',
+            cinematicAspectRatio: '16:9',
+            steps: styleConfig.steps || 40,
+            seed: styleConfig.seed
+        }
+    };
+
+    console.log(`[StorySwarm] Calling API with ${beats.length} beats...`);
+    onProgress?.(`Sending ${beats.length} beats to StorySwarm...`);
+
+    // Retry logic with exponential backoff
+    const maxRetries = 3;
+    const baseDelay = 2000; // 2 seconds
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            onProgress?.(`Calling StorySwarm API (attempt ${attempt}/${maxRetries})...`);
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestPayload),
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${response.statusText}\n${errorText}`);
+            }
+
+            const data: StorySwarmPromptResponse = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error?.message || 'StorySwarm returned success=false');
+            }
+
+            console.log(`[StorySwarm] Success! Generated ${data.stats.beats_processed} prompts in ${data.stats.generation_time_ms}ms`);
+            onProgress?.(`Received ${data.stats.beats_processed} prompts from StorySwarm`);
+
+            return data;
+
+        } catch (error) {
+            lastError = error as Error;
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+            // Check if error is retryable
+            const isNetworkError = errorMessage.includes('Failed to fetch') ||
+                                  errorMessage.includes('network') ||
+                                  errorMessage.includes('timeout') ||
+                                  errorMessage.includes('aborted');
+
+            const isServerError = errorMessage.includes('HTTP 5');
+
+            if (!isNetworkError && !isServerError) {
+                // Non-retryable error (e.g., 400 Bad Request, invalid response)
+                console.error('[StorySwarm] Non-retryable error:', errorMessage);
+                throw error;
+            }
+
+            if (attempt < maxRetries) {
+                const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
+                console.warn(`[StorySwarm] Attempt ${attempt} failed: ${errorMessage}`);
+                console.log(`[StorySwarm] Retrying in ${delay}ms...`);
+                onProgress?.(`StorySwarm attempt ${attempt} failed, retrying in ${delay/1000}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error('[StorySwarm] All retries exhausted');
+            }
+        }
+    }
+
+    // All retries failed
+    throw lastError || new Error('StorySwarm API call failed after all retries');
+}
+
 export const generateSwarmUiPrompts = async (
     analyzedEpisode: AnalyzedEpisode,
     episodeContextJson: string,
@@ -670,6 +856,36 @@ ONLY if swarmui_prompt_override is empty/missing, build from individual fields:
 
 ---
 
+**CARRYOVER STATE (Beat Continuity):**
+
+Some beats include a \`carryoverContext\` object with state carried from previous beats:
+
+\`\`\`json
+{
+  "carryoverContext": {
+    "hasCarryover": true,
+    "action": "standing tall, examining monitor",
+    "expression": "alert expression, eyes scanning",
+    "sourcebeat": "s1-b2"
+  }
+}
+\`\`\`
+
+**How to use carryover:**
+- If beat has NO \`characterPositioning\` but has \`carryoverContext.action\`, use the carryover action
+- If beat has NO \`emotional_tone\` but has \`carryoverContext.expression\`, use the carryover expression
+- This maintains visual continuity between beats (same pose/expression persists until explicitly changed)
+
+**Example:**
+- Beat s1-b1: "Cat standing at monitor" -> establishes pose
+- Beat s1-b2: Dialogue only, no positioning -> use carryover "standing tall, examining monitor"
+- Beat s1-b3: "Cat turns to face Daniel" -> new pose overrides carryover
+
+**Variety Adjustments:**
+If beat has \`carryoverContext.varietyAdjusted: true\`, the shot type in \`styleGuide.camera\` has been adjusted to prevent visual monotony. Trust this adjustment.
+
+---
+
 **ESTABLISHING SHOTS (No Character Present):**
 
 Some beats are pure atmosphere/mood-setting with NO character action. Detect these by:
@@ -813,6 +1029,7 @@ Context Source: ${contextSource}`;
         console.log(`Processing batch ${batchIndex + 1}/${batches.length} with ${batch.length} beats`);
         
         // DEV: Enhance beats with a dynamic, structured style guide for more contextual prompts.
+        // Also includes carryover state from beatStateService (SKILL.md Section 4.5)
         const beatsWithStyleGuide = batch.map(beat => {
             const styleGuide = {
                 camera: new Set<string>(),
@@ -821,9 +1038,14 @@ Context Source: ${contextSource}`;
                 atmosphere: new Set<string>()
             };
 
+            // Cast to BeatAnalysisWithState to access carryover fields
+            const beatWithState = beat as BeatAnalysisWithState;
+
             // --- Camera ---
-            if (beat.cameraAngleSuggestion) {
-                styleGuide.camera.add(beat.cameraAngleSuggestion);
+            // Use variety-adjusted shot type if available (from beatStateService)
+            const effectiveCameraSuggestion = beatWithState.suggestedShotType || beat.cameraAngleSuggestion;
+            if (effectiveCameraSuggestion) {
+                styleGuide.camera.add(effectiveCameraSuggestion);
             }
             styleGuide.camera.add('shallow depth of field');
             // Add handheld feel for more dynamic scenes, could be based on a new 'energy' field in future.
@@ -843,6 +1065,31 @@ Context Source: ${contextSource}`;
                 beat.locationAttributes.forEach(attr => styleGuide.atmosphere.add(attr));
             }
 
+            // Build carryover context for the AI (SKILL.md Section 4.5)
+            const carryoverContext: {
+                hasCarryover: boolean;
+                action?: string;
+                expression?: string;
+                sourcebeat?: string;
+                varietyAdjusted?: boolean;
+            } = {
+                hasCarryover: !!(beatWithState.carryoverAction || beatWithState.carryoverExpression)
+            };
+
+            if (beatWithState.carryoverAction) {
+                carryoverContext.action = beatWithState.carryoverAction;
+            }
+            if (beatWithState.carryoverExpression) {
+                carryoverContext.expression = beatWithState.carryoverExpression;
+            }
+            if (beatWithState.carryoverSourceBeatId) {
+                carryoverContext.sourcebeat = beatWithState.carryoverSourceBeatId;
+            }
+            if (beatWithState.varietyApplied) {
+                carryoverContext.varietyAdjusted = true;
+                console.log(`[PromptGen] Beat ${beat.beatId}: Using variety-adjusted shot type "${beatWithState.suggestedShotType}"`);
+            }
+
             return {
                 ...beat,
                 styleGuide: {
@@ -850,7 +1097,9 @@ Context Source: ${contextSource}`;
                     lighting: Array.from(styleGuide.lighting).join(', '),
                     environmentFX: Array.from(styleGuide.environmentFX).join(', '),
                     atmosphere: Array.from(styleGuide.atmosphere).join(', '),
-                }
+                },
+                // Include carryover context for the AI to use
+                carryoverContext: carryoverContext.hasCarryover ? carryoverContext : undefined
             };
         });
 

@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalyzedEpisode } from '../types';
 import { compactEpisodeContext } from '../utils';
+import { processEpisodeWithState } from './beatStateService';
 
 // Read API key from .env
 // Support both Vite (import.meta.env) and Node.js (process.env) environments
@@ -397,7 +398,12 @@ export const analyzeScript = async (
 
       onProgress?.('Processing Gemini response...');
       const jsonString = response.text.trim();
-      return await parseGeminiResponse(jsonString);
+      const rawResult = await parseGeminiResponse(jsonString);
+
+      // Apply beat state carryover (SKILL.md Section 4.5)
+      onProgress?.('Applying beat carryover state...');
+      const resultWithState = processEpisodeWithState(rawResult);
+      return resultWithState;
     } else {
       // Process in chunks
       onProgress?.(`Script is large (${wordCount} words). Processing in chunks...`);
@@ -431,7 +437,12 @@ export const analyzeScript = async (
       }
 
       onProgress?.('Merging all chunks...');
-      return mergeAnalyzedEpisodes(analyzedChunks);
+      const mergedResult = mergeAnalyzedEpisodes(analyzedChunks);
+
+      // Apply beat state carryover (SKILL.md Section 4.5)
+      onProgress?.('Applying beat carryover state...');
+      const resultWithState = processEpisodeWithState(mergedResult);
+      return resultWithState;
     }
 
     onProgress?.('Processing Gemini response...');

@@ -271,14 +271,22 @@ export interface StoryContextData {
 export type RetrievalMode = 'manual' | 'database';
 
 export interface SwarmUIExportData {
-  prompt: string;
-  model: string;
-  width: number;
-  height: number;
-  steps: number;
-  cfgscale: number;
-  seed: number;
-  narrative: string;
+  scriptText: string;
+  episodeContext: string;
+  storyUuid: string;
+  analyzedEpisode: AnalyzedEpisode;
+  promptMode?: 'storyart' | 'storyswarm';
+  retrievalMode?: RetrievalMode;
+  selectedLLM?: LLMProvider;
+  // Legacy fields (may be removed in future)
+  prompt?: string;
+  model?: string;
+  width?: number;
+  height?: number;
+  steps?: number;
+  cfgscale?: number;
+  seed?: number;
+  narrative?: string;
 }
 
 // SwarmUI API interfaces
@@ -401,4 +409,65 @@ export interface PipelineProgress {
   currentStepName: string;
   progress: number; // 0-100
   estimatedTimeRemaining?: number; // milliseconds
+}
+
+// ============================================================================
+// Beat Carryover State Types (SKILL.md Section 4.5)
+// Tracks action/expression state between beats for continuity
+// ============================================================================
+
+/**
+ * Per-character state that carries over between beats within a scene.
+ * When a beat doesn't explicitly specify action/expression, the previous state persists.
+ */
+export interface CharacterBeatState {
+  characterName: string;
+  /** Current action/pose (e.g., "standing tall, examining monitor") */
+  currentAction: string | null;
+  /** Current expression (e.g., "alert expression, eyes scanning") */
+  currentExpression: string | null;
+  /** Beat ID where this state was last updated */
+  lastUpdatedBeatId: string | null;
+}
+
+/**
+ * Scene-level variety tracking to prevent visual monotony.
+ * Enforces anti-monotony rules from SKILL.md Section 4.7.
+ */
+export interface SceneVarietyState {
+  /** Last 3 shot types used (for anti-repetition) */
+  recentShotTypes: string[];
+  /** Last 3 camera angles used */
+  recentAngles: string[];
+  /** Total beats processed in this scene */
+  beatCount: number;
+}
+
+/**
+ * Combined state for a single scene's beat processing.
+ * Resets at scene boundaries per SKILL.md Section 4.5 rules.
+ */
+export interface SceneBeatState {
+  sceneNumber: number;
+  /** Map of character name -> their current state */
+  characterStates: Record<string, CharacterBeatState>;
+  /** Variety tracking for shot/angle diversity */
+  varietyState: SceneVarietyState;
+}
+
+/**
+ * Extended beat analysis with carryover state applied.
+ * These fields are populated by the beat state service during post-processing.
+ */
+export interface BeatAnalysisWithState extends BeatAnalysis {
+  /** Carryover action (from previous beat if not specified in this beat) */
+  carryoverAction?: string;
+  /** Carryover expression (from previous beat if not specified in this beat) */
+  carryoverExpression?: string;
+  /** Source beat ID if action/expression was carried over */
+  carryoverSourceBeatId?: string;
+  /** Whether variety rules were applied to modify shot selection */
+  varietyApplied?: boolean;
+  /** Suggested alternative shot type if original would violate monotony rules */
+  suggestedShotType?: string;
 }

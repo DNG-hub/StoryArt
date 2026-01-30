@@ -1,6 +1,7 @@
 import type { AnalyzedEpisode } from '../types';
 import { compactEpisodeContext } from '../utils';
 import { providerManager, AIProvider, TaskType, AIRequest } from './aiProviderService';
+import { processEpisodeWithState } from './beatStateService';
 
 export const analyzeScriptWithQwen = async (
   scriptText: string, 
@@ -151,10 +152,14 @@ export const analyzeScriptWithQwen = async (
     const response = await providerManager.executeTask(request);
 
     onProgress?.('Processing Qwen response...');
-    const result = JSON.parse(response.content);
-    
+    const rawResult = JSON.parse(response.content) as AnalyzedEpisode;
+
+    // Apply beat state carryover (SKILL.md Section 4.5)
+    onProgress?.('Applying beat carryover state...');
+    const resultWithState = processEpisodeWithState(rawResult);
+
     onProgress?.('Analysis complete!');
-    return result as AnalyzedEpisode;
+    return resultWithState;
 
   } catch (error) {
     console.error("Error calling Qwen API:", error);
