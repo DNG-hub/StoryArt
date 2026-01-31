@@ -838,14 +838,29 @@ A prompt must describe ONLY what a camera can directly observe. If a detail cann
     // Build base system instruction (without episodeContextSection) for comparison
     const baseSystemInstructionStart = `You are a SwarmUI prompt generator. Generate clean, token-efficient prompts.`;
 
-    // CLEAN PROMPT TEMPLATE (v3.0 - Simplified Structure)
-    // Structure: photo of [trigger] [age] [physical], [clothing], [action] in [location], [lighting], [atmosphere] <segment>
+    // CLEAN PROMPT TEMPLATE (v4.0 - Parentheses Grouping)
+    // Structure: [shot], TRIGGER (age, hair, eyes, build, clothing) [action], [expression], [location], [lighting] <segment>
     const systemInstruction = `You are a SwarmUI prompt generator. Generate clean, token-efficient prompts following this EXACT structure:
 
-**PROMPT TEMPLATE:**
+**PROMPT TEMPLATE (Parentheses Grouping):**
 \`\`\`
-photo of [TRIGGER] [AGE] [PHYSICAL], [CLOTHING], [ACTION] in [LOCATION], [LIGHTING], [ATMOSPHERE] <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
+[shot type], TRIGGER (age, hair, eyes, build, clothing) [action], [expression], [location], [lighting] <segment>
 \`\`\`
+
+**PARENTHESES RULE (CRITICAL):**
+Parentheses group character attributes and prevent attribute bleed between characters.
+
+| PARENTHESES (Character) | BODY (Scene) |
+|-------------------------|--------------|
+| Age | Location anchor elements |
+| Hair | Lighting source |
+| Eyes | Lighting quality |
+| Build | Atmosphere/effects |
+| Clothing | Environmental details |
+
+**CRITICAL:** Never combine expression with age (e.g., "32 years old relaxed" is WRONG).
+**CORRECT:** Separate them: \`(32 years old, ...) relaxed expression\`
+
 ${episodeContextSection}
 **FIELD MAPPING (from Episode Context JSON):**
 
@@ -855,7 +870,8 @@ FIRST, check for \`swarmui_prompt_override\`:
 - Find in: \`character.location_context.swarmui_prompt_override\`
 - If present and non-empty, this is the COMPLETE character visual prompt
 - Contains: LoRA trigger, physical traits, clothing/gear, hair, accessories
-- Use it DIRECTLY for [TRIGGER], [PHYSICAL], and [CLOTHING] combined
+- **WRAP IN PARENTHESES** after trigger: \`TRIGGER (override content)\`
+- The override goes INSIDE parentheses, action/expression/location go OUTSIDE
 
 ONLY if swarmui_prompt_override is empty/missing, build from individual fields:
 
@@ -896,6 +912,25 @@ ONLY if swarmui_prompt_override is empty/missing, build from individual fields:
 - Two characters: \`<segment:yolo-face_yolov9c.pt-0,0.35,0.5> <segment:yolo-face_yolov9c.pt-1,0.35,0.5>\`
 - Index starts at 0, NOT 1
 - NO segment for establishing shots (no faces to detect)
+
+---
+
+**PARENTHESES QUICK RULES:**
+
+| Do | Don't |
+|----|-------|
+| \`TRIGGER (attributes)\` | \`TRIGGER (attributes,)\` ← trailing comma |
+| Separate expression from age | \`32 years old relaxed\` ← combined |
+| Use parentheses for dual scenes | Free-form attributes for two characters |
+| Keep clothing INSIDE parens | Split clothing outside parens |
+| Location/lighting OUTSIDE parens | Location inside character grouping |
+
+**DUAL CHARACTER FORMAT (ESSENTIAL):**
+\`\`\`
+CHAR1 (attributes) on left and CHAR2 (attributes) on right, [interaction], [location], [lighting] <segments>
+\`\`\`
+
+Without parentheses in dual scenes, FLUX causes attribute bleed (woman gets white hair, man gets green eyes).
 
 ---
 
@@ -994,34 +1029,38 @@ Some beats are pure atmosphere/mood-setting with NO character action. Detect the
 | "tension" | "harsh shadows, high contrast lighting, stark emptiness" |
 | "cold/sterile" | "clinical white surfaces, sharp edges, antiseptic gleam" |
 
-**ESTABLISHING SHOT EXAMPLE (Camera Realism Compliant):**
+**ESTABLISHING SHOT EXAMPLE (No Character - No Parentheses):**
 
-Beat: "The silence in the Mobile Medical Base was not empty; it was pressurized, a physical weight that pressed against the eardrums and made the recycled air feel thick as syrup."
+Beat: "The silence in the Mobile Medical Base was not empty; it was pressurized..."
 
 Output:
 \`\`\`
-wide interior shot, cramped converted trailer, salvaged server racks, multiple monitors on reinforced walls, IV bags hanging motionless, modular storage bins, cables across floor, visible dust particles suspended in air, dim emergency LED strips, clinical blue glow
+wide interior shot, cramped converted trailer, salvaged server racks, multiple monitors on reinforced walls, IV bags hanging motionless, modular storage bins, cables across floor, visible dust particles suspended, dim emergency LED strips, clinical blue glow
 \`\`\`
 
-**What was removed:**
-- "military" (affiliation - camera sees trailer)
-- "oppressive claustrophobic atmosphere" (mood - camera sees cramped space)
-- "recycled air" (technical/narrative)
-- Filler words: "of", "with", "from", "casting"
-
-NO YOLO segment needed - no faces in frame.
+**Note:** No parentheses needed - establishing shots have no character to group.
+**No YOLO segment** - no faces in frame.
 
 ---
 
-**CHARACTER SHOT EXAMPLE (Camera Realism Compliant):**
+**CHARACTER SHOT EXAMPLE (Parentheses Grouping):**
 \`\`\`
-medium shot, HSCEIA man 35 years old, short cropped white hair, athletic build, tactical vest over olive shirt, examining tablet, neutral expression intense gaze, sterile corridor with server racks and blinking status lights, harsh fluorescent lighting, volumetric dust <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
+medium shot, HSCEIA man (35 years old, short cropped white hair, gray eyes, athletic build, tactical vest over olive shirt) examining tablet, neutral expression intense gaze, sterile corridor, server racks, blinking status lights, harsh fluorescent lighting, volumetric dust <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
 \`\`\`
 
-**What was removed (camera can't see):**
-- "encrypted data" (camera sees tablet, not encryption)
-- "government facility" (camera sees corridor, not affiliation)
-- "tense high-security atmosphere" (mood, not visual)
+**Structure breakdown:**
+- Shot type: \`medium shot,\`
+- Trigger + Parens: \`HSCEIA man (35 years old, short cropped white hair, gray eyes, athletic build, tactical vest over olive shirt)\`
+- Action: \`examining tablet,\`
+- Expression: \`neutral expression intense gaze,\`
+- Location (body): \`sterile corridor, server racks, blinking status lights,\`
+- Lighting (body): \`harsh fluorescent lighting, volumetric dust\`
+- Segment: \`<segment:...>\`
+
+**DUAL CHARACTER EXAMPLE:**
+\`\`\`
+medium shot, HSCEIA man (35, white hair, gray eyes, tactical vest, rifle slung) on left and JRUMLV woman (28, tactical bun, green eyes, tactical vest) on right, professional distance, bombed server room, cold blue emergency glow <segment:yolo-face_yolov9c.pt-0,0.35,0.5> <segment:yolo-face_yolov9c.pt-1,0.35,0.5>
+\`\`\`
 
 **RULES:**
 1. NO character names (Cat, Daniel, etc.) - ONLY use base_trigger
