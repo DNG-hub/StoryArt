@@ -57,6 +57,7 @@ function Dashboard({
   isContextFetching,
   setIsContextFetching,
   contextError,
+  currentSessionTimestamp,
   setContextError,
   retrievalMode,
   setRetrievalMode,
@@ -108,6 +109,7 @@ function Dashboard({
   setIsContextFetching: (fetching: boolean) => void;
   contextError: string | null;
   setContextError: (error: string | null) => void;
+  currentSessionTimestamp?: number;
   retrievalMode: RetrievalMode;
   setRetrievalMode: (mode: RetrievalMode) => void;
   storyUuid: string;
@@ -220,6 +222,7 @@ function Dashboard({
               error={error}
               onReset={handleReset}
               onEditBeat={handleNavigateToRefine}
+              sessionTimestamp={currentSessionTimestamp}
             />
           </div>
            {isInputCollapsed && (
@@ -271,6 +274,7 @@ function App() {
   const [scriptText, setScriptText] = useState<string>(DEFAULT_SCRIPT);
   const [episodeContext, setEpisodeContext] = useState<string>(DEFAULT_EPISODE_CONTEXT);
   const [analyzedEpisode, setAnalyzedEpisode] = useState<AnalyzedEpisode | null>(null);
+  const [currentSessionTimestamp, setCurrentSessionTimestamp] = useState<number | undefined>(undefined);
 
   // Redis state
   const [isRestoring, setIsRestoring] = useState(false);
@@ -685,6 +689,8 @@ function App() {
         console.log(`[StoryArt] Saving ${processedResult.scenes.length} scenes with beats to Redis`);
 
         // Save beats WITHOUT prompts to Redis
+        // Generate timestamp BEFORE saving so we can track it
+        const beatsSessionTimestamp = Date.now();
         try {
           const saveResult = await saveSessionToRedis({
             scriptText,
@@ -694,21 +700,23 @@ function App() {
             promptMode: 'storyswarm',
             retrievalMode,
             selectedLLM,
+            timestamp: beatsSessionTimestamp, // Include timestamp in save data
           });
 
           if (saveResult.success) {
             const storageType = saveResult.storage === 'redis' ? 'Redis' :
                               saveResult.storage === 'memory' ? 'memory storage' :
                               'localStorage';
-            console.log(`✅ Beats-only session saved to ${storageType}`);
+            console.log(`✅ Beats-only session saved to ${storageType} with timestamp ${beatsSessionTimestamp}`);
+            setCurrentSessionTimestamp(beatsSessionTimestamp); // Track for "Create All Images"
             console.log(`✅ Episode ${processedResult.episodeNumber}: ${processedResult.scenes.length} scenes, ${processedResult.scenes.reduce((sum, s) => sum + s.beats.length, 0)} beats`);
             console.log(`✅ StorySwarm: Fetch beats from GET http://localhost:8000/api/v1/session/latest`);
             console.log(`   Filter by: promptMode === 'storyswarm'`);
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 3000);
 
-            // Notify StorySwarm that beats are ready
-            const sessionTimestamp = Date.now();
+            // Notify StorySwarm that beats are ready (use same timestamp)
+            const sessionTimestamp = beatsSessionTimestamp;
             const totalBeats = processedResult.scenes.reduce((sum, s) => sum + s.beats.length, 0);
 
             setLoadingMessage('Notifying StorySwarm: beats ready for prompt generation...');
@@ -775,6 +783,8 @@ function App() {
       setAnalyzedEpisode({ ...processedResult });
 
       // Save session to Redis API (with localStorage fallback)
+      // Generate timestamp BEFORE saving so we can track it for "Create All Images"
+      const newSessionTimestamp = Date.now();
       try {
         const saveResult = await saveSessionToRedis({
           scriptText,
@@ -784,13 +794,15 @@ function App() {
           promptMode: promptGenerationMode,
           retrievalMode,
           selectedLLM,
+          timestamp: newSessionTimestamp, // Include timestamp in save data
         });
-        
+
         if (saveResult.success) {
-          const storageType = saveResult.storage === 'redis' ? 'Redis' : 
-                            saveResult.storage === 'memory' ? 'memory storage' : 
+          const storageType = saveResult.storage === 'redis' ? 'Redis' :
+                            saveResult.storage === 'memory' ? 'memory storage' :
                             'localStorage';
-          console.log(`✅ Session auto-saved to ${storageType}`);
+          console.log(`✅ Session auto-saved to ${storageType} with timestamp ${newSessionTimestamp}`);
+          setCurrentSessionTimestamp(newSessionTimestamp); // Track for "Create All Images"
           setSaveSuccess(true);
           setTimeout(() => setSaveSuccess(false), 3000);
         } else {
@@ -997,6 +1009,7 @@ function App() {
         setEpisodeContext={setEpisodeContext}
         analyzedEpisode={analyzedEpisode}
         setAnalyzedEpisode={setAnalyzedEpisode}
+        currentSessionTimestamp={currentSessionTimestamp}
         isLoading={isLoading}
         setIsLoading={setIsLoading}
         loadingMessage={loadingMessage}

@@ -160,10 +160,13 @@ export const saveSessionToRedis = async (data: SwarmUIExportData): Promise<{ suc
  */
 const saveSessionToLocalStorage = (data: SwarmUIExportData): void => {
   try {
+    // Use provided timestamp if available, otherwise generate new one
+    const timestamp = (data as any).timestamp || Date.now();
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       ...data,
-      timestamp: Date.now(),
+      timestamp,
     }));
+    console.log(`[Redis] Saved to localStorage with timestamp ${timestamp}`);
   } catch (error) {
     console.warn('Failed to save session to localStorage:', error);
   }

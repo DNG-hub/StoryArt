@@ -314,10 +314,11 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
       progress: 0,
     });
 
+    // Get session timestamp - declared outside try block so it's available in catch
+    let timestamp = sessionTimestamp;
+
     try {
       console.log('[OutputPanel] Starting pipeline process...');
-      // Get session timestamp
-      let timestamp = sessionTimestamp;
       if (!timestamp) {
         // Try to get timestamp from localStorage first
         timestamp = getSessionTimestampFromLocalStorage() || undefined;

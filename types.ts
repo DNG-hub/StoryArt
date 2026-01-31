@@ -278,6 +278,9 @@ export interface SwarmUIExportData {
   promptMode?: 'storyart' | 'storyswarm';
   retrievalMode?: RetrievalMode;
   selectedLLM?: LLMProvider;
+  timestamp?: number; // Session timestamp for tracking
+  // Session key for Redis storage
+  sessionKey?: string;
   // Legacy fields (may be removed in future)
   prompt?: string;
   model?: string;

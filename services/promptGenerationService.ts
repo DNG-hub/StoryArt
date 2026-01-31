@@ -1,7 +1,7 @@
 // FIX: Corrected import path for Google GenAI SDK.
 import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig, BeatAnalysisWithState } from '../types';
-import type { FullyProcessedBeat } from './beatStateService';
+import { processEpisodeWithFullContext, type FullyProcessedBeat } from './beatStateService';
 import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { getStoryContext } from './storyContextService';
 import { applyLoraTriggerSubstitution } from '../utils';
@@ -627,7 +627,26 @@ async function generateSwarmUiPromptsWithGemini(
     const ai = new GoogleGenAI({ apiKey });
     onProgress?.('✅ API key verified. Initializing prompt generation...');
 
-    const beatsForPrompting = analyzedEpisode.scenes.flatMap(scene =>
+    // SKILL.md Integration: Process episode through beatStateService for:
+    // - Anti-monotony enforcement (Section 14)
+    // - Carryover state tracking (Section 4.5)
+    // - FLUX vocabulary validation (Section 5)
+    // - Time of day lighting (Section 13)
+    // - Character expression tells (Section 12)
+    onProgress?.('Applying SKILL.md rules (anti-monotony, carryover, FLUX validation)...');
+    console.log('[SKILL.md] Processing episode through beatStateService...');
+
+    const processedResult = processEpisodeWithFullContext(analyzedEpisode);
+    const processedEpisode = processedResult.episode;
+
+    console.log(`[SKILL.md] Processed ${processedResult.stats.totalBeats} beats across ${processedResult.stats.scenesProcessed} scenes`);
+    console.log(`[SKILL.md] Carryover applied: ${processedResult.stats.carryoverApplied} beats`);
+    console.log(`[SKILL.md] Variety adjustments: ${processedResult.stats.varietyAdjustments} beats`);
+    if (processedResult.warnings.length > 0) {
+        console.warn(`[SKILL.md] Warnings: ${processedResult.warnings.join('; ')}`);
+    }
+
+    const beatsForPrompting = processedEpisode.scenes.flatMap(scene =>
         scene.beats.filter(beat => beat.imageDecision.type === 'NEW_IMAGE')
     );
 
