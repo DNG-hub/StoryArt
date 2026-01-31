@@ -6,7 +6,8 @@
  * 2. Character-specific expressions
  * 3. Scene context (time of day, intensity, pacing)
  * 4. Carryover state tracking
- * 5. Gemini prompt generation
+ * 5. Visual hook strategies (Section 11B)
+ * 6. Gemini prompt generation
  *
  * Usage: npx tsx scripts/test-gemini-prompt-generation.ts
  */
@@ -16,6 +17,13 @@ import {
   processEpisodeWithFullContext,
   type FullyProcessedBeat
 } from '../services/beatStateService';
+import {
+  getHookRecommendation,
+  isHookBeat,
+  describeHook,
+  type HookContext,
+  type HookRecommendation
+} from '../services/visualHookService';
 import type { AnalyzedEpisode } from '../types';
 
 // Check for API key
@@ -178,20 +186,60 @@ async function runTest() {
     sceneOverrides: episodeOptions
   });
 
+  // Build hook recommendations for each scene's opening beat
+  const hookRecommendations: Map<string, HookRecommendation> = new Map();
+
   console.log('\n--- Processed Beats Summary ---\n');
   for (const scene of processedResult.episode.scenes) {
     console.log(`Scene ${scene.sceneNumber}: ${scene.title}`);
-    for (const beat of scene.beats) {
+    const sceneOptions = episodeOptions[scene.sceneNumber];
+
+    for (let beatIndex = 0; beatIndex < scene.beats.length; beatIndex++) {
+      const beat = scene.beats[beatIndex];
       const fb = beat as FullyProcessedBeat;
+      const beatNumber = beatIndex + 1;
+
       console.log(`  ${fb.beatId}:`);
       console.log(`    Shot: ${fb.fluxShotType} | Angle: ${fb.fluxCameraAngle}`);
       console.log(`    Expression: ${fb.fluxExpression}`);
       console.log(`    Lighting: ${fb.fluxLighting?.join(', ') || 'default'}`);
+
       if (fb.carryoverAction) {
         console.log(`    [CARRYOVER] Action from ${fb.carryoverSourceBeatId}`);
       }
-      if (fb.beatVisualGuidance?.isHookBeat) {
-        console.log(`    [HOOK BEAT]`);
+
+      // Generate hook recommendation for Beat 1 of each scene
+      if (isHookBeat(beatNumber)) {
+        const characters = (fb as any).characters || [];
+        const isInterior = /\bint\./i.test(fb.beat_script_text);
+
+        // Build hook context
+        const hookContext: HookContext = {
+          gearContext: null, // Could be enhanced with gear detection
+          characterCount: characters.length,
+          hasCharacters: characters.length > 0,
+          isInterior,
+          sceneIntensity: sceneOptions?.intensity || 5,
+        };
+
+        // Determine scene characteristics for hook selection
+        const hasLaterReveal = scene.metadata?.sceneRole === 'development' ||
+                              scene.metadata?.sceneRole === 'climax';
+        const hasEmotionalPeak = (fb as any).emotional_tone?.includes('shock') ||
+                                 (fb as any).emotional_tone?.includes('vulnerable');
+        const hasActionSequence = scene.metadata?.sceneRole === 'escalation' ||
+                                  scene.metadata?.sceneRole === 'climax';
+
+        const hookRec = getHookRecommendation(
+          hookContext,
+          hasLaterReveal,
+          hasEmotionalPeak,
+          hasActionSequence
+        );
+
+        hookRecommendations.set(fb.beatId, hookRec);
+
+        console.log(`    [HOOK BEAT] ${describeHook(hookRec)}`);
       }
     }
   }
@@ -207,6 +255,8 @@ async function runTest() {
   const beatsForPromptGen = processedResult.episode.scenes.flatMap(scene =>
     scene.beats.map(beat => {
       const fb = beat as FullyProcessedBeat;
+      const hookRec = hookRecommendations.get(fb.beatId);
+
       return {
         beatId: fb.beatId,
         beat_script_text: fb.beat_script_text,
@@ -225,6 +275,16 @@ async function runTest() {
           isClimaxBeat: fb.beatVisualGuidance.isClimaxBeat,
           intensityLevel: fb.beatVisualGuidance.intensityLevel,
         } : undefined,
+        // Full hook strategy for hook beats (Section 11B)
+        hookStrategy: hookRec ? {
+          hookType: hookRec.hookType,
+          hookEffort: hookRec.hookEffort,
+          suggestedShotType: hookRec.suggestedShotType,
+          suggestedAngle: hookRec.suggestedAngle,
+          framingNotes: hookRec.framingNotes,
+          grabElement: hookRec.grabElement,
+          notReveal: hookRec.notReveal,
+        } : undefined,
         carryoverContext: fb.carryoverAction ? {
           hasCarryover: true,
           action: fb.carryoverAction,
@@ -242,13 +302,35 @@ async function runTest() {
 2. For character poses: use styleGuide.pose if provided
 3. For expressions: use styleGuide.expression directly
 4. For lighting: use styleGuide.lighting directly
-5. For hook beats (visualGuidance.isHookBeat=true): make visually striking
+
+**HOOK BEAT RULES (Section 11B - 3-second YouTube retention):**
+When a beat has hookStrategy, apply these visual enhancements:
+
+- PROVOCATIVE_POSE: Character in intriguing position that draws viewer curiosity
+- INTIMATE_FRAMING: Close framing suggesting vulnerability, use medium close-up or tighter
+- UNEXPLAINED_ELEMENT: Include something in frame that raises questions
+- ACTION_FREEZE: Character caught mid-motion, dynamic pose suggesting impending action
+- TENSION_BETWEEN: Two characters positioned to suggest unresolved relationship dynamics
+- ENVIRONMENTAL_DREAD: Location with ominous element, something feels wrong
+- OBJECT_FOCUS: Significant item in frame, unclear purpose
+
+For hook beats:
+1. Use hookStrategy.suggestedShotType and suggestedAngle as your camera guidance
+2. Incorporate hookStrategy.framingNotes into the composition
+3. Include hookStrategy.grabElement - the element that creates curiosity
+4. NEVER include hookStrategy.notReveal - do not spoil what comes later
+
+Hook effort levels:
+- HIGHER: Scene intensity is low, visual MUST compensate - make it visually striking
+- MEDIUM: Scene is building, enhance what's developing
+- LOWER: Narrative drama carries, standard engaging framing is fine
 
 **OUTPUT FORMAT (JSON array):**
 [
   {
     "beatId": "s1-b1",
-    "prompt": "cinematic still, [character description], [pose], [expression], [camera], [lighting], [environment], photorealistic, 8k uhd"
+    "prompt": "cinematic still, [character description], [pose], [expression], [camera], [lighting], [environment], photorealistic, 8k uhd",
+    "hookApplied": "INTIMATE_FRAMING" // Only for hook beats, null otherwise
   }
 ]
 
@@ -292,6 +374,9 @@ Return ONLY a JSON array with beatId and prompt for each beat.`;
 
       for (const p of prompts) {
         console.log(`--- ${p.beatId} ---`);
+        if (p.hookApplied) {
+          console.log(`[HOOK: ${p.hookApplied}]`);
+        }
         console.log(p.prompt);
         console.log('');
       }
