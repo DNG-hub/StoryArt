@@ -639,12 +639,10 @@ async function generateSwarmUiPromptsWithGemini(
     const processedResult = processEpisodeWithFullContext(analyzedEpisode);
     const processedEpisode = processedResult.episode;
 
-    console.log(`[SKILL.md] Processed ${processedResult.stats.totalBeats} beats across ${processedResult.stats.scenesProcessed} scenes`);
+    console.log(`[SKILL.md] Processed ${processedResult.stats.totalBeats} beats across ${processedEpisode.scenes.length} scenes`);
     console.log(`[SKILL.md] Carryover applied: ${processedResult.stats.carryoverApplied} beats`);
-    console.log(`[SKILL.md] Variety adjustments: ${processedResult.stats.varietyAdjustments} beats`);
-    if (processedResult.warnings.length > 0) {
-        console.warn(`[SKILL.md] Warnings: ${processedResult.warnings.join('; ')}`);
-    }
+    console.log(`[SKILL.md] Variety adjustments: ${processedResult.stats.varietyApplied} beats`);
+    console.log(`[SKILL.md] FLUX validated: ${processedResult.stats.fluxValidated}/${processedResult.stats.totalBeats} beats`);
 
     const beatsForPrompting = processedEpisode.scenes.flatMap(scene =>
         scene.beats.filter(beat => beat.imageDecision.type === 'NEW_IMAGE')
