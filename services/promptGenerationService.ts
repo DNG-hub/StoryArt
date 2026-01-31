@@ -844,8 +844,16 @@ A prompt must describe ONLY what a camera can directly observe. If a detail cann
 
 **PROMPT TEMPLATE (Parentheses Grouping):**
 \`\`\`
-[shot type], TRIGGER (age, hair, eyes, build, clothing) [action], [expression], [location], [lighting] <segment>
+[styleGuide.camera], TRIGGER (age, hair, eyes, build, clothing) [action], [expression], [location], [styleGuide.lighting] <segment>
 \`\`\`
+
+**DATA SOURCE MAPPING:**
+| Template Field | Source |
+|----------------|--------|
+| \`[styleGuide.camera]\` | \`beat.styleGuide.camera\` (e.g., "close-up shot, shallow depth of field") |
+| \`[styleGuide.lighting]\` | \`beat.styleGuide.lighting\` (e.g., "dramatic rim light") |
+| \`[expression]\` | \`beat.fluxExpression\` if available, else derive from beat narrative |
+| \`[action]\` | \`beat.fluxPose\` if available, else derive from beat narrative |
 
 **PARENTHESES RULE (CRITICAL):**
 Parentheses group character attributes and prevent attribute bleed between characters.
@@ -862,7 +870,35 @@ Parentheses group character attributes and prevent attribute bleed between chara
 **CORRECT:** Separate them: \`(32 years old, ...) relaxed expression\`
 
 ${episodeContextSection}
-**FIELD MAPPING (from Episode Context JSON):**
+**FIELD MAPPING (from Beat Data and Episode Context):**
+
+**SHOT TYPE & CAMERA (MANDATORY - START OF EVERY PROMPT):**
+
+Every prompt MUST begin with the shot type from \`styleGuide.camera\`:
+
+- **[SHOT TYPE]**: Use \`beat.styleGuide.camera\` - this contains the camera direction
+  - Examples: "medium shot", "close-up shot", "wide shot", "over-the-shoulder shot"
+  - If multiple values (e.g., "close-up shot, shallow depth of field"), use the FIRST as shot type
+  - Additional camera modifiers (depth of field, handheld feel) can follow the shot type
+
+**MANDATORY SHOT TYPE PLACEMENT:**
+\`\`\`
+[styleGuide.camera shot type], TRIGGER (attributes) action, expression, location, lighting
+\`\`\`
+
+**Example:**
+- \`styleGuide.camera\`: "close-up shot, shallow depth of field"
+- Prompt starts: \`close-up shot, JRUMLV woman (30 years old...\`
+
+**LIGHTING (from styleGuide):**
+- Use \`beat.styleGuide.lighting\` for lighting direction (e.g., "dramatic rim light", "soft natural lighting")
+- Place at end of prompt before segments
+
+**ATMOSPHERE/ENVIRONMENT (from styleGuide):**
+- Use \`beat.styleGuide.atmosphere\` for environmental mood keywords
+- Use \`beat.styleGuide.environmentFX\` for visual effects (volumetric dust, desaturated color grade)
+
+---
 
 **CHARACTER VISUAL (UNIFIED APPROACH):**
 
@@ -1048,13 +1084,14 @@ wide interior shot, cramped converted trailer, salvaged server racks, multiple m
 medium shot, HSCEIA man (35 years old, short cropped white hair, gray eyes, athletic build, tactical vest over olive shirt) examining tablet, neutral expression intense gaze, sterile corridor, server racks, blinking status lights, harsh fluorescent lighting, volumetric dust <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
 \`\`\`
 
-**Structure breakdown:**
-- Shot type: \`medium shot,\`
+**Structure breakdown (showing styleGuide mapping):**
+- Shot type: \`medium shot,\` ← FROM \`beat.styleGuide.camera\`
 - Trigger + Parens: \`HSCEIA man (35 years old, short cropped white hair, gray eyes, athletic build, tactical vest over olive shirt)\`
-- Action: \`examining tablet,\`
-- Expression: \`neutral expression intense gaze,\`
+- Action: \`examining tablet,\` ← FROM \`beat.fluxPose\` or narrative
+- Expression: \`neutral expression intense gaze,\` ← FROM \`beat.fluxExpression\` or narrative
 - Location (body): \`sterile corridor, server racks, blinking status lights,\`
-- Lighting (body): \`harsh fluorescent lighting, volumetric dust\`
+- Lighting (body): \`harsh fluorescent lighting,\` ← FROM \`beat.styleGuide.lighting\`
+- Environment FX: \`volumetric dust\` ← FROM \`beat.styleGuide.environmentFX\`
 - Segment: \`<segment:...>\`
 
 **DUAL CHARACTER EXAMPLE:**
