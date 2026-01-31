@@ -838,9 +838,10 @@ A prompt must describe ONLY what a camera can directly observe. If a detail cann
     // Build base system instruction (without episodeContextSection) for comparison
     const baseSystemInstructionStart = `You are a SwarmUI prompt generator. Generate clean, token-efficient prompts.`;
 
-    // CLEAN PROMPT TEMPLATE (v4.0 - Parentheses Grouping)
-    // Structure: [shot], TRIGGER (age, hair, eyes, build, clothing) [action], [expression], [location], [lighting] <segment>
-    const systemInstruction = `You are a SwarmUI prompt generator. Generate clean, token-efficient prompts following this EXACT structure:
+    // PROMPT GENERATION RULES - Authoritative source: StoryTeller/.claude/skills/prompt-generation-rules/SKILL.md v0.11
+    // This system instruction implements SKILL.md rules for LLM prompt generation.
+    // Key sections: 1.1-1.4 (Templates), 3.6 (Helmet/Dingy), 8 (Dual Character), 16 (Camera Realism)
+    const systemInstruction = `You are a SwarmUI prompt generator following SKILL.md v0.11 rules. Generate clean, token-efficient prompts:
 
 **PROMPT TEMPLATE (Parentheses Grouping):**
 \`\`\`
