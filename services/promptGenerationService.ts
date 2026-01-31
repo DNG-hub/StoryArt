@@ -1147,6 +1147,64 @@ If beat describes character SEEING something on HUD (readouts, targeting data, t
 
 ---
 
+**HELMET FRAGMENT DATABASE COLUMNS (LLM Selection):**
+
+For tactical mode characters (Cat, Daniel), the Episode Context includes helmet fragment options:
+
+- \`helmet_fragment_off\`: Hair/face description when helmet is off (e.g., "dark brown hair, practical ponytail, face visible")
+- \`helmet_fragment_visor_up\`: Helmet with visor raised - face visible, no hair (e.g., "Wraith tactical helmet visor raised, angular matte black shell fully encasing head, face visible, no hair visible")
+- \`helmet_fragment_visor_down\`: Helmet with visor down - face hidden, no hair (e.g., "Wraith tactical helmet visor down, angular black visor completely covering face, aerodynamic matte black shell, no hair visible, face hidden")
+- \`face_segment_rule\`: Controls YOLO face segment inclusion: \`ALWAYS\` | \`IF_FACE_VISIBLE\` | \`NEVER\`
+
+**LLM Selection Logic:**
+Read the beat narrative and select the appropriate helmet fragment:
+
+| Beat Narrative Example | Select Fragment | Include Face Segment |
+|------------------------|-----------------|---------------------|
+| "Cat seals her helmet visor" | \`helmet_fragment_visor_down\` | NO |
+| "Daniel raises his visor to speak" | \`helmet_fragment_visor_up\` | YES |
+| "They left helmets on the bike" | \`helmet_fragment_off\` | YES |
+| "Cat's helmet HUD flickers" | \`helmet_fragment_visor_down\` | NO |
+| "He removes his helmet" | \`helmet_fragment_off\` | YES |
+
+**Prompt Assembly:**
+Replace the hair/face portion of \`swarmui_prompt_override\` with the selected helmet fragment, then apply face segment rules.
+
+---
+
+**DINGY (MOTORCYCLE) APPEARANCE STATES:**
+
+The Dingy (Cat and Daniel's shared electric motorcycle) has TWO distinct visual appearances based on context:
+
+| State | Context | Visual Description |
+|-------|---------|-------------------|
+| \`PARKED_CAMOUFLAGE\` | Parked at MMB, Safehouse, or any static location | rusty weathered motorcycle, mismatched body panels, dust-covered, dented fenders, salvage aesthetic, parked |
+| \`IN_USE_SLEEK\` | Being ridden by any character | sleek matte black electric motorcycle, aerodynamic fairings, streamlined profile, in motion, silent electric drive |
+
+**LLM Selection Logic:**
+
+| Beat Narrative Example | Appearance State |
+|------------------------|-----------------|
+| "The motorcycle sits outside the MMB" | \`PARKED_CAMOUFLAGE\` |
+| "Cat approaches her parked bike" | \`PARKED_CAMOUFLAGE\` |
+| "Daniel accelerates through the streets" | \`IN_USE_SLEEK\` |
+| "Cat weaves between abandoned cars" | \`IN_USE_SLEEK\` |
+| "They dismount at the safehouse" | Transition - was in motion, now parking |
+| "The Dingy leans against the wall, rusted" | \`PARKED_CAMOUFLAGE\` |
+
+**Continuity Rules (CRITICAL):**
+1. **Singular Vehicle:** There is only ONE Dingy. Never show two motorcycles in any scene.
+2. **Rider Configurations:** Daniel alone, Cat alone, or both together (Daniel ALWAYS drives when both present).
+3. **Paired Continuity:** If both start together on the Dingy, they stay together until returning to MMB/Safehouse or narrative explicitly separates them.
+
+**Anti-Patterns (DO NOT GENERATE):**
+- "rusty motorcycle speeding through streets" (WRONG - use \`IN_USE_SLEEK\` when in motion)
+- "sleek motorcycle parked at MMB" (WRONG - use \`PARKED_CAMOUFLAGE\` when stationary)
+- "Two motorcycles in the scene" (WRONG - only ONE Dingy exists)
+- "Cat driving with Daniel passenger" (WRONG - Daniel always drives when both present)
+
+---
+
 **FLUX SETTINGS (apply to all prompts):**
 - model: from Episode Style Config
 - cfgscale: 1

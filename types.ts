@@ -161,6 +161,11 @@ export interface CharacterLocationContext {
   swarmui_prompt_override: string; // From character_location_contexts
   temporal_context: string;         // PRE_COLLAPSE, POST_COLLAPSE, etc.
   lora_weight_adjustment: number;   // From character_location_contexts
+  // Helmet fragment columns for LLM scene discernment
+  helmet_fragment_off?: string;     // Hair/face when helmet is off
+  helmet_fragment_visor_up?: string; // Helmet with visor raised - face visible
+  helmet_fragment_visor_down?: string; // Helmet with visor down - face hidden
+  face_segment_rule?: 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER'; // Face segment inclusion rule
 }
 
 export interface SceneContext {
@@ -245,6 +250,11 @@ export interface DatabaseCharacterLocationData {
   demeanor_description: string;
   swarmui_prompt_override: string;
   lora_weight_adjustment: number;
+  // Helmet fragment columns for LLM scene discernment
+  helmet_fragment_off?: string;
+  helmet_fragment_visor_up?: string;
+  helmet_fragment_visor_down?: string;
+  face_segment_rule?: string;
 }
 
 export interface DatabaseStoryData {

@@ -172,11 +172,13 @@ export async function getCharacterLocationData(storyId: string): Promise<Databas
   if (cached) return cached;
   
   const query = `
-    SELECT clc.id, clc.character_id, c.name as character_name, 
+    SELECT clc.id, clc.character_id, c.name as character_name,
            clc.location_arc_id, loc.name as location_name,
-           clc.temporal_context, clc.age_at_context, clc.physical_description, 
-           clc.clothing_description, clc.hair_description, clc.demeanor_description, 
-           clc.swarmui_prompt_override, clc.lora_weight_adjustment
+           clc.temporal_context, clc.age_at_context, clc.physical_description,
+           clc.clothing_description, clc.hair_description, clc.demeanor_description,
+           clc.swarmui_prompt_override, clc.lora_weight_adjustment,
+           clc.helmet_fragment_off, clc.helmet_fragment_visor_up,
+           clc.helmet_fragment_visor_down, clc.face_segment_rule
     FROM character_location_contexts clc
     JOIN characters c ON clc.character_id = c.id
     JOIN location_arcs loc ON clc.location_arc_id = loc.id
@@ -292,7 +294,12 @@ export async function generateEnhancedEpisodeContext(
           demeanor_description: context.demeanor_description,
           swarmui_prompt_override: context.swarmui_prompt_override,
           temporal_context: context.temporal_context,
-          lora_weight_adjustment: context.lora_weight_adjustment
+          lora_weight_adjustment: context.lora_weight_adjustment,
+          // Helmet fragment fields for LLM scene discernment
+          helmet_fragment_off: context.helmet_fragment_off,
+          helmet_fragment_visor_up: context.helmet_fragment_visor_up,
+          helmet_fragment_visor_down: context.helmet_fragment_visor_down,
+          face_segment_rule: context.face_segment_rule as 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER' | undefined
         });
       }
     });
@@ -360,7 +367,12 @@ export async function generateEnhancedEpisodeContext(
             demeanor_description: context.demeanor_description,
             swarmui_prompt_override: context.swarmui_prompt_override,
             temporal_context: context.temporal_context,
-            lora_weight_adjustment: context.lora_weight_adjustment
+            lora_weight_adjustment: context.lora_weight_adjustment,
+            // Helmet fragment fields for LLM scene discernment
+            helmet_fragment_off: context.helmet_fragment_off,
+            helmet_fragment_visor_up: context.helmet_fragment_visor_up,
+            helmet_fragment_visor_down: context.helmet_fragment_visor_down,
+            face_segment_rule: context.face_segment_rule as 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER' | undefined
           }
         }));
 
