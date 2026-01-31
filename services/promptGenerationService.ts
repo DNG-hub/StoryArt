@@ -772,24 +772,46 @@ async function generateSwarmUiPromptsWithGemini(
                 const contextLength = storyContext.story_context.length + storyContext.narrative_tone.length + storyContext.core_themes.length;
                 console.log(`[Phase B] Story context retrieved: ${contextLength} chars total`);
 
+                // Camera Realism Principle: Story context is for internal use only
+                // DO NOT inject narrative elements into prompts - they cause grain, noise, and illustration-like output
+                console.log(`[Camera Realism] Story context available but NOT injected into prompts (narrative elements forbidden)`);
+
                 episodeContextSection = `
 
-**EPISODE-WIDE STORY CONTEXT (Phase B Enhancement):**
+**CAMERA REALISM PRINCIPLE (MANDATORY):**
 
-You now have access to high-level story intelligence to enrich your prompts:
+> "The prompt generator is a camera, not a narrator."
 
-**Story Framework:** ${storyContext.story_context}
+A prompt must describe ONLY what a camera can directly observe. If a detail cannot be verified visually by a photographer at the moment of capture, it MUST NOT be in the prompt.
 
-**Narrative Tone:** ${storyContext.narrative_tone}
+**Violation causes:** Grain, noise, loss of photorealism, illustration-like output.
 
-**Core Themes:** ${storyContext.core_themes}
+**✅ ALLOWED in prompts:**
+- Physical appearance (general, non-technical)
+- Lighting conditions
+- Pose
+- Environment (visual elements only)
+- Clothing (brief, non-symbolic)
+- Camera framing
+- Observable expressions (what face/body shows)
 
-**Use this context to:**
-- Align visual composition with thematic elements (e.g., if themes mention "truth vs. survival", emphasize visual elements suggesting investigation or moral tension)
-- Apply tone guidance to lighting and atmosphere (e.g., "tense thriller" suggests dramatic shadows, high contrast)
-- Ensure character emotional states reflect story framework (e.g., "professional boundaries" suggests controlled postures, suppressed emotion)
-- **MARKETING VERTICALS (CRITICAL):** Use Core Themes to create visual hooks. Extract theme keywords and translate into visual storytelling that hints at narrative without revealing plot. Core Themes are your SECRET WEAPON for scroll-stopping marketing content.
-- This is episode-level intelligence that applies to ALL beats, complementing the beat-specific context from the beat analysis
+**❌ FORBIDDEN in prompts:**
+- Psychology
+- Backstory
+- Symbolism
+- Cultural analysis
+- Narrative interpretation
+- Moral/emotional explanation
+- Internal character states
+- What something "used to be" or "will become"
+- Organizational affiliations (CDC, NHIA, etc.)
+
+**IMPLICIT OVER EXPLICIT:**
+| Concept | ✅ CORRECT | ❌ INCORRECT |
+|---------|-----------|--------------|
+| Emotion | "neutral expression, intense gaze" | "defiance visible in eyes" |
+| Heritage | "warm brown skin, dark wavy hair" | "Cabocla heritage" |
+| Importance | omit | "poster girl, secrets held within" |
 
 `;
 
@@ -864,9 +886,10 @@ ONLY if swarmui_prompt_override is empty/missing, build from individual fields:
    - FALLBACK: Use \`episode.scenes[N].location.atmosphere\` lighting keywords
    - Examples: "harsh fluorescent lighting", "dim emergency lighting", "clinical white light"
 
-8. **[ATMOSPHERE]**: Mood/atmosphere from location
+8. **[ATMOSPHERE]**: Visual atmosphere from location
    - Find in: \`episode.scenes[N].location.atmosphere\`
-   - Adapt to beat emotional context if different from default location mood
+   - Use ONLY camera-observable atmospheric effects (dust, haze, fog, steam)
+   - DO NOT interpret mood or emotion - describe what the camera SEES
 
 **YOLO SEGMENT (CRITICAL):**
 - Single character: \`<segment:yolo-face_yolov9c.pt-0,0.35,0.5>\`
@@ -971,32 +994,76 @@ Some beats are pure atmosphere/mood-setting with NO character action. Detect the
 | "tension" | "harsh shadows, high contrast lighting, stark emptiness" |
 | "cold/sterile" | "clinical white surfaces, sharp edges, antiseptic gleam" |
 
-**ESTABLISHING SHOT EXAMPLE:**
+**ESTABLISHING SHOT EXAMPLE (Camera Realism Compliant):**
 
 Beat: "The silence in the Mobile Medical Base was not empty; it was pressurized, a physical weight that pressed against the eardrums and made the recycled air feel thick as syrup."
 
 Output:
 \`\`\`
-wide interior shot of cramped converted military trailer with salvaged server racks and multiple monitors on reinforced walls, IV bags hanging motionless from ceiling tracks, modular storage bins of medical supplies, cables running across floor, still recycled air with visible dust particles suspended, dim emergency LED strips casting clinical blue glow, oppressive claustrophobic atmosphere, cinematic establishing shot
+wide interior shot, cramped converted trailer, salvaged server racks, multiple monitors on reinforced walls, IV bags hanging motionless, modular storage bins, cables across floor, visible dust particles suspended in air, dim emergency LED strips, clinical blue glow
 \`\`\`
+
+**What was removed:**
+- "military" (affiliation - camera sees trailer)
+- "oppressive claustrophobic atmosphere" (mood - camera sees cramped space)
+- "recycled air" (technical/narrative)
+- Filler words: "of", "with", "from", "casting"
 
 NO YOLO segment needed - no faces in frame.
 
 ---
 
-**CHARACTER SHOT EXAMPLE:**
+**CHARACTER SHOT EXAMPLE (Camera Realism Compliant):**
 \`\`\`
-photo of HSCEIA man 35 years old with short cropped white hair, fit athletic build, wearing tactical vest over fitted olive shirt with dual holsters, examining encrypted data on a tablet in a sterile government facility with rows of server racks and blinking status lights, harsh fluorescent overhead lighting, tense high-security atmosphere <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
+medium shot, HSCEIA man 35 years old, short cropped white hair, athletic build, tactical vest over olive shirt, examining tablet, neutral expression intense gaze, sterile corridor with server racks and blinking status lights, harsh fluorescent lighting, volumetric dust <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
 \`\`\`
+
+**What was removed (camera can't see):**
+- "encrypted data" (camera sees tablet, not encryption)
+- "government facility" (camera sees corridor, not affiliation)
+- "tense high-security atmosphere" (mood, not visual)
 
 **RULES:**
 1. NO character names (Cat, Daniel, etc.) - ONLY use base_trigger
-2. NO location names (NHIA Facility 7, etc.) - use visual_description VERBATIM (do not summarize)
+2. NO location names (NHIA Facility 7, CDC, NHIA Facility 7, etc.) - use visual elements only
 3. NO contradictory moods (cannot be "relaxed" AND "tense")
 4. NO weighted syntax like (((term:1.5))) - use natural language
 5. Keep prompts under 200 tokens
-6. Include ALL relevant artifacts from location
-7. NEVER paraphrase visual_description - it is professionally curated, copy exactly
+6. NO narrative elements (backstory, psychology, symbolism, "former", "what it used to be")
+7. NO internal states ("haunted by loss", "analytical mind") - only observable expressions
+
+---
+
+**PROMPT COMPACTION (Token Efficiency):**
+
+Apply these compaction strategies to reduce tokens without losing visual information:
+
+**Prepositions to DROP:**
+- \`of\`: "photo of a" → "photo," or omit entirely
+- \`a/an\`: Articles rarely needed
+- \`with\` (attributes): "woman with brown hair" → "woman, brown hair"
+- \`in\` (environment): "standing in corridor" → "standing, corridor" (when context clear)
+
+**Prepositions to KEEP (Critical for clarity):**
+- \`on left/right\`: CRITICAL for dual character positioning
+- \`at\` (gaze): "looking at viewer" needs it
+- \`facing\`: Orientation marker
+- \`over/under\`: Layering needs clarity ("vest over shirt")
+- \`across/slung\`: Attachment position ("rifle slung across chest")
+- \`from/through\`: Light direction ("light through broken ceiling")
+
+**Compaction Strategies:**
+- Use commas as implicit "with/and": "woman, brown hair, green eyes, athletic build"
+- Use participles: "woman standing doorway" not "woman who is standing in the doorway"
+- Compound adjectives: "tactical-bun hair" or just "tactical bun"
+- FLUX knows it's generating an image - "photo of a" is optional
+
+**Location Compaction Example:**
+❌ VERBOSE (54 words): "in a former CDC satellite facility that was bombed during faction fighting, with collapsed ceiling panels hanging by wires..."
+✅ COMPACT (12 words): "collapsed corridor, twisted rebar, shattered glass, flickering emergency lights, volumetric dust"
+
+What was cut: "former", "CDC", "faction fighting" (narrative), redundant debris types, "tiled floors" (implied).
+What remains: Everything the camera can see.
 
 ---
 
