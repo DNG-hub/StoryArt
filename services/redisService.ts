@@ -227,23 +227,27 @@ export const getFullLocalStorageSession = (): (SwarmUIExportData & { timestamp: 
 
 /**
  * Fetches the latest session data from the Redis API, with localStorage fallback.
- * 
+ *
  * @param skipApiCalls - If true, only check localStorage (avoids network calls and console errors)
+ * @param forceRedis - If true, skip localStorage and fetch directly from Redis (ensures fresh data)
  * @returns {Promise<RedisSessionResponse>} The API response containing session data or an error.
  */
-export const getLatestSession = async (skipApiCalls: boolean = false): Promise<RedisSessionResponse> => {
-  // Check localStorage first to avoid unnecessary network calls (and console errors)
-  const localSession = getSessionFromLocalStorage();
-  if (localSession) {
-    return {
-      success: true,
-      data: localSession,
-      message: 'Restored from local storage',
-      storage: 'localStorage'
-    };
+export const getLatestSession = async (skipApiCalls: boolean = false, forceRedis: boolean = false): Promise<RedisSessionResponse> => {
+  // If forceRedis is true, skip localStorage entirely to get the most current data
+  if (!forceRedis) {
+    // Check localStorage first to avoid unnecessary network calls (and console errors)
+    const localSession = getSessionFromLocalStorage();
+    if (localSession) {
+      return {
+        success: true,
+        data: localSession,
+        message: 'Restored from local storage',
+        storage: 'localStorage'
+      };
+    }
   }
 
-  // If skipApiCalls is true or no localStorage session, only try API if explicitly allowed
+  // If skipApiCalls is true, only check localStorage (which we already did above if forceRedis was false)
   if (skipApiCalls) {
     return {
       success: false,

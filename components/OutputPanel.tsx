@@ -320,27 +320,21 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, isLoading, l
     try {
       console.log('[OutputPanel] Starting pipeline process...');
       if (!timestamp) {
-        // Try to get timestamp from localStorage first
-        timestamp = getSessionTimestampFromLocalStorage() || undefined;
-        
-        if (!timestamp) {
-          // Get latest session - it contains the timestamp
-          console.log('[OutputPanel] No sessionTimestamp provided, fetching latest session...');
-          const sessionResponse = await getLatestSession();
-          if (!sessionResponse.success || !sessionResponse.data) {
-            throw new Error('Failed to get session. Please ensure you have saved your analysis by clicking "Analyze Script".');
-          }
-          
-          // Extract timestamp from the saved session data
-          // The session data should have a timestamp field
-          if (sessionResponse.data.timestamp) {
-            timestamp = sessionResponse.data.timestamp;
-            console.log('[OutputPanel] Found session timestamp:', timestamp);
-          } else {
-            // If timestamp not in data, try to extract from session key if available
-            // This is a fallback - the timestamp should be in the data
-            throw new Error('Session found but no timestamp available. Please re-analyze the episode to create a new session.');
-          }
+        // IMPORTANT: Always fetch from Redis to get the most current session data
+        // Previously this checked localStorage first, which caused stale data issues
+        console.log('[OutputPanel] No sessionTimestamp provided, fetching latest session from Redis...');
+        const sessionResponse = await getLatestSession(false, true); // forceRedis = true
+        if (!sessionResponse.success || !sessionResponse.data) {
+          throw new Error('Failed to get session from Redis. Please ensure you have saved your analysis by clicking "Analyze Script".');
+        }
+
+        // Extract timestamp from the saved session data
+        if (sessionResponse.data.timestamp) {
+          timestamp = sessionResponse.data.timestamp;
+          console.log('[OutputPanel] Found session timestamp from Redis:', timestamp);
+          console.log('[OutputPanel] Session storage source:', sessionResponse.storage || 'redis');
+        } else {
+          throw new Error('Session found but no timestamp available. Please re-analyze the episode to create a new session.');
         }
       }
       
