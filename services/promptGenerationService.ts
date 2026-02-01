@@ -39,6 +39,51 @@ function extractImageConfig(episodeContextJson: string): ImageConfig | null {
 }
 
 /**
+ * Extract scene overrides from Episode Context JSON.
+ * Extracts time_of_day, intensity, pacing, and arc_phase per scene.
+ *
+ * @param episodeContextJson - The Episode Context JSON string
+ * @returns Record of scene number -> scene options for processEpisodeWithFullContext
+ */
+function extractSceneOverrides(episodeContextJson: string): Record<number, {
+    timeOfDay?: string | null;
+    intensity?: number;
+    pacing?: string;
+    arcPhase?: string | null;
+}> {
+    const overrides: Record<number, { timeOfDay?: string | null; intensity?: number; pacing?: string; arcPhase?: string | null }> = {};
+
+    try {
+        const context = JSON.parse(episodeContextJson);
+        const scenes = context.episode?.scenes || [];
+
+        for (const scene of scenes) {
+            const sceneNumber = scene.scene_number;
+            if (sceneNumber) {
+                overrides[sceneNumber] = {
+                    timeOfDay: scene.time_of_day || null,
+                    intensity: scene.intensity || undefined,
+                    pacing: scene.pacing || undefined,
+                    arcPhase: scene.arc_phase || null,
+                };
+
+                if (scene.time_of_day) {
+                    console.log(`[SceneContext] Scene ${sceneNumber}: time_of_day="${scene.time_of_day}"`);
+                }
+            }
+        }
+
+        if (Object.keys(overrides).length > 0) {
+            console.log(`[SceneContext] Extracted time_of_day for ${Object.keys(overrides).length} scenes from Episode Context`);
+        }
+    } catch (e) {
+        console.warn('[SceneContext] Failed to parse Episode Context for scene overrides:', e);
+    }
+
+    return overrides;
+}
+
+/**
  * Get generation parameters from image_config or environment variables.
  * Priority: Episode Context image_config > Environment variables > Hardcoded defaults
  */
@@ -636,7 +681,12 @@ async function generateSwarmUiPromptsWithGemini(
     onProgress?.('Applying SKILL.md rules (anti-monotony, carryover, FLUX validation)...');
     console.log('[SKILL.md] Processing episode through beatStateService...');
 
-    const processedResult = processEpisodeWithFullContext(analyzedEpisode);
+    // Extract scene overrides (time_of_day, intensity, pacing) from Episode Context
+    const sceneOverrides = extractSceneOverrides(episodeContextJson);
+
+    const processedResult = processEpisodeWithFullContext(analyzedEpisode, {
+        sceneOverrides: sceneOverrides
+    });
     const processedEpisode = processedResult.episode;
 
     console.log(`[SKILL.md] Processed ${processedResult.stats.totalBeats} beats across ${processedEpisode.scenes.length} scenes`);
@@ -836,10 +886,10 @@ A prompt must describe ONLY what a camera can directly observe. If a detail cann
     // Build base system instruction (without episodeContextSection) for comparison
     const baseSystemInstructionStart = `You are a SwarmUI prompt generator. Generate clean, token-efficient prompts.`;
 
-    // PROMPT GENERATION RULES - Authoritative source: StoryTeller/.claude/skills/prompt-generation-rules/SKILL.md v0.12
+    // PROMPT GENERATION RULES - Authoritative source: StoryTeller/.claude/skills/prompt-generation-rules/SKILL.md v0.13
     // This system instruction implements SKILL.md rules for LLM prompt generation.
     // Key sections: 1.1-1.4 (Templates), 3.6 (Helmet/Dingy), 8 (Dual Character), 16 (Camera Realism)
-    const systemInstruction = `You are a SwarmUI prompt generator following SKILL.md v0.12 rules. Generate clean, token-efficient prompts:
+    const systemInstruction = `You are a SwarmUI prompt generator following SKILL.md v0.13 rules. Generate clean, token-efficient prompts:
 
 **PROMPT TEMPLATE (Parentheses Grouping):**
 \`\`\`
