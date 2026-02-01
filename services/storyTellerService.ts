@@ -1,7 +1,7 @@
 // services/storyTellerService.ts
 // Service for communicating with StoryTeller API endpoints
 
-import { getToken } from './authService';
+import { getToken, clearTokenCache } from './authService';
 
 // Support both Vite (browser) and Node.js environments
 const BASE_URL = (typeof process !== 'undefined' && process.env?.VITE_STORYTELLER_API_URL)
@@ -93,7 +93,8 @@ export interface CreateReviewSessionResponse {
  * ```
  */
 export async function createImageReviewSession(
-  request: CreateReviewSessionRequest
+  request: CreateReviewSessionRequest,
+  retryCount: number = 0
 ): Promise<CreateReviewSessionResponse> {
   const token = await getToken();
   const url = `${BASE_URL}/api/v1/image-review/sessions`;
@@ -115,6 +116,13 @@ export async function createImageReviewSession(
     });
 
     if (!response.ok) {
+      // If unauthorized and haven't retried yet, clear cache and retry
+      if (response.status === 401 && retryCount < 1) {
+        console.warn('[StoryTellerService] Token expired (401), refreshing and retrying...');
+        clearTokenCache();
+        return createImageReviewSession(request, retryCount + 1);
+      }
+
       const errorText = await response.text();
       console.error('[StoryTellerService] Failed to create review session:', {
         status: response.status,

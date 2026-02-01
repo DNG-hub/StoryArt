@@ -5,7 +5,11 @@ const BASE_URL = (typeof process !== 'undefined' && process.env?.VITE_STORYTELLE
   || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STORYTELLER_API_URL)
   || "http://localhost:8000";
 let accessToken: string | null = null;
+let tokenExpiry: number = 0;  // Timestamp when token expires
 let tokenPromise: Promise<string> | null = null;
+
+// Token expiration buffer - refresh 5 minutes before expiry
+const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
 /**
  * Fetches a developer access token from the StoryTeller API.
@@ -32,6 +36,25 @@ async function fetchDevToken(): Promise<string> {
     }
 
     accessToken = data.access_token;
+
+    // Parse JWT to extract expiry time (exp claim)
+    try {
+      const payload = JSON.parse(atob(accessToken.split('.')[1]));
+      if (payload.exp) {
+        // exp is in seconds, convert to milliseconds
+        tokenExpiry = payload.exp * 1000;
+        console.log('[Auth] Token expires at:', new Date(tokenExpiry).toISOString());
+      } else {
+        // Default to 1 hour if no exp claim
+        tokenExpiry = Date.now() + 60 * 60 * 1000;
+        console.log('[Auth] No exp claim in token, defaulting to 1 hour expiry');
+      }
+    } catch (e) {
+      // If parsing fails, default to 1 hour
+      tokenExpiry = Date.now() + 60 * 60 * 1000;
+      console.warn('[Auth] Failed to parse token expiry, defaulting to 1 hour');
+    }
+
     return accessToken as string;
   } catch (error) {
     // Check if it's a connection error (backend not running)
@@ -52,8 +75,17 @@ async function fetchDevToken(): Promise<string> {
  * @returns {Promise<string>} A promise that resolves to the access token.
  */
 export async function getToken(): Promise<string> {
-  if (accessToken) {
+  // Check if token exists and is not expired (with buffer)
+  const now = Date.now();
+  if (accessToken && tokenExpiry > now + TOKEN_EXPIRY_BUFFER_MS) {
     return accessToken;
+  }
+
+  // Token is expired or about to expire - clear it
+  if (accessToken && tokenExpiry <= now + TOKEN_EXPIRY_BUFFER_MS) {
+    console.log('[Auth] Token expired or expiring soon, refreshing...');
+    accessToken = null;
+    tokenExpiry = 0;
   }
 
   // If a token request is already in progress, return the same promise
@@ -68,4 +100,15 @@ export async function getToken(): Promise<string> {
   });
 
   return tokenPromise;
+}
+
+/**
+ * Clears the cached token, forcing a refresh on next getToken call.
+ * Call this when you receive a 401 error to force token refresh.
+ */
+export function clearTokenCache(): void {
+  console.log('[Auth] Clearing token cache');
+  accessToken = null;
+  tokenExpiry = 0;
+  tokenPromise = null;
 }
