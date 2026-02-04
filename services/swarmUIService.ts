@@ -279,7 +279,12 @@ export const createSwarmUIPreset = async (
     const scheduler = options?.scheduler || getEnvVar('SWARMUI_SCHEDULER') || 'simple';
     const steps = options?.steps || parseInt(getEnvVar('SWARMUI_STEPS') || '20');
     const cfgscale = options?.cfgscale || parseFloat(getEnvVar('SWARMUI_CFG_SCALE') || '1');
-    const seed = options?.seed ?? parseInt(getEnvVar('SWARMUI_SEED') || '-1');
+    // Generate random seed if -1, otherwise use provided seed
+    let seed = options?.seed ?? parseInt(getEnvVar('SWARMUI_SEED') || '-1');
+    if (seed === -1) {
+        seed = Math.floor(Math.random() * 2147483647);
+        console.log(`[SwarmUI] Generated random seed: ${seed}`);
+    }
     const loras = options?.loras || getEnvVar('SWARMUI_LORAS') || '';
     const loraweights = options?.loraweights || getEnvVar('SWARMUI_LORA_WEIGHTS') || '';
     const aspectratio = options?.aspectratio;
@@ -431,7 +436,13 @@ export const generateImages = async (
         const steps = options?.steps || parseInt(getEnvVar('SWARMUI_STEPS') || '40');
         const cfgscale = options?.cfgscale || parseFloat(getEnvVar('SWARMUI_CFG_SCALE') || '1');
         const fluxguidancescale = options?.fluxguidancescale || parseFloat(getEnvVar('SWARMUI_FLUX_GUIDANCE_SCALE') || '3.5');
-        const seed = options?.seed ?? parseInt(getEnvVar('SWARMUI_SEED') || '-1');
+        // Generate random seed if -1, otherwise use provided seed
+        // SwarmUI may not interpret -1 as "random" - we handle it explicitly
+        let seed = options?.seed ?? parseInt(getEnvVar('SWARMUI_SEED') || '-1');
+        if (seed === -1) {
+            seed = Math.floor(Math.random() * 2147483647); // Random 32-bit integer
+            console.log(`[SwarmUI] Generated random seed: ${seed}`);
+        }
         const automaticvae = options?.automaticvae ?? true; // Default true (matches exact config)
         const sdtextencs = options?.sdtextencs || getEnvVar('SWARMUI_SD_TEXT_ENCS') || 'CLIP + T5';
         const loras = options?.loras || getEnvVar('SWARMUI_LORAS') || 'gargan';
