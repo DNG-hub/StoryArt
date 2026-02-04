@@ -6,6 +6,130 @@ import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { getStoryContext } from './storyContextService';
 import { applyLoraTriggerSubstitution } from '../utils';
 import { getGeminiModel, getGeminiTemperature } from './geminiService';
+import { detectHelmetState } from './beatTypeService';
+import { selectHairFragment, type HairFragmentResult } from './hairFragmentService';
+
+/**
+ * Attempt to repair truncated or malformed JSON from LLM response.
+ * Common issues:
+ * - Truncated at the end (missing closing brackets)
+ * - Extra trailing content after valid JSON
+ * - Incomplete last array element
+ *
+ * @param jsonString The potentially malformed JSON string
+ * @returns Repaired JSON string or original if repair fails
+ */
+function attemptJsonRepair(jsonString: string): { repaired: string; wasRepaired: boolean; droppedItems: number } {
+    let repaired = jsonString.trim();
+    let wasRepaired = false;
+    let droppedItems = 0;
+
+    // Remove any markdown code fences that might be present
+    if (repaired.startsWith('```json')) {
+        repaired = repaired.slice(7);
+        wasRepaired = true;
+    }
+    if (repaired.startsWith('```')) {
+        repaired = repaired.slice(3);
+        wasRepaired = true;
+    }
+    if (repaired.endsWith('```')) {
+        repaired = repaired.slice(0, -3);
+        wasRepaired = true;
+    }
+    repaired = repaired.trim();
+
+    // Try to parse as-is first
+    try {
+        JSON.parse(repaired);
+        return { repaired, wasRepaired, droppedItems: 0 };
+    } catch (e) {
+        // Continue with repair attempts
+    }
+
+    // Check if it's a truncated array - look for pattern like ], followed by incomplete object
+    // Strategy: Find the last complete object and close the array there
+    const arrayStart = repaired.indexOf('[');
+    if (arrayStart >= 0) {
+        // Find all complete objects by looking for "},\n{" or "}\n]" patterns
+        const objectEndPattern = /\}(\s*,?\s*(?=\{|\]))/g;
+        let lastValidEnd = -1;
+        let match;
+
+        while ((match = objectEndPattern.exec(repaired)) !== null) {
+            // Try to parse up to this point
+            const testStr = repaired.substring(0, match.index + 1) + ']';
+            try {
+                JSON.parse(testStr);
+                lastValidEnd = match.index + 1;
+            } catch (e) {
+                // Not valid yet, continue
+            }
+        }
+
+        if (lastValidEnd > 0) {
+            repaired = repaired.substring(0, lastValidEnd) + ']';
+            wasRepaired = true;
+
+            // Count how many objects we kept vs expected
+            try {
+                const parsed = JSON.parse(repaired);
+                if (Array.isArray(parsed)) {
+                    // Estimate dropped items by comparing array depth
+                    droppedItems = 0; // We don't know how many were expected
+                }
+            } catch (e) {
+                // Still failed
+            }
+        }
+    }
+
+    // If still failing, try closing brackets progressively
+    if (repaired.includes('{') || repaired.includes('[')) {
+        let openBraces = 0;
+        let openBrackets = 0;
+        let inString = false;
+        let escapeNext = false;
+
+        for (const char of repaired) {
+            if (escapeNext) {
+                escapeNext = false;
+                continue;
+            }
+            if (char === '\\') {
+                escapeNext = true;
+                continue;
+            }
+            if (char === '"') {
+                inString = !inString;
+                continue;
+            }
+            if (!inString) {
+                if (char === '{') openBraces++;
+                if (char === '}') openBraces--;
+                if (char === '[') openBrackets++;
+                if (char === ']') openBrackets--;
+            }
+        }
+
+        // Add missing closing brackets
+        if (openBraces > 0 || openBrackets > 0) {
+            // If we're in the middle of an incomplete object, remove it
+            const lastComma = repaired.lastIndexOf(',');
+            if (lastComma > repaired.lastIndexOf('}')) {
+                repaired = repaired.substring(0, lastComma);
+                droppedItems++;
+            }
+
+            // Add closing brackets
+            for (let i = 0; i < openBraces; i++) repaired += '}';
+            for (let i = 0; i < openBrackets; i++) repaired += ']';
+            wasRepaired = true;
+        }
+    }
+
+    return { repaired, wasRepaired, droppedItems };
+}
 
 const swarmUIPromptSchema = {
     type: Type.OBJECT,
@@ -719,7 +843,8 @@ async function generateSwarmUiPromptsWithGemini(
     }
 
     // If we have too many beats, process them in batches to avoid token limits
-    const BATCH_SIZE = 20; // Process 20 beats at a time
+    // Reduced from 20 to 12 to prevent JSON truncation issues with large prompts
+    const BATCH_SIZE = 12;
     const batches = [];
     for (let i = 0; i < beatsForPrompting.length; i += BATCH_SIZE) {
         batches.push(beatsForPrompting.slice(i, i + BATCH_SIZE));
@@ -1383,6 +1508,73 @@ Context Source: ${contextSource}`;
                 beat.locationAttributes.forEach(attr => styleGuide.atmosphere.add(attr));
             }
 
+            // --- Hair Fragment Selection (SKILL.md Section 3.6.2) ---
+            // Detect helmet state and select appropriate hair fragment
+            // Also determine if YOLO face segment should be included
+            let hairContext: {
+                helmetState: string | null;
+                hairSuppressed: boolean;
+                hairFragment?: string;
+                includeFaceSegment: boolean;  // Whether to include YOLO face segment
+                reason: string;
+            } | undefined;
+
+            if (beat.characters && beat.characters.length > 0) {
+                const primaryCharacter = beat.characters[0];
+                // Get location from beat (first location attribute)
+                const locationName = beat.locationAttributes?.[0] || null;
+                // Determine gear context from beat script FIRST (needed for helmet inference)
+                let gearContext: string | null = null;
+                const beatText = beat.beat_script_text?.toLowerCase() || '';
+                if (beatText.includes('suit up') || beatText.includes('suiting up')) {
+                    gearContext = 'suit_up';
+                } else if (beatText.includes('tactical') || beatText.includes('field op') || beatText.includes('mission') ||
+                           beatText.includes('dingy') || beatText.includes('aegis')) {
+                    gearContext = 'field_op';
+                } else if (beatText.includes('safehouse') || beatText.includes('relaxed') || beatText.includes('off-duty')) {
+                    gearContext = 'off_duty';
+                }
+
+                // Now detect helmet state with gear context for inference
+                const helmetState = detectHelmetState(beat.beat_script_text || '', gearContext);
+
+                const hairResult = selectHairFragment(
+                    primaryCharacter,
+                    helmetState,
+                    locationName,
+                    gearContext
+                );
+
+                // Determine if YOLO face segment should be included
+                // Face is visible (include segment) UNLESS visor is DOWN
+                const includeFaceSegment = helmetState !== 'VISOR_DOWN';
+
+                hairContext = {
+                    helmetState,
+                    hairSuppressed: hairResult.suppressed,
+                    hairFragment: hairResult.suppressed ? undefined : hairResult.promptFragment || undefined,
+                    includeFaceSegment,
+                    reason: hairResult.reason
+                };
+
+                // Enhanced logging for all helmet states
+                if (helmetState === 'VISOR_DOWN') {
+                    // Helmet ON, visor sealed: no hair, no face
+                    console.log(`[Helmet] ${beat.beatId}: VISOR_DOWN - hair suppressed, face hidden`);
+                } else if (helmetState === 'VISOR_UP') {
+                    // Helmet ON, visor raised: no hair (under helmet), but face visible
+                    console.log(`[Helmet] ${beat.beatId}: VISOR_UP - hair suppressed, face visible (include YOLO)`);
+                } else {
+                    // Helmet OFF/IN_HAND/ON_VEHICLE/null: hair visible, face visible
+                    const stateDesc = helmetState || 'not worn';
+                    if (hairResult.promptFragment) {
+                        console.log(`[Helmet] ${beat.beatId}: ${stateDesc} - hair: ${hairResult.fragmentKey}, face visible (include YOLO)`);
+                    } else {
+                        console.log(`[Helmet] ${beat.beatId}: ${stateDesc} - face visible (include YOLO)`);
+                    }
+                }
+            }
+
             // Build carryover context for the AI (SKILL.md Section 4.5)
             const carryoverContext: {
                 hasCarryover: boolean;
@@ -1433,6 +1625,8 @@ Context Source: ${contextSource}`;
                 carryoverContext: carryoverContext.hasCarryover ? carryoverContext : undefined,
                 // Include visual guidance for hook/climax emphasis
                 visualGuidance,
+                // Hair/helmet context for correct character appearance (SKILL.md Section 3.6.2)
+                hairContext,
             };
         });
 
@@ -1518,7 +1712,39 @@ Context Source: ${contextSource}`;
 
             onProgress?.(`Processing Gemini response for batch ${batchIndex + 1}...`);
             const jsonString = response.text.trim();
-            const batchResult = JSON.parse(jsonString) as any[];
+
+            // Attempt to parse JSON with repair fallback for truncation
+            let batchResult: any[];
+            try {
+                batchResult = JSON.parse(jsonString) as any[];
+            } catch (parseError) {
+                console.warn(`[JSON Parse] Initial parse failed for batch ${batchIndex + 1}, attempting repair...`);
+
+                // Try to repair truncated JSON
+                const { repaired, wasRepaired, droppedItems } = attemptJsonRepair(jsonString);
+
+                if (wasRepaired) {
+                    try {
+                        batchResult = JSON.parse(repaired) as any[];
+                        console.log(`[JSON Parse] Repair successful for batch ${batchIndex + 1}`);
+                        if (droppedItems > 0) {
+                            console.warn(`[JSON Parse] Dropped ${droppedItems} incomplete items from batch ${batchIndex + 1}`);
+                        }
+                    } catch (repairError) {
+                        // Log the original error context for debugging
+                        console.error(`[JSON Parse] Repair failed. Original response length: ${jsonString.length}`);
+                        console.error(`[JSON Parse] First 500 chars: ${jsonString.substring(0, 500)}`);
+                        console.error(`[JSON Parse] Last 500 chars: ${jsonString.substring(jsonString.length - 500)}`);
+                        throw parseError; // Throw original error
+                    }
+                } else {
+                    // No repair possible, throw original error
+                    console.error(`[JSON Parse] Unable to repair JSON. Response length: ${jsonString.length}`);
+                    console.error(`[JSON Parse] First 500 chars: ${jsonString.substring(0, 500)}`);
+                    console.error(`[JSON Parse] Last 500 chars: ${jsonString.substring(jsonString.length - 500)}`);
+                    throw parseError;
+                }
+            }
             
             // Post-process: Ensure correct steps and FLUX-specific parameters (Phase C optimization)
             // Now uses image_config from Episode Context when available (Phase 4 enhancement)
@@ -1757,23 +1983,34 @@ Context Source: ${contextSource}`;
                     }
                 }
 
-                // Step 3: Hair suppression enforcement (belt-and-suspenders)
-                // If helmet segment present, strip any hair descriptions Gemini may have included
-                if (processedCinematic.includes('<segment:helmet') || processedCinematic.includes('helmet visor')) {
+                // Step 3: Hair suppression enforcement (belt-and-suspenders safety fallback)
+                // The hairFragmentService should have already suppressed hair for helmet-on beats.
+                // This is a safety fallback to catch LLM hallucinations or edge cases.
+                if (processedCinematic.includes('<segment:helmet') ||
+                    processedCinematic.includes('helmet visor') ||
+                    processedCinematic.includes('Wraith helmet') ||
+                    processedCinematic.includes('visor down') ||
+                    processedCinematic.includes('visor raised')) {
                     const beforeHairStrip = processedCinematic;
-                    // Remove common hair descriptions
+                    // Remove all hair descriptions that might conflict with helmet
                     processedCinematic = processedCinematic
-                        .replace(/,?\s*dark brown hair in (?:practical )?ponytail/gi, '')
+                        .replace(/,?\s*dark brown hair[^,]*/gi, '')
                         .replace(/,?\s*stark white military-cut hair/gi, '')
                         .replace(/,?\s*white hair/gi, '')
-                        .replace(/,?\s*brown hair/gi, '')
-                        .replace(/,?\s*hair in (?:low )?ponytail/gi, '')
+                        .replace(/,?\s*brown hair[^,]*/gi, '')
+                        .replace(/,?\s*hair in[^,]*/gi, '')
+                        .replace(/,?\s*hair pulled back[^,]*/gi, '')
+                        .replace(/,?\s*hair loose[^,]*/gi, '')
                         .replace(/,?\s*flowing hair/gi, '')
+                        .replace(/,?\s*ponytail[^,]*/gi, '')
                         .replace(/,?\s*hair visible/gi, '')
+                        .replace(/,?\s*updo[^,]*/gi, '')
+                        .replace(/,?\s*tactical cap/gi, '')
                         .replace(/\s+/g, ' ')
                         .trim();
                     if (beforeHairStrip !== processedCinematic) {
-                        console.log(`[HairSuppression] Stripped hair description for helmet-on beat ${bp.beatId}`);
+                        // Log as warning - hairFragmentService should have prevented this
+                        console.warn(`[HairSuppression] FALLBACK ACTIVATED for ${bp.beatId} - hair service may have missed this case`);
                     }
                 }
 

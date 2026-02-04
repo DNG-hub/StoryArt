@@ -204,9 +204,9 @@ export function isEnvironmentShotFromDescription(description: string): boolean {
 }
 
 /**
- * Detect helmet state from description.
+ * Detect helmet state from description (explicit mentions only).
  */
-export function detectHelmetState(description: string): 'OFF' | 'IN_HAND' | 'ON_VEHICLE' | 'VISOR_UP' | 'VISOR_DOWN' | null {
+export function detectHelmetStateExplicit(description: string): 'OFF' | 'IN_HAND' | 'ON_VEHICLE' | 'VISOR_UP' | 'VISOR_DOWN' | null {
   const desc = description.toLowerCase();
 
   if (/visor\s+down/i.test(desc) || /face\s+hidden/i.test(desc) || /helmet\s+sealed/i.test(desc)) {
@@ -225,7 +225,153 @@ export function detectHelmetState(description: string): 'OFF' | 'IN_HAND' | 'ON_
     return 'OFF';
   }
 
-  // Default: assume no helmet mentioned means off
+  return null;
+}
+
+/**
+ * Infer helmet state from context when not explicitly mentioned.
+ *
+ * VISOR_DOWN patterns (face hidden, no hair, NO YOLO face segment):
+ * - Riding/driving the Dingy at speed
+ * - Flying/airborne scenarios
+ * - Active combat/firefight
+ * - HUD/display mentions (viewing through visor)
+ * - Hostile environment (radiation, toxic, etc.)
+ *
+ * VISOR_UP patterns (face visible, no hair, INCLUDE YOLO face segment):
+ * - Speaking/communicating in tactical gear
+ * - Stopped/stationary assessment
+ * - Just arrived at location
+ * - Briefing/conversation in field gear
+ *
+ * @param description - Beat description text
+ * @param gearContext - Optional gear context (e.g., 'field_op', 'suit_up')
+ * @returns Inferred helmet state or null if no inference possible
+ */
+export function inferHelmetFromContext(
+  description: string,
+  gearContext?: string | null
+): { state: 'VISOR_UP' | 'VISOR_DOWN'; reason: string } | null {
+  const desc = description.toLowerCase();
+
+  // ========================================================================
+  // VISOR_DOWN PATTERNS (face hidden, no YOLO face segment)
+  // ========================================================================
+
+  // HUD/display mentions strongly imply visor down (viewing through helmet)
+  if (/hud|display|readout|targeting|threat\s+indicator|biometric/i.test(desc)) {
+    return { state: 'VISOR_DOWN', reason: 'HUD/display mention implies viewing through visor' };
+  }
+
+  // Riding/driving the Dingy at speed implies sealed helmet
+  if (/\b(riding|drives?|aboard)\b.*\bdingy\b/i.test(desc) ||
+      /\bdingy\b.*\b(speeds?|accelerates?|weaves?|races?|flies?|shoots?|roars?)\b/i.test(desc)) {
+    return { state: 'VISOR_DOWN', reason: 'Riding Dingy at speed implies helmet sealed' };
+  }
+
+  // Flying/airborne scenarios imply sealed helmet
+  if (/\b(flying|airborne|soaring|diving|plunging|freefalling)\b/i.test(desc) &&
+      /\b(aegis|suit|tactical)\b/i.test(desc)) {
+    return { state: 'VISOR_DOWN', reason: 'Airborne in suit implies helmet sealed' };
+  }
+
+  // Active combat/firefight in field context implies sealed helmet
+  if (gearContext === 'field_op' &&
+      /\b(firefight|combat|battle|engagement|assault|breach|tactical\s+entry|under\s+fire)\b/i.test(desc)) {
+    return { state: 'VISOR_DOWN', reason: 'Active combat in field_op implies helmet sealed' };
+  }
+
+  // High-speed movement in tactical gear implies sealed helmet
+  if (/\b(speeds?|races?|accelerates?|roars?)\b.*\b(street|road|highway|through|past)\b/i.test(desc) &&
+      /\b(aegis|suit|tactical|dingy|bike|motorcycle)\b/i.test(desc)) {
+    return { state: 'VISOR_DOWN', reason: 'High-speed tactical movement implies helmet sealed' };
+  }
+
+  // Hostile environment implies sealed helmet
+  if (/\b(radiation|toxic|smoke|dust|debris|contaminated|hazard|gas|fumes)\b/i.test(desc) &&
+      /\b(aegis|suit|tactical)\b/i.test(desc)) {
+    return { state: 'VISOR_DOWN', reason: 'Hostile environment implies helmet sealed' };
+  }
+
+  // ========================================================================
+  // VISOR_UP PATTERNS (face visible, INCLUDE YOLO face segment)
+  // ========================================================================
+
+  // Speaking/communicating in tactical context implies visor up
+  if (/\b(says?|speaks?|tells?|asks?|replies?|responds?|shouts?|calls\s+out|whispers?)\b/i.test(desc) &&
+      /\b(aegis|suit|tactical|dingy|helmet)\b/i.test(desc)) {
+    return { state: 'VISOR_UP', reason: 'Speaking in tactical gear implies visor raised' };
+  }
+
+  // Stopped/parked Dingy with character implies visor up for visibility
+  if (/\bdingy\b.*\b(stops?|parks?|idles?|waits?|stationary)\b/i.test(desc) ||
+      /\b(stops?|parks?|dismounts?)\b.*\bdingy\b/i.test(desc)) {
+    return { state: 'VISOR_UP', reason: 'Stopped at Dingy implies visor raised' };
+  }
+
+  // Assessment/scanning/looking scenarios in tactical gear
+  if (/\b(scans?|surveys?|assesses?|observes?|watches?|looks\s+at|examines?|studies)\b/i.test(desc) &&
+      /\b(aegis|suit|tactical)\b/i.test(desc) &&
+      !/\bhud\b/i.test(desc)) { // But NOT if HUD is mentioned
+    return { state: 'VISOR_UP', reason: 'Visual assessment implies visor raised' };
+  }
+
+  // Just arrived/approaching in tactical gear
+  if (/\b(arrives?|approaches?|reaches?|enters?|steps\s+into|walks\s+into)\b/i.test(desc) &&
+      /\b(aegis|suit|tactical)\b/i.test(desc)) {
+    return { state: 'VISOR_UP', reason: 'Arrival in tactical gear implies visor raised' };
+  }
+
+  // Briefing/planning/discussion in field context
+  if (/\b(briefs?|plans?|discusses?|confers?|coordinates?|gestures?|points|signals?)\b/i.test(desc) &&
+      gearContext === 'field_op') {
+    return { state: 'VISOR_UP', reason: 'Field briefing implies visor raised' };
+  }
+
+  // Pre-mission or post-mission moments in tactical gear
+  if (/\b(prepares?|readies|gears\s+up|suit(s|ing)?\s+up|checks?\s+(gear|equipment))\b/i.test(desc) &&
+      /\b(aegis|suit|tactical)\b/i.test(desc)) {
+    return { state: 'VISOR_UP', reason: 'Pre-mission prep implies visor raised' };
+  }
+
+  // Mounting/getting on Dingy (before departure, visor still up)
+  if (/\b(mounts?|straddles?|climbs?\s+on|gets?\s+on)\b.*\bdingy\b/i.test(desc)) {
+    return { state: 'VISOR_UP', reason: 'Mounting Dingy implies visor still raised' };
+  }
+
+  return null;
+}
+
+/**
+ * Detect helmet state from description with context-based inference.
+ *
+ * Priority:
+ * 1. Explicit helmet state mentions (visor down, visor up, etc.)
+ * 2. Context-based inference (riding Dingy, airborne, combat)
+ * 3. Default: null (no helmet determination)
+ *
+ * @param description - Beat description text
+ * @param gearContext - Optional gear context for inference
+ * @returns Helmet state or null
+ */
+export function detectHelmetState(
+  description: string,
+  gearContext?: string | null
+): 'OFF' | 'IN_HAND' | 'ON_VEHICLE' | 'VISOR_UP' | 'VISOR_DOWN' | null {
+  // First check explicit mentions
+  const explicit = detectHelmetStateExplicit(description);
+  if (explicit !== null) {
+    return explicit;
+  }
+
+  // Then try context-based inference
+  const inferred = inferHelmetFromContext(description, gearContext);
+  if (inferred !== null) {
+    console.log(`[HelmetInference] Inferred ${inferred.state}: ${inferred.reason}`);
+    return inferred.state;
+  }
+
+  // Default: no helmet mentioned
   return null;
 }
 

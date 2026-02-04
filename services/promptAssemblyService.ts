@@ -15,6 +15,7 @@
 import type { ShotType, CameraAngle, LightingTerm, TimeOfDay } from './fluxVocabularyService';
 import { validateShotType, validateCameraAngle, getLightingForTimeOfDay } from './fluxVocabularyService';
 import { detectBeatType, type BeatType, type BeatTypeResult, detectHelmetState, isEnvironmentShotFromDescription } from './beatTypeService';
+import { selectHairFragment, type HairFragmentResult } from './hairFragmentService';
 import { getPhaseAwareShotRecommendation, inferArcPhaseFromSceneRole, type ArcPhase } from './arcPhaseVisualService';
 import { getHookRecommendation, isHookBeat, type HookRecommendation, type HookContext } from './visualHookService';
 import {
@@ -37,14 +38,23 @@ function assembleCharacterWithFacePrompt(components: PromptComponents): string {
   // Shot type
   parts.push(components.shotType);
 
+  // Build character description with hair fragment
+  let charDescWithHair = components.characterDescription || '';
+  if (components.hairFragment) {
+    // Add hair fragment to character description
+    charDescWithHair = charDescWithHair
+      ? `${charDescWithHair}, ${components.hairFragment}`
+      : components.hairFragment;
+  }
+
   // Character with trigger
   if (components.trigger) {
     parts.push(`of a ${components.trigger}`);
-    if (components.characterDescription) {
-      parts.push(`(${components.characterDescription})`);
+    if (charDescWithHair) {
+      parts.push(`(${charDescWithHair})`);
     }
-  } else if (components.characterDescription) {
-    parts.push(`of ${components.characterDescription}`);
+  } else if (charDescWithHair) {
+    parts.push(`of ${charDescWithHair}`);
   }
 
   // Action/pose
@@ -237,6 +247,9 @@ export interface PromptComponents {
   clothingSegment?: string;
   faceSegment?: string;
   secondFaceSegment?: string;
+
+  // Hair fragment (from hairFragmentService)
+  hairFragment?: string;
 }
 
 export interface BeatInput {
@@ -258,8 +271,14 @@ export interface BeatInput {
   faceSegment?: string;
 
   // Context
-  gearContext?: 'off_duty' | 'field_op' | 'suit_up' | null;
+  gearContext?: 'off_duty' | 'field_op' | 'suit_up' | 'stealth' | null;
   timeOfDay?: TimeOfDay;
+
+  // Pre-computed lighting from beatStateService (if available)
+  fluxLighting?: string[];
+
+  // Location name for hair fragment selection
+  locationName?: string;
 }
 
 export interface SceneContext {
@@ -333,9 +352,9 @@ export function assembleBeatPrompt(
 ): AssembledPrompt {
   const warnings: string[] = [];
 
-  // 1. Detect beat type
+  // 1. Detect beat type (with gear context for helmet inference)
   const isEnvShot = isEnvironmentShotFromDescription(beat.beatScriptText);
-  const helmetState = detectHelmetState(beat.beatScriptText);
+  const helmetState = detectHelmetState(beat.beatScriptText, beat.gearContext || null);
   const beatTypeResult = detectBeatType(beat.characters, helmetState, isEnvShot);
 
   // 2. Determine arc phase
@@ -394,12 +413,34 @@ export function assembleBeatPrompt(
     warnings.push(varietyAdjustment.adjustmentReason || 'Shot adjusted for variety');
   }
 
-  // 7. Get lighting for time of day
+  // 7. Get lighting for time of day (use pre-computed fluxLighting if available)
   let lighting = 'natural lighting';
-  if (beat.timeOfDay) {
+  if (beat.fluxLighting && beat.fluxLighting.length > 0) {
+    // Use pre-computed lighting from beatStateService
+    lighting = beat.fluxLighting.join(', ');
+  } else if (beat.timeOfDay) {
+    // Fallback to computing from timeOfDay
     const timeOfDayLighting = getLightingForTimeOfDay(beat.timeOfDay);
     if (timeOfDayLighting.length > 0) {
       lighting = timeOfDayLighting.join(', ');
+    }
+  }
+
+  // 7.5 Select hair fragment based on helmet state and location
+  let hairFragmentResult: HairFragmentResult | null = null;
+  if (beat.characters && beat.characters.length > 0) {
+    const primaryCharacter = beat.characters[0];
+    hairFragmentResult = selectHairFragment(
+      primaryCharacter,
+      helmetState,
+      beat.locationName || beat.locationShorthand || null,
+      beat.gearContext || null
+    );
+
+    if (hairFragmentResult.suppressed) {
+      console.log(`[HairFragment] Suppressed for ${beat.beatId}: ${hairFragmentResult.reason}`);
+    } else if (hairFragmentResult.promptFragment) {
+      console.log(`[HairFragment] Selected for ${beat.beatId}: ${hairFragmentResult.fragmentKey} (${hairFragmentResult.reason})`);
     }
   }
 
@@ -417,6 +458,8 @@ export function assembleBeatPrompt(
     atmosphere: extractAtmosphere(beat.beatScriptText),
     clothingSegment: beat.clothingSegment,
     faceSegment: beatTypeResult.faceVisible ? beat.faceSegment : undefined,
+    // Hair fragment (only included when not suppressed by helmet)
+    hairFragment: hairFragmentResult?.suppressed ? undefined : hairFragmentResult?.promptFragment,
   };
 
   // 9. Assemble prompt based on beat type
