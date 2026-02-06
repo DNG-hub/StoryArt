@@ -1,5 +1,5 @@
 # IMAGE PROMPT GENERATION RULES
-## Skill Definition v0.15
+## Skill Definition v0.17
 
 **Purpose:** Constrain and govern the programmatic generation of SwarmUI image prompts.
 **Authority:** This skill supersedes all prior prompt generation documentation.
@@ -833,7 +833,8 @@ BeatState {
 1. If new beat has different `characterPositioning` → update action
 2. If new beat has different `emotional_tone` → update expression
 3. If beat fields are empty/unchanged → use CARRYOVER
-4. State resets at episode boundary
+4. State resets at scene boundary (each scene starts fresh)
+5. `processEpisodeWithState()` is called ONCE by the orchestrator on the fully assembled AnalyzedEpisode (all scenes combined), NOT by individual provider functions
 
 ### 4.6 Refiner Prompt Template
 
@@ -891,6 +892,68 @@ SceneVarietyState {
 2. Vary camera angle at least every 3 beats
 3. If `visualSignificance: "High"`, use more dramatic framing
 4. If `visualSignificance: "Low"`, simpler framing is acceptable
+
+### 4.8 Per-Scene Analysis Pipeline (v0.16)
+
+Beat analysis is orchestrated by `multiProviderAnalysisService.ts:analyzeScriptWithProvider()` using a **per-scene architecture** that eliminates duplicate scene entries caused by the legacy chunk-and-merge approach.
+
+**Pipeline Flow:**
+
+```
+Full Episode Script + Episode Context JSON
+         ↓
+┌─────────────────────────────────────────────────────────┐
+│  1. splitScriptByScenes()          [utils.ts]           │
+│     Splits by ===SCENE N: Title=== markers              │
+│     Returns SceneScript[] (one entry per scene)         │
+│                                                         │
+│  2. parseEpisodeHeader()           [utils.ts]           │
+│     Extracts episode number + title from script header  │
+│                                                         │
+│  3. Per-scene parallel analysis    [Promise.all]        │
+│     For EACH scene:                                     │
+│     ├─ compactSceneContext() → scene-specific context    │
+│     │  (all characters + only THIS scene's location)    │
+│     ├─ Prefix scene instruction to script text          │
+│     │  "[SCENE ANALYSIS MODE: Scene N of M...]"         │
+│     └─ analyzeFullScript() → provider routing           │
+│        (Gemini / Qwen / Claude / OpenAI)                │
+│                                                         │
+│  4. Assembly                                            │
+│     ├─ Sort scenes by sceneNumber                       │
+│     ├─ Combine into single AnalyzedEpisode              │
+│     └─ processEpisodeWithState() on full episode        │
+│                                                         │
+│  5. Output: Single AnalyzedEpisode → Redis session      │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key Design Decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| Split by scene markers, not word count | Prevents scenes from straddling chunk boundaries |
+| Scene-specific context (`compactSceneContext`) | Reduces tokens per call; only sends relevant location/artifacts |
+| Parallel analysis (`Promise.all`) | All 4 scenes analyzed concurrently for speed |
+| `processEpisodeWithState` called once on assembled result | Carryover state computed correctly across the full episode |
+| Fallback to full-script if no markers detected | Backwards compatibility with unstructured scripts |
+
+**Scene Marker Format (Required):**
+```
+===SCENE 1: The Title===
+[scene content]
+
+===SCENE 2: Another Title===
+[scene content]
+```
+
+**BeatId Convention:** Each scene's beats use format `sN-bY` where N = scene number, Y = sequential beat within that scene (e.g., `s1-b1`, `s2-b3`). The scene instruction prefix enforces this during per-scene analysis.
+
+**What This Means for Prompt Generation:**
+- Beat data arriving in Redis sessions now has EXACTLY one entry per scene (no duplicates)
+- Scene numbers are deterministic (sorted by marker order)
+- Beat IDs within each scene are sequential and correctly prefixed
+- All downstream prompt generation rules (Sections 1-3) consume this data unchanged
 
 ---
 
@@ -1277,16 +1340,22 @@ Low priority arcs (3-) → Standard visual treatment
 
 ## 11A. SCENE INTENSITY & PACING (YouTube Optimization)
 
-### 11A.1 YouTube Episode Structure
+### 11A.1 YouTube Scene Structure (Standalone Video Model)
 
-**8-4-4-3 Minute Format** optimized for ad placement:
+Each of the 4 scenes per episode is a **standalone 15-20 minute YouTube video**. Every scene has its own complete tension arc:
 
-| Scene | Timing | Role | Duration |
-|-------|--------|------|----------|
-| 1 | 0-8min | setup_hook | 8 min |
-| 2 | 8-12min | development | 4 min |
-| 3 | 12-16min | escalation | 4 min |
-| 4 | 16-19min | climax/resolution | 3 min |
+| Phase | Timing | Beats | Purpose |
+|-------|--------|-------|---------|
+| Hook | 0:00-0:30 | 1-2 | Provocative opening image |
+| Setup | 0:30-3:00 | 5-10 | Establish scene + stakes |
+| Build | 3:00-7:30 | 12-18 | Rising tension, escalating visuals |
+| Peak | 7:30-8:00 | 1-2 | Tension peak (AD BREAK) |
+| Reset | 8:00-10:00 | 5-8 | Post-break re-engagement |
+| Develop | 10:00-15:00 | 12-18 | Core revelations + conflicts |
+| Climax | 15:00-18:00 | 8-12 | Emotional peak |
+| Resolve | 18:00-20:00 | 3-6 | Resolution or cliffhanger |
+
+**Scene targets:** 45-60 beats, 37-50 NEW_IMAGE, 15-30 sec per beat, 2.5-4 images/min
 
 ### 11A.2 Scene Role → Visual Treatment
 
@@ -1308,12 +1377,12 @@ Low priority arcs (3-) → Standard visual treatment
 | `falling` | 4-6 | Medium, wide | Soft, warm | Reflective, tired |
 | `resolved` | 1-3 | Wide | Peaceful | Soft, content |
 
-### 11A.4 Ad Break Rule (8-Minute Mark)
+### 11A.4 Ad Break Rule (8-Minute Mark - ALL Scenes)
 
-**Scene 1 MUST have a natural dramatic pause near 8 minutes.**
+**Every scene is its own YouTube video, so ALL scenes get an ad break near the 8-minute mark (~46% through the video).**
 
-When `is_ad_break_scene: true`:
-1. Identify the `ad_break_moment` from scene data
+When `is_ad_break_scene: true` (always):
+1. The ad break beat is at ~46% through the scene (beat ~23 of 50)
 2. The beat at/near this moment should be:
    - Slightly LOWER intensity than surrounding beats
    - A "breath" moment (character reaction, revelation landing)
@@ -1722,20 +1791,22 @@ YouTube renamed "repetitious content" to **"inauthentic content"** - content tha
 - Content with editorial value, commentary, transformation
 - Unique storytelling reflecting creator's ideas
 
-### 14.2 Beat Duration Guidelines
+### 14.2 Beat Duration Guidelines (Visual Moment Model)
 
-From production standards (not YouTube requirements):
+A beat = one visual moment (one camera composition). Each scene is a standalone 15-20 min video.
 
-| Format | Min Beat Duration | Max Beat Duration | Images per Minute |
-|--------|-------------------|-------------------|-------------------|
-| Long-form (19 min) | 15 seconds | 5 minutes | 4-12 |
-| Shorts (60 sec) | 2 seconds | 15 seconds | 4-30 |
+| Format | Min Beat Duration | Max Beat Duration | Images per Minute | Beats per Scene |
+|--------|-------------------|-------------------|-------------------|-----------------|
+| Standalone scene (15-20 min) | 15 seconds | 30 seconds | 2.5-4 | 45-60 |
+| Shorts (60 sec) | 2 seconds | 15 seconds | 4-30 | N/A |
 
 **Calculation:**
 ```
-19-minute episode = 1140 seconds
-Target beats: 30-60 beats (varies by scene complexity)
-Average beat: 19-38 seconds
+17.5-minute scene (avg) = 1050 seconds
+Target beats: 45-60 (visual moments)
+Average beat: 17.5-23 seconds on screen
+NEW_IMAGE: 37-50 per scene
+REUSE_IMAGE: 8-15 per scene (never 2+ consecutive)
 ```
 
 ### 14.3 Anti-Slop Quality Indicators
@@ -1762,13 +1833,47 @@ To ensure monetization eligibility, beat/prompt generation must:
 
 Each beat has `imageDecision` field:
 
-| Type | Meaning | Visual Change Required |
-|------|---------|------------------------|
-| `NEW_IMAGE` | Generate new image | Full new composition |
-| `REUSE_IMAGE` | Use existing image | None (pan/zoom in video) |
-| `VARIANT` | Minor variation | Same composition, different expression/pose |
+| Type | Meaning | Count per Scene | Visual Change Required |
+|------|---------|-----------------|------------------------|
+| `NEW_IMAGE` | Generate new image (default) | 37-50 | Full new composition |
+| `REUSE_IMAGE` | Use existing image | 8-15 | None (pan/zoom in video) |
+| `NO_IMAGE` | No visual | 0-2 max | Extremely rare |
 
-**Rule:** `REUSE_IMAGE` should not exceed 2 consecutive beats.
+**Rules:**
+- `REUSE_IMAGE` should not exceed 2 consecutive beats
+- `NEW_IMAGE` for ANY new framing, expression change, angle, action, or subject
+- `REUSE_IMAGE` ONLY when composition is truly identical
+
+### 14.6 Transition Rules for Static-Image Video Format
+
+These rules govern how images are held and transitioned in the final DaVinci Resolve video:
+
+| Hold Type | Duration | Usage |
+|-----------|----------|-------|
+| Standard hold | 15-25 sec | Normal voiceover narration |
+| Dramatic hold | 25-35 sec | Slow zoom/pan applied in post |
+| Rapid sequence | 8-15 sec | Action beats (max 3-4 consecutive) |
+| Max hold | 40 sec | Absolute maximum for any single image |
+
+**Anti-Slideshow Rules:**
+1. REUSE_IMAGE never more than 2 consecutive beats
+2. Never 3 consecutive beats with same framing/angle
+3. At least 2-3 environment beats per scene (no characters - establishing/atmosphere)
+4. Action beats with `visualSignificance: "High"` are candidates for 5-10 sec video clip insertion (rare, 2-5 per scene max)
+
+### 14.7 Visual Moment Split Rules
+
+When decomposing script into beats, use these rules to determine beat boundaries:
+
+| Scenario | Result |
+|----------|--------|
+| Screen/UI close-up + character reaction | 2 beats |
+| Character A speaks + Character B responds | 2 beats |
+| Same character, different action/expression | 2 beats |
+| Wide establishing + character entry | 2 beats |
+| Object focus + character holding it | 2 beats |
+
+**Rule of thumb:** If you could imagine the editor cutting to a different camera angle, it is a separate beat.
 
 ---
 
@@ -2487,6 +2592,8 @@ CHAR 1 (attributes) on left and CHAR 2 (attributes) on right, [interaction], [lo
 
 | Version | Date | Change |
 |---------|------|--------|
+| 0.17 | 2026-02-06 | **Visual Moment Rewrite.** Beat definition changed from "narrative unit" (45-90 sec, 2-5 sentences) to "visual moment" (15-30 sec, one camera composition). Target 45-60 beats per scene (was 15-20). NEW_IMAGE target 37-50/scene (was 11-15). YouTube format changed: each scene is standalone 15-20 min video (was 8-4-4-3 model). Ad break applies to ALL scenes at ~46% (8 min mark). Added cinematographic direction requirement (FLUX-validated shot type + angle + depth + lighting in `cameraAngleSuggestion`). Added Section 14.6 (Transition Rules for Static-Image Video), Section 14.7 (Visual Moment Split Rules). Updated Section 11A.1 (standalone scene model + tension arc phases), 11A.4 (ad break all scenes), 14.2 (beat duration), 14.5 (image decision targets). Updated `geminiService.ts`, `multiProviderAnalysisService.ts`, `qwenService.ts` system instructions and schemas. Updated `fluxVocabularyService.ts` SCENE_ROLE_TREATMENT.beatCountRange to [45,60]. Updated `sceneContextService.ts` isAdBreakScene (always true), estimateAdBreakBeat (0.46). |
+| 0.16 | 2026-02-05 | Added Section 4.8 (Per-Scene Analysis Pipeline). Documented architectural change from chunk-and-merge to per-scene analysis in `multiProviderAnalysisService.ts`. Scripts now split by `===SCENE N: Title===` markers via `splitScriptByScenes()`, each scene analyzed independently with scene-specific context via `compactSceneContext()`, all scenes run in parallel via `Promise.all`, assembled into single `AnalyzedEpisode`. `processEpisodeWithState()` moved from individual provider functions (geminiService, qwenService) to orchestrator, called once on full assembled episode. Updated Section 4.5 rule 4 (state resets at scene boundary, not episode boundary) and added rule 5 (orchestrator-level carryover state). Eliminated duplicate scene entries and out-of-order scene bugs caused by word-count chunking. |
 | 0.15 | 2026-02-03 | Added Section 3.6.4 (Helmet State Inference). Context-based detection when beat doesn't explicitly mention helmet. VISOR_DOWN inference: HUD mentions, riding Dingy at speed, flying/airborne, active combat, high-speed movement, hostile environment. VISOR_UP inference: speaking in tactical gear, stopped at Dingy, visual assessment, arrival, field briefing, pre-mission prep. Complete helmet/hair/face matrix. `hairContext.includeFaceSegment` for YOLO face segment control. Reduced batch size from 20 to 12 beats. Added JSON parsing recovery for truncated LLM responses. |
 | 0.14 | 2026-02-03 | Added Section 3.6.2 (Hair Fragment Selection Logic). New hair fragments in gear_fragments table: casual_hair_cat_down, formal_hair_cat_updo, stealth_hair_cat_cap. Hair selection decision tree based on helmet state and location context. Hair suppression matrix (suppress when helmet ON). Location-to-hair mapping table. Example prompts for all states. Renumbered Dingy section to 3.6.3. |
 | 0.13 | 2026-01-31 | Fixed Section 13.2 (Time of Day Lighting) data flow. Added extractSceneOverrides() function to parse time_of_day from Episode Context JSON. Updated processEpisodeWithFullContext() call to pass sceneOverrides. Documented data flow: Episode Context → extractSceneOverrides → processEpisodeWithFullContext → buildSceneVisualContext → getLightingForTimeOfDay. Bug fix: night scenes were rendering as day because time_of_day was not being extracted and passed to beat processing pipeline. |

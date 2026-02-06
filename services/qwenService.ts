@@ -1,60 +1,40 @@
 import type { AnalyzedEpisode } from '../types';
 import { compactEpisodeContext } from '../utils';
 import { providerManager, AIProvider, TaskType, AIRequest } from './aiProviderService';
-import { processEpisodeWithState } from './beatStateService';
 
 export const analyzeScriptWithQwen = async (
   scriptText: string, 
   episodeContextJson: string,
   onProgress?: (message: string) => void
 ): Promise<AnalyzedEpisode> => {
-  const systemInstruction = `You are an expert AI **Narrative Pacing Architect** and **Continuity Supervisor** for episodic visual storytelling, optimized for platforms like YouTube. Your primary goal is to structure a script into a rhythm of engaging narrative beats to maintain viewer attention, while also minimizing redundant image creation.
+  const systemInstruction = `You are an expert AI **Visual Moment Architect** and **Continuity Supervisor** for episodic visual storytelling. Each scene is a standalone 15-20 minute YouTube video. Your goal is to decompose a script into individual VISUAL MOMENTS (camera compositions) for static-image video production.
 
-**BEAT DEFINITION:** A beat is a complete narrative unit (45-90 seconds) that:
-- Captures a significant story moment or dialogue exchange
-- Advances plot, character, or theme meaningfully
-- Can be represented by a single key image
-- Contains 2-5 sentences of script text
+**BEAT DEFINITION:** A beat = one distinct VISUAL MOMENT (one camera composition on screen).
+- Duration: 15-30 seconds on screen (image hold time)
+- Content: 1-3 sentences describing what the viewer SEES in this frame
+- Each beat = one image. If the camera would CUT to a new shot, that is a new beat.
+- Each beat MUST include full cinematographic direction in \`cameraAngleSuggestion\`.
+
+**SCENE TARGETS:**
+- Total beats per scene: 45-60 (target 50)
+- NEW_IMAGE: 37-50 per scene
+- REUSE_IMAGE: 8-15 per scene (never 2+ consecutive)
+- Beat duration: 15-30 sec
+
+**CINEMATOGRAPHIC DIRECTION (REQUIRED):**
+\`cameraAngleSuggestion\` format: "[shot_type], [camera_angle], [depth/composition], [lighting]"
+Example: "medium close-up, three-quarter view, shallow depth of field, dramatic rim lighting"
 
 **Inputs:**
-1.  **Script Text:** A full screenplay, typically divided into 4 scenes.
-2.  **Visually-Focused Episode Context JSON:** A "Director's Bible" containing visual data for characters and locations.
+1.  **Script Text:** A scene from a screenplay (standalone 15-20 min YouTube video).
+2.  **Visually-Focused Episode Context JSON:** Visual data for characters and locations.
 
-**Your Detailed Workflow:**
+**Workflow:**
+1.  Decompose the scene into **45-60 visual moments**. Think like a cinematographer.
+2.  For each beat: populate identifiers, visual content, narrative analysis, cinematographic direction, and image decision.
+3.  Image decisions: NEW_IMAGE (default, 37-50/scene), REUSE_IMAGE (8-15/scene, never 2+ consecutive), NO_IMAGE (0-2 max).
 
-1.  **Holistic Scene Analysis & Beat Segmentation (CRITICAL TASK):**
-    *   **Objective:** Your main task is to analyze each scene and segment it into **MANY distinct narrative beats**. You MUST generate at least 12 beats per scene, ideally 15-20 beats. A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development. Capture EVERY significant moment, dialogue exchange, action, and character interaction with COMPLETE DETAIL.
-    *   **Beat Definition:** A **Beat** has a beginning, middle, and end. It advances plot, character, or theme, and can be represented by a single key image. It is a significant narrative or emotional inflection point.
-    *   **Pacing Rule:** Each beat you define should correspond to approximately **45-90 seconds** of narrative time. For NEW_IMAGE beats, target **60-90 seconds** to ensure comfortable viewing pace. For REUSE_IMAGE beats, use **30-60 seconds** since they don't require new visual processing. You must estimate this and populate \`beat_duration_estimate_sec\`.
-    *   **Segmentation Process:** Read an entire scene carefully. You MUST identify at least 12 distinct beats, ideally 15-20 beats. Break down EVERY dialogue exchange, action sequence, character entrance/exit, emotional shift, and plot development into separate beats. Each beat should contain 2-5 sentences of script text. Be granular - if characters have a conversation, break it into multiple beats for each exchange. Include ALL action lines and dialogue in each beat.
-
-2.  **Populate Beat Metadata (CORE TASK):** For every single beat you have identified:
-    a.  **Identifiers:** Assign a unique \`beatId\` ('sX-bY') and a sequential \`beat_number\`.
-    b.  **Narrative Content (CRITICAL):**
-        *   \`beat_title\`: Create a short, descriptive title (e.g., "The Reinforced Door").
-        *   \`core_action\`: Write a **detailed 2-3 sentence summary** of what happens in the beat. Include specific actions, dialogue exchanges, character movements, and plot developments. This should be comprehensive enough to understand exactly what is being visualized.
-        *   \`beat_script_text\`: Copy the **COMPLETE, VERBATIM block of script text** (action lines AND dialogue) that constitutes this entire beat. This must include ALL dialogue, action descriptions, and stage directions. Do NOT summarize or abbreviate - include the full text exactly as it appears in the script.
-    c.  **Narrative Analysis:**
-        *   \`beat_type\`: Classify the beat's primary purpose ('Revelation', 'Action', 'Escalation', 'Pivot', 'Resolution', 'Other').
-        *   \`narrative_function\`: Describe its role in the story (e.g., "Inciting Incident," "Rising Action").
-        *   \`emotional_tone\`: Define the dominant mood (e.g., "Tense," "Suspicious").
-    d.  **Visual & Contextual Details:**
-        *   \`setting\`: State the location and time of day.
-        *   \`characters\`: List the characters present.
-        *   \`visual_anchor\`: Describe the single most powerful image that represents this beat.
-        *   \`transition_trigger\`: What event in this beat leads to the next one?
-        *   \`locationAttributes\`: From the Episode Context's 'artifacts' for the current scene's location, you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's action and populate the array. This is mandatory for visual consistency.
-    e.  **Image Decision (Continuity Task):**
-        i.  **Look Back:** Review all *previous* beats in the script.
-        ii. **Decide the Type:**
-            - **'NEW_IMAGE':** Choose this if the beat represents a distinct visual moment: a new location, a character's first appearance, a significant change in composition, a key action, an emotional revelation, etc.
-            - **'REUSE_IMAGE':** Choose this if the visual scene is substantially identical to a previous beat. The same characters, same location, same general framing—but perhaps a continuation of dialogue or subtle action. This saves image generation costs. Target: 11-15 NEW_IMAGE beats per scene, with remaining beats as REUSE_IMAGE for efficiency.
-            - **'NO_IMAGE':** Rarely used. For beats with no visual component at all (e.g., pure internal monologue with no character shown).
-        iii. **Provide Justification:** Write a concise 'reason' for your decision.
-        iv. **Create the Link (CRITICAL):** If your 'type' is 'REUSE_IMAGE', you MUST populate 'reuseSourceBeatId' with the 'beatId' from the earlier beat whose image you are reusing. This is not optional.
-
-**Output:**
-- Your entire response MUST be a single JSON object that strictly adheres to the provided schema. The integrity of the beat segmentation and linking is paramount.`;
+**Output:** Single JSON object adhering to the provided schema.`;
 
   const responseSchema = {
     type: "object",
@@ -80,7 +60,7 @@ export const analyzeScriptWithQwen = async (
             },
             beats: {
               type: "array",
-              description: "A list of 4-6 distinct narrative macro-beats that structure the scene.",
+              description: "A list of 45-60 visual moment beats per scene. Each beat = one camera composition (one image on screen for 15-30 seconds).",
               items: {
                 type: "object",
                 properties: {
@@ -92,11 +72,12 @@ export const analyzeScriptWithQwen = async (
                   setting: { type: "string", description: "The setting of the beat, including location and time of day." },
                   characters: { type: "array", items: { type: "string" }, description: "A list of characters present in the beat." },
                   core_action: { type: "string", description: "A concise, one-sentence summary of the beat's main action or event." },
-                  beat_script_text: { type: "string", description: "The full, verbatim script text (including action lines and dialogue) that constitutes this entire beat." },
+                  beat_script_text: { type: "string", description: "1-3 sentences describing the visual moment. What the viewer SEES in this single frame/composition." },
+                  source_paragraph: { type: "string", description: "The broader narrative paragraph or section from the original script that this beat was extracted from." },
                   emotional_tone: { type: "string", description: "The dominant emotion or mood of the beat (e.g., 'Tense', 'Hopeful')." },
                   visual_anchor: { type: "string", description: "A description of the single, most powerful image that could represent this beat." },
                   transition_trigger: { type: "string", description: "The event or discovery that leads into the next beat." },
-                  beat_duration_estimate_sec: { type: "number", description: "An estimated duration for this beat in seconds, typically between 45 and 90." },
+                  beat_duration_estimate_sec: { type: "number", description: "Estimated on-screen hold time for this image in seconds, typically between 15 and 30." },
                   visualSignificance: { type: "string", description: "How important this beat is to visualize: 'High', 'Medium', or 'Low'." },
                   imageDecision: {
                     type: "object",
@@ -109,7 +90,7 @@ export const analyzeScriptWithQwen = async (
                     },
                     required: ['type', 'reason'],
                   },
-                  cameraAngleSuggestion: { type: "string", description: "Optional suggestion for camera framing or perspective." },
+                  cameraAngleSuggestion: { type: "string", description: "REQUIRED cinematographic direction using FLUX vocabulary. Format: '[shot_type], [camera_angle], [depth/composition], [lighting]'." },
                   characterPositioning: { type: "string", description: "Optional description of character positions and interactions." },
                   locationAttributes: {
                       type: "array",
@@ -119,8 +100,9 @@ export const analyzeScriptWithQwen = async (
                 },
                 required: [
                   'beatId', 'beat_number', 'beat_title', 'beat_type', 'narrative_function', 'setting',
-                  'characters', 'core_action', 'beat_script_text', 'emotional_tone', 'visual_anchor',
-                  'transition_trigger', 'beat_duration_estimate_sec', 'visualSignificance', 'imageDecision'
+                  'characters', 'core_action', 'beat_script_text', 'source_paragraph', 'emotional_tone', 'visual_anchor',
+                  'transition_trigger', 'beat_duration_estimate_sec', 'visualSignificance', 'imageDecision',
+                  'cameraAngleSuggestion'
                 ]
               }
             }
@@ -154,12 +136,8 @@ export const analyzeScriptWithQwen = async (
     onProgress?.('Processing Qwen response...');
     const rawResult = JSON.parse(response.content) as AnalyzedEpisode;
 
-    // Apply beat state carryover (SKILL.md Section 4.5)
-    onProgress?.('Applying beat carryover state...');
-    const resultWithState = processEpisodeWithState(rawResult);
-
     onProgress?.('Analysis complete!');
-    return resultWithState;
+    return rawResult;
 
   } catch (error) {
     console.error("Error calling Qwen API:", error);

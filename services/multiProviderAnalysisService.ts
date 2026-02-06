@@ -1,62 +1,116 @@
 // Multi-Provider Analysis Service
 // Provides unified analysis function that routes to appropriate provider
+// Implements per-scene analysis: splits script by ===SCENE=== markers,
+// analyzes each scene independently, then assembles into a single AnalyzedEpisode.
+// This eliminates the duplicate-scene bug caused by chunk-and-merge.
 
-import type { AnalyzedEpisode } from '../types';
-import { compactEpisodeContext } from '../utils';
+import type { AnalyzedEpisode, AnalyzedScene } from '../types';
+import { compactEpisodeContext, splitScriptByScenes, parseEpisodeHeader, compactSceneContext } from '../utils';
 import { analyzeScript } from './geminiService';
 import { analyzeScriptWithQwen } from './qwenService';
+import { processEpisodeWithState } from './beatStateService';
 import type { LLMProvider } from '../types';
 
 // Shared system instruction for all providers
-const getSystemInstruction = () => `You are an expert AI **Narrative Pacing Architect** and **Continuity Supervisor** for episodic visual storytelling, optimized for platforms like YouTube. Your primary goal is to structure a script into a rhythm of engaging narrative beats to maintain viewer attention, while also minimizing redundant image creation.
+const getSystemInstruction = () => `You are an expert AI **Visual Moment Architect** and **Continuity Supervisor** for episodic visual storytelling. Each scene is a standalone 15-20 minute YouTube video. Your goal is to decompose a script into individual VISUAL MOMENTS (camera compositions) for static-image video production.
 
-**BEAT DEFINITION:** A beat is a complete narrative unit (45-90 seconds) that:
-- Captures a significant story moment or dialogue exchange
-- Advances plot, character, or theme meaningfully
-- Can be represented by a single key image
-- Contains 2-5 sentences of script text
+**BEAT DEFINITION:** A beat = one distinct VISUAL MOMENT (one camera composition on screen).
+- Duration: 15-30 seconds on screen (image hold time)
+- Content: 1-3 sentences describing what the viewer SEES in this frame
+- Each beat = one image. If the camera would CUT to a new shot, that is a new beat.
+- Each beat MUST include full cinematographic direction in \`cameraAngleSuggestion\`.
+
+**VISUAL MOMENT SPLIT RULES:** If you can imagine the editor cutting to a different camera angle, it is a separate beat.
+| Scenario | Result |
+| Screen/UI close-up + character reaction | 2 beats |
+| Character A speaks + Character B responds | 2 beats |
+| Same character, different action/expression | 2 beats |
+| Wide establishing + character entry | 2 beats |
+| Object focus + character holding it | 2 beats |
+
+**SCENE TARGETS:**
+- Total beats per scene: 45-60 (target 50)
+- NEW_IMAGE: 37-50 per scene (any new framing, expression change, angle, action, or subject)
+- REUSE_IMAGE: 8-15 per scene (ONLY when composition is truly identical; never 2+ consecutive)
+- NO_IMAGE: 0-2 per scene max (extremely rare)
+- Beat duration: 15-30 sec
+- Images per minute: 2.5-4
+
+**CINEMATOGRAPHIC DIRECTION (REQUIRED for every beat):**
+Each beat's \`cameraAngleSuggestion\` MUST specify direction using validated FLUX vocabulary:
+
+Shot Types (pick one): extreme close-up, close-up shot, intimate close-up shot, medium close-up, medium shot, upper-body portrait, cowboy shot, medium full shot, full body shot, wide shot, extreme wide shot, establishing shot, macro shot, forensic shot, silhouette shot
+
+Camera Angles (pick one): eye-level shot, low angle shot, high angle shot, overhead shot, Dutch angle, front view, profile, three-quarter view, back view
+
+Depth/Composition (pick one if relevant): shallow depth of field, deep depth of field, bokeh background, centered composition, symmetrical composition, foreground elements, framed by doorway
+
+Lighting (pick 1-2): soft lighting, harsh lighting, dramatic lighting, natural lighting, rim lighting, side lighting, backlit, volumetric lighting
+
+Example: "medium close-up, three-quarter view, shallow depth of field, dramatic rim lighting"
+
+**YOUTUBE PACING (each scene is its own 15-20 min video):**
+| Phase | Timing | Beats | Purpose |
+| Hook | 0:00-0:30 | 1-2 | Provocative opening image |
+| Setup | 0:30-3:00 | 5-10 | Establish scene + stakes |
+| Build | 3:00-7:30 | 12-18 | Rising tension, escalating visuals |
+| Peak | 7:30-8:00 | 1-2 | Tension peak (AD BREAK insertion point) |
+| Reset | 8:00-10:00 | 5-8 | Post-break re-engagement |
+| Develop | 10:00-15:00 | 12-18 | Core revelations + conflicts |
+| Climax | 15:00-18:00 | 8-12 | Emotional peak |
+| Resolve | 18:00-20:00 | 3-6 | Resolution or cliffhanger |
+
+**TRANSITION RULES (static-image video format):**
+- Standard hold: 15-25 sec per image (voiceover narration)
+- Dramatic hold: 25-35 sec (slow zoom/pan applied in post)
+- Rapid sequence: 8-15 sec (action beats, max 3-4 consecutive)
+- Max hold: Never exceed 40 sec on single image
+- Anti-slideshow: REUSE_IMAGE never more than 2 consecutive beats
+- Camera variety: Never 3 consecutive beats with same framing/angle
+- Environment beats: At least 2-3 per scene with no characters (establishing/atmosphere)
 
 **Inputs:**
-1.  **Script Text:** A full screenplay, typically divided into 4 scenes.
+1.  **Script Text:** A scene from a screenplay (each scene is a standalone 15-20 min YouTube video).
 2.  **Visually-Focused Episode Context JSON:** A "Director's Bible" containing visual data for characters and locations.
 
 **Your Detailed Workflow:**
 
-1.  **Holistic Scene Analysis & Beat Segmentation (CRITICAL TASK):**
-    *   **Objective:** Your main task is to analyze each scene and segment it into **MANY distinct narrative beats**. You MUST generate at least 12 beats per scene, ideally 15-20 beats. A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development. Capture EVERY significant moment, dialogue exchange, action, and character interaction with COMPLETE DETAIL.
-    *   **Beat Definition:** A **Beat** has a beginning, middle, and end. It advances plot, character, or theme, and can be represented by a single key image. It is a significant narrative or emotional inflection point.
-    *   **Pacing Rule:** Each beat you define should correspond to approximately **45-90 seconds** of narrative time. For NEW_IMAGE beats, target **60-90 seconds** to ensure comfortable viewing pace. For REUSE_IMAGE beats, use **30-60 seconds** since they don't require new visual processing. You must estimate this and populate \`beat_duration_estimate_sec\`.
-    *   **Segmentation Process:** Read an entire scene carefully. You MUST identify at least 12 distinct beats, ideally 15-20 beats. Break down EVERY dialogue exchange, action sequence, character entrance/exit, emotional shift, and plot development into separate beats. Each beat should contain 2-5 sentences of script text. Be granular - if characters have a conversation, break it into multiple beats for each exchange. Include ALL action lines and dialogue in each beat.
+1.  **Visual Moment Decomposition (CRITICAL TASK):**
+    *   **Objective:** Decompose the scene into **45-60 distinct visual moments**. Think like a cinematographer: every time the camera would CUT to a new angle, subject, or composition, that is a new beat.
+    *   **Segmentation Process:** Read the scene carefully. For EVERY dialogue line, consider: speaker shot + listener reaction = 2 beats. For EVERY action, consider: wide context + close detail = 2 beats. For EVERY revelation, consider: the information + the character's reaction = 2 beats.
+    *   **Pacing Rule:** Each beat = **15-30 seconds** of on-screen image hold time. Populate \`beat_duration_estimate_sec\` accordingly.
 
-2.  **Populate Beat Metadata (CORE TASK):** For every single beat you have identified:
+2.  **Populate Beat Metadata (CORE TASK):** For every visual moment:
     a.  **Identifiers:** Assign a unique \`beatId\` ('sX-bY') and a sequential \`beat_number\`.
-    b.  **Narrative Content (CRITICAL):**
-        *   \`beat_title\`: Create a short, descriptive title (e.g., "The Reinforced Door").
-        *   \`core_action\`: Write a **detailed 2-3 sentence summary** of what happens in the beat. Include specific actions, dialogue exchanges, character movements, and plot developments. This should be comprehensive enough to understand exactly what is being visualized.
-        *   \`beat_script_text\`: Copy the **COMPLETE, VERBATIM block of script text** (action lines AND dialogue) that constitutes this entire beat. This must include ALL dialogue, action descriptions, and stage directions. Do NOT summarize or abbreviate - include the full text exactly as it appears in the script.
-        *   \`source_paragraph\`: Copy the **BROADER NARRATIVE PARAGRAPH or section** from the original script that this beat was extracted from. This should include the surrounding context and any additional narrative text that provides fuller understanding of the scene flow. This gives refinement context beyond just the individual beat text.
+    b.  **Visual Content (CRITICAL):**
+        *   \`beat_title\`: Short, descriptive title (e.g., "Cat's Reaction Shot").
+        *   \`core_action\`: 1-2 sentence summary of what the viewer SEES in this frame.
+        *   \`beat_script_text\`: 1-3 sentences describing this visual moment from the script.
+        *   \`source_paragraph\`: The broader narrative section this moment was extracted from.
     c.  **Narrative Analysis:**
-        *   \`beat_type\`: Classify the beat's primary purpose ('Revelation', 'Action', 'Escalation', 'Pivot', 'Resolution', 'Other').
-        *   \`narrative_function\`: Describe its role in the story (e.g., "Inciting Incident," "Rising Action").
-        *   \`emotional_tone\`: Define the dominant mood (e.g., "Tense," "Suspicious").
-    d.  **Visual & Contextual Details:**
-        *   \`setting\`: State the location and time of day.
-        *   \`characters\`: List the characters present.
-        *   \`visual_anchor\`: Describe the single most powerful image that represents this beat.
-        *   \`transition_trigger\`: What event in this beat leads to the next one?
-        *   \`locationAttributes\`: From the Episode Context's 'artifacts' for the current scene's location, you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's action and populate the array. This is mandatory for visual consistency. **USE THE RICH LOCATION DATA:** Include atmosphere descriptions, environmental details, key features, and artifact prompt fragments from the detailed location context provided. Pay special attention to 'atmosphere', 'atmosphere_category', 'geographical_location', 'time_period', and rich artifact descriptions with their 'prompt_fragment' values.
+        *   \`beat_type\`: Classify purpose ('Revelation', 'Action', 'Escalation', 'Pivot', 'Resolution', 'Other').
+        *   \`narrative_function\`: Role in story structure.
+        *   \`emotional_tone\`: Dominant mood.
+    d.  **Cinematographic Direction (REQUIRED):**
+        *   \`cameraAngleSuggestion\`: MUST contain FLUX-validated direction: "[shot_type], [camera_angle], [depth/composition], [lighting]"
+        *   \`setting\`: Location and time of day.
+        *   \`characters\`: Characters visible in this frame.
+        *   \`visual_anchor\`: The single most powerful image for this moment.
+        *   \`characterPositioning\`: How characters are positioned in frame.
+        *   \`locationAttributes\`: 1-3 relevant 'prompt_fragment' strings from Episode Context artifacts. **USE THE RICH LOCATION DATA:** Include atmosphere descriptions, environmental details, key features. Pay special attention to 'atmosphere', 'atmosphere_category', 'geographical_location', 'time_period', and artifact 'prompt_fragment' values.
+        *   \`transition_trigger\`: What leads to the next beat.
     e.  **Image Decision (Continuity Task):**
-        i.  **Look Back:** Review all *previous* beats in the script.
+        i.  **Look Back:** Review all *previous* beats.
         ii. **Decide the Type:**
-            - **'NEW_IMAGE':** Choose this if the beat represents a distinct visual moment: a new location, a character's first appearance, a significant change in composition, a key action, an emotional revelation, etc.
-            - **'REUSE_IMAGE':** Choose this if the visual scene is substantially identical to a previous beat. The same characters, same location, same general framing—but perhaps a continuation of dialogue or subtle action. This saves image generation costs. Target: 11-15 NEW_IMAGE beats per scene, with remaining beats as REUSE_IMAGE for efficiency.
-            - **'NO_IMAGE':** Rarely used. For beats with no visual component at all (e.g., pure internal monologue with no character shown).
-        iii. **Provide Justification:** Write a concise 'reason' for your decision.
-        iv. **Create the Link (CRITICAL):** If your 'type' is 'REUSE_IMAGE', you MUST populate 'reuseSourceBeatId' with the 'beatId' from the earlier beat whose image you are reusing. This is not optional.
+            - **'NEW_IMAGE'** (default): 37-50 per scene. Any new framing, expression change, angle, action, or subject.
+            - **'REUSE_IMAGE'**: 8-15 per scene. ONLY when composition is truly identical. Never 2+ consecutive.
+            - **'NO_IMAGE'**: 0-2 per scene max. Extremely rare.
+        iii. **Provide Justification:** Write a concise 'reason'.
+        iv. **Create the Link (CRITICAL):** If 'REUSE_IMAGE', you MUST populate 'reuseSourceBeatId'.
 
 **Output:**
-- Your entire response MUST be a single JSON object that strictly adheres to the provided schema. The integrity of the beat segmentation and linking is paramount.
-- **VALIDATION CHECK:** Before submitting your response, count the beats in each scene. Each scene should have 12-20 beats (ideally 15-20 beats). Ensure each beat contains complete narrative content with 2-5 sentences of script text.`;
+- Your entire response MUST be a single JSON object that strictly adheres to the provided schema.
+- **VALIDATION CHECK:** Before submitting, count beats per scene. Target: 45-60 beats. Ensure each beat has FLUX-validated \`cameraAngleSuggestion\` with shot type + angle + lighting. Ensure NEW_IMAGE count is 37-50 per scene.`;
 
 // Response schema (same for all providers)
 const getResponseSchema = () => ({
@@ -83,6 +137,7 @@ const getResponseSchema = () => ({
           },
           beats: {
             type: "array",
+            description: "A list of 45-60 visual moment beats per scene. Each beat = one camera composition (one image on screen for 15-30 seconds).",
             items: {
               type: "object",
               properties: {
@@ -94,11 +149,12 @@ const getResponseSchema = () => ({
                 setting: { type: "string", description: "The setting of the beat, including location and time of day." },
                 characters: { type: "array", items: { type: "string" }, description: "A list of characters present in the beat." },
                 core_action: { type: "string", description: "A concise, one-sentence summary of the beat's main action or event." },
-                beat_script_text: { type: "string", description: "The full, verbatim script text (including action lines and dialogue) that constitutes this entire beat." },
+                beat_script_text: { type: "string", description: "1-3 sentences describing the visual moment. What the viewer SEES in this single frame/composition." },
+                source_paragraph: { type: "string", description: "The broader narrative paragraph or section from the original script that this beat was extracted from." },
                 emotional_tone: { type: "string", description: "The dominant emotion or mood of the beat (e.g., 'Tense', 'Hopeful')." },
                 visual_anchor: { type: "string", description: "A description of the single, most powerful image that could represent this beat." },
                 transition_trigger: { type: "string", description: "The event or discovery that leads into the next beat." },
-                beat_duration_estimate_sec: { type: "number", description: "An estimated duration for this beat in seconds, typically between 45 and 90." },
+                beat_duration_estimate_sec: { type: "number", description: "Estimated on-screen hold time for this image in seconds, typically between 15 and 30." },
                 visualSignificance: { type: "string", description: "How important this beat is to visualize: 'High', 'Medium', or 'Low'." },
                 imageDecision: {
                   type: "object",
@@ -111,7 +167,7 @@ const getResponseSchema = () => ({
                   },
                   required: ['type', 'reason'],
                 },
-                cameraAngleSuggestion: { type: "string", description: "Optional suggestion for camera framing or perspective." },
+                cameraAngleSuggestion: { type: "string", description: "REQUIRED cinematographic direction using FLUX vocabulary. Format: '[shot_type], [camera_angle], [depth/composition], [lighting]'. Example: 'medium close-up, three-quarter view, shallow depth of field, dramatic rim lighting'." },
                 characterPositioning: { type: "string", description: "Optional description of character positions and interactions." },
                 locationAttributes: {
                   type: "array",
@@ -121,8 +177,9 @@ const getResponseSchema = () => ({
               },
               required: [
                 'beatId', 'beat_number', 'beat_title', 'beat_type', 'narrative_function', 'setting',
-                'characters', 'core_action', 'beat_script_text', 'emotional_tone', 'visual_anchor',
-                'transition_trigger', 'beat_duration_estimate_sec', 'visualSignificance', 'imageDecision'
+                'characters', 'core_action', 'beat_script_text', 'source_paragraph', 'emotional_tone', 'visual_anchor',
+                'transition_trigger', 'beat_duration_estimate_sec', 'visualSignificance', 'imageDecision',
+                'cameraAngleSuggestion'
               ]
             }
           }
@@ -135,7 +192,40 @@ const getResponseSchema = () => ({
 });
 
 /**
- * Unified analysis function that routes to the appropriate provider
+ * Routes a single analysis call to the appropriate provider.
+ * Used internally by the per-scene orchestrator and as fallback for scripts without scene markers.
+ */
+async function analyzeFullScript(
+  provider: LLMProvider,
+  scriptText: string,
+  episodeContextJson: string,
+  onProgress?: (message: string) => void
+): Promise<AnalyzedEpisode> {
+  switch (provider) {
+    case 'gemini':
+      return await analyzeScript(scriptText, episodeContextJson, onProgress);
+    case 'qwen':
+      return await analyzeScriptWithQwen(scriptText, episodeContextJson, onProgress);
+    case 'claude':
+      return await analyzeScriptWithClaude(scriptText, episodeContextJson, onProgress);
+    case 'openai':
+      return await analyzeScriptWithOpenAI(scriptText, episodeContextJson, onProgress);
+    case 'xai':
+      return await analyzeScriptWithXAI(scriptText, episodeContextJson, onProgress);
+    case 'deepseek':
+      return await analyzeScriptWithDeepSeek(scriptText, episodeContextJson, onProgress);
+    case 'glm':
+      return await analyzeScriptWithGLM(scriptText, episodeContextJson, onProgress);
+    default:
+      throw new Error(`Unsupported provider: ${provider}`);
+  }
+}
+
+/**
+ * Per-scene analysis orchestrator.
+ * Splits the script by ===SCENE=== markers, analyzes each scene independently
+ * with scene-specific context, then assembles into a single AnalyzedEpisode.
+ * Eliminates the duplicate-scene bug from chunk-and-merge.
  */
 export const analyzeScriptWithProvider = async (
   provider: LLMProvider,
@@ -143,33 +233,66 @@ export const analyzeScriptWithProvider = async (
   episodeContextJson: string,
   onProgress?: (message: string) => void
 ): Promise<AnalyzedEpisode> => {
-  onProgress?.(`Analyzing script with ${provider.toUpperCase()}...`);
-  
-  switch (provider) {
-    case 'gemini':
-      return await analyzeScript(scriptText, episodeContextJson, onProgress);
-    
-    case 'qwen':
-      return await analyzeScriptWithQwen(scriptText, episodeContextJson, onProgress);
-    
-    case 'claude':
-      return await analyzeScriptWithClaude(scriptText, episodeContextJson, onProgress);
-    
-    case 'openai':
-      return await analyzeScriptWithOpenAI(scriptText, episodeContextJson, onProgress);
-    
-    case 'xai':
-      return await analyzeScriptWithXAI(scriptText, episodeContextJson, onProgress);
-    
-    case 'deepseek':
-      return await analyzeScriptWithDeepSeek(scriptText, episodeContextJson, onProgress);
-    
-    case 'glm':
-      return await analyzeScriptWithGLM(scriptText, episodeContextJson, onProgress);
-    
-    default:
-      throw new Error(`Unsupported provider: ${provider}`);
+  // Step 1: Split script into individual scenes
+  const scenes = splitScriptByScenes(scriptText);
+  const episodeHeader = parseEpisodeHeader(scriptText);
+
+  // Step 2: If no scene markers found, fall back to full-script analysis
+  if (scenes.length <= 1 && scenes[0]?.title === 'Full Script') {
+    onProgress?.(`No scene markers detected. Analyzing full script with ${provider.toUpperCase()}...`);
+    const result = await analyzeFullScript(provider, scriptText, episodeContextJson, onProgress);
+    onProgress?.('Applying beat carryover state...');
+    return processEpisodeWithState(result);
   }
+
+  onProgress?.(`Per-scene analysis: ${scenes.length} scenes detected. Analyzing with ${provider.toUpperCase()}...`);
+
+  // Step 3: Analyze each scene in parallel
+  const scenePromises = scenes.map(async (scene) => {
+    const sceneTag = `[Scene ${scene.sceneNumber}/${scenes.length}]`;
+    const sceneProgress = (msg: string) => onProgress?.(`${sceneTag} ${msg}`);
+
+    // Create scene-specific context (only this scene's location/artifacts)
+    const sceneContextJson = compactSceneContext(episodeContextJson, scene.sceneNumber);
+
+    // Prepend per-scene instruction to the scene text so the AI knows it's analyzing one scene
+    const sceneInstruction = `[SCENE ANALYSIS MODE: Analyze ONLY Scene ${scene.sceneNumber} of ${scenes.length}. Output exactly ONE scene with sceneNumber=${scene.sceneNumber}. All beatIds MUST use format 's${scene.sceneNumber}-bY' where Y is sequential from 1.]`;
+    const sceneScriptText = `${sceneInstruction}\n\n${scene.text}`;
+
+    sceneProgress('Starting analysis...');
+    const sceneResult = await analyzeFullScript(provider, sceneScriptText, sceneContextJson, sceneProgress);
+
+    // Extract the scene from the response
+    if (!sceneResult.scenes || sceneResult.scenes.length === 0) {
+      throw new Error(`Scene ${scene.sceneNumber} ("${scene.title}") analysis returned no scene data`);
+    }
+
+    const analyzedScene = sceneResult.scenes[0];
+    // Ensure correct scene number (AI might return wrong number)
+    analyzedScene.sceneNumber = scene.sceneNumber;
+
+    sceneProgress(`Complete: ${analyzedScene.beats.length} beats`);
+    return analyzedScene;
+  });
+
+  const analyzedScenes = await Promise.all(scenePromises);
+
+  // Step 4: Assemble into single AnalyzedEpisode
+  onProgress?.('Assembling episode from per-scene analyses...');
+  const assembled: AnalyzedEpisode = {
+    episodeNumber: episodeHeader.episodeNumber,
+    title: episodeHeader.title,
+    scenes: analyzedScenes.sort((a, b) => a.sceneNumber - b.sceneNumber)
+  };
+
+  // Step 5: Apply beat state carryover across the full episode
+  onProgress?.('Applying beat carryover state...');
+  const result = processEpisodeWithState(assembled);
+
+  const totalBeats = result.scenes.reduce((sum, s) => sum + s.beats.length, 0);
+  onProgress?.(`Analysis complete! ${result.scenes.length} scenes, ${totalBeats} total beats.`);
+
+  return result;
 };
 
 // Claude Analysis Implementation

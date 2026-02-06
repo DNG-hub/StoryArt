@@ -5,7 +5,7 @@
  * - Time of day -> lighting mapping
  * - Scene intensity -> visual treatment
  * - Scene pacing -> framing preferences
- * - Scene role (YouTube 8-4-4-3 format) -> shot selection
+ * - Scene role (standalone 15-20 min YouTube videos) -> shot selection
  * - Arc phase -> dramatic treatment
  * - Beat count validation
  *
@@ -94,12 +94,13 @@ export interface BeatVisualGuidance {
 }
 
 // ============================================================================
-// SCENE ROLE DETECTION (YouTube 8-4-4-3 Format)
+// SCENE ROLE DETECTION (Standalone 15-20 min YouTube Videos)
 // ============================================================================
 
 /**
- * Detect scene role based on scene number and total scenes
- * Standard 4-scene episode follows 8-4-4-3 minute format
+ * Detect scene role based on scene number and total scenes.
+ * Each scene is a standalone 15-20 min YouTube video.
+ * Scene role determines narrative arc structure within the video.
  */
 export function detectSceneRole(sceneNumber: number, totalScenes: number = 4): SceneRole {
   if (totalScenes === 4) {
@@ -122,21 +123,23 @@ export function detectSceneRole(sceneNumber: number, totalScenes: number = 4): S
 }
 
 /**
- * Check if scene should have an ad break (near 8-minute mark)
+ * Check if scene should have an ad break.
+ * Every scene is a standalone 15-20 min YouTube video, so ALL scenes get an ad break
+ * at the ~8 minute mark for mid-roll ad insertion.
  */
-export function isAdBreakScene(sceneNumber: number, sceneRole: SceneRole): boolean {
-  // Scene 1 (setup_hook) typically has the ad break at its end
-  return sceneRole === 'setup_hook' && sceneNumber === 1;
+export function isAdBreakScene(_sceneNumber: number, _sceneRole: SceneRole): boolean {
+  // Every scene is its own video, so all scenes get a mid-roll ad break
+  return true;
 }
 
 /**
- * Estimate which beat number should be the ad break moment
- * Target: dramatic pause near 7:30-8:00 of 8-minute scene
+ * Estimate which beat number should be the ad break moment.
+ * Target: dramatic pause near 7:30-8:00 of a 15-20 min standalone video.
+ * 8 min / 17.5 min average = ~46% through the scene.
  */
 export function estimateAdBreakBeat(totalBeats: number): number {
-  // Ad break should be near the end of scene 1 (setup_hook)
-  // Roughly 90-95% through the scene
-  return Math.floor(totalBeats * 0.9);
+  // Ad break at ~46% through the scene (8 min mark of 15-20 min video)
+  return Math.floor(totalBeats * 0.46);
 }
 
 // ============================================================================
@@ -170,10 +173,11 @@ export function getIntensityLevel(intensity: number): 'low' | 'medium' | 'high' 
 /**
  * Validate beat count against scene duration expectations
  *
- * Long-form (19 min episode):
+ * Standalone scene (15-20 min video):
  * - Min beat duration: 15 seconds
- * - Max beat duration: 5 minutes
- * - Images per minute: 4-12
+ * - Max beat duration: 30 seconds
+ * - Images per minute: 2.5-4
+ * - Target beats per scene: 45-60
  */
 export function validateBeatCount(
   sceneRole: SceneRole,

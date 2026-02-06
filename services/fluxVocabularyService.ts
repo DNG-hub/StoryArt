@@ -436,7 +436,7 @@ export const PACING_VISUAL_TREATMENT: Record<Pacing, PacingVisualTreatment> = {
 };
 
 // ============================================================================
-// SCENE ROLE -> VISUAL TREATMENT (Section 11A.2 - YouTube 8-4-4-3)
+// SCENE ROLE -> VISUAL TREATMENT (Standalone 15-20 min YouTube videos)
 // ============================================================================
 
 export type SceneRole = 'setup_hook' | 'development' | 'escalation' | 'climax' | 'resolution';
@@ -453,31 +453,31 @@ export const SCENE_ROLE_TREATMENT: Record<SceneRole, SceneRoleVisualTreatment> =
     shotPreference: 'Wide/establishing -> medium',
     lightingPreference: 'Natural, setting mood',
     pacing: 'measured',
-    beatCountRange: [12, 20], // 8 min scene, ~20-40 sec per beat
+    beatCountRange: [45, 60], // 15-20 min standalone video, 15-30 sec per beat
   },
   development: {
     shotPreference: 'Mixed variety',
     lightingPreference: 'Standard',
     pacing: 'measured',
-    beatCountRange: [6, 12], // 4 min scene
+    beatCountRange: [45, 60], // 15-20 min standalone video
   },
   escalation: {
     shotPreference: 'Tightening over scene',
     lightingPreference: 'Building contrast',
     pacing: 'brisk',
-    beatCountRange: [6, 12], // 4 min scene
+    beatCountRange: [45, 60], // 15-20 min standalone video
   },
   climax: {
     shotPreference: 'Close-ups, dramatic angles',
     lightingPreference: 'High contrast, dramatic',
     pacing: 'frenetic',
-    beatCountRange: [4, 10], // 3 min scene
+    beatCountRange: [45, 60], // 15-20 min standalone video
   },
   resolution: {
     shotPreference: 'Widening out',
     lightingPreference: 'Softer, calming',
     pacing: 'slow',
-    beatCountRange: [4, 8], // 3 min scene (if separate from climax)
+    beatCountRange: [45, 60], // 15-20 min standalone video
   },
 };
 
