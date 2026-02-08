@@ -1,5 +1,5 @@
 # IMAGE PROMPT GENERATION RULES
-## Skill Definition v0.18
+## Skill Definition v0.19
 
 **Purpose:** Constrain and govern the programmatic generation of SwarmUI image prompts.
 **Authority:** This skill supersedes all prior prompt generation documentation.
@@ -2840,30 +2840,54 @@ CHAR 1 (attributes) on left and CHAR 2 (attributes) on right, [interaction], [lo
 ---
 ---
 
-## 17. TOKEN BUDGET ALLOCATION
+## 17. TOKEN BUDGET ALLOCATION (v0.19 — Adaptive)
 
-### 17.1 Total Budget
+### 17.1 Adaptive Budget Table
+
+Token budget is calculated **per beat** based on shot type, character count, and helmet state. Replaces the fixed 200-token hard limit from v0.18.
+
+| Shot Type | 1 Char (no helmet) | 1 Char (helmet) | 2 Chars (no helmets) | 2 Chars (helmets) |
+|-----------|--------------------|-----------------|--------------------|-------------------|
+| close-up | 250 | 245 | 280 | 270 |
+| medium shot | 220 | 215 | 260 | 250 |
+| wide shot | 180 | 175 | 200 | 190 |
+| extreme wide | 150 | 145 | 170 | 160 |
+| establishing | 150 | — | — | — |
+
+### 17.2 Budget Modifiers
+
+- **Helmet sealed**: -30 tokens (no hair ~15, no face ~10, no eye color ~5), +25 reinvested into suit detail = net -5 per helmeted character
+- **Vehicle in scene**: +20 tokens to total (motorcycle description + spatial arrangement)
+
+### 17.3 Per-Section Allocation
+
+Budget is split across sections. The `composition` section (first ~30 tokens) is always allocated — it has the highest T5 attention.
 
 ```
-RULE: Total prompt MUST stay under 200 tokens. Budget allocation:
-
-  COMPOSITION & POSITIONING:  ~30 tokens (20%)  \u2190 THIS IS THE MOST IMPORTANT
-  CHARACTER 1 DESCRIPTION:    ~35 tokens (20%)
-  CHARACTER 2 DESCRIPTION:    ~35 tokens (20%)
-  VEHICLE/LOCATION:           ~30 tokens (15%)
-  LIGHTING & ATMOSPHERE:      ~25 tokens (15%)
-  SEGMENT TAGS:               ~15 tokens (10%)
-
-  COMPOSITION COMES FIRST. If the prompt doesn't establish WHO is WHERE
-  doing WHAT in the first 30 tokens, FLUX will improvise \u2014 and it will
-  be wrong.
+  COMPOSITION:   ~30 tokens (constant)  <- HIGHEST T5 ATTENTION
+  CHARACTER 1:   varies by shot type (close: 45%, medium: 35%, wide: 22%)
+  CHARACTER 2:   varies (close: ~93% of char1, medium: ~92%, wide: ~89%)
+  ENVIRONMENT:   varies (close: 28%, medium: 35%, wide: 45%)
+  ATMOSPHERE:    remaining tokens
+  SEGMENT TAGS:  ~15 tokens (constant, not counted in T5 budget)
 ```
 
-### 17.2 Core Composition Sweet Spot
+### 17.4 Core Composition Sweet Spot
 
-40-80 tokens for the core composition. Total prompt under 200 tokens including segment tags. Beyond 200 tokens, FLUX begins losing coherence on later elements.
+COMPOSITION COMES FIRST. The first ~30 tokens define WHO is WHERE doing WHAT. Character details go in tokens 31-80 (GOOD attention zone). Beyond the adaptive budget, T5 loses coherence.
 
-**Implementation:** `promptGenerationService.ts:estimatePromptTokens()`
+### 17.5 Override-Aware Character Injection
+
+When a character is missing from Gemini's output, post-processing injects their **condensed** `swarmui_prompt_override` at the attention-optimal position (token 31-80 zone, after first character description). Override condensation by shot type:
+
+| Shot Type | Strategy | ~Output Tokens |
+|-----------|----------|---------------|
+| close-up | Full override with all details | 70-160 |
+| medium shot | Core appearance + suit, drop trailing accessories | 40-80 |
+| wide shot | Trigger + suit color + helmet state only | 20-30 |
+| extreme wide | Trigger + "matte-black tactical suit" | 8-12 |
+
+**Implementation:** `promptGenerationService.ts:calculateAdaptiveTokenBudget()`, `condenseOverrideForShot()`, `injectMissingCharacterOverrides()`
 
 ---
 
@@ -3295,7 +3319,7 @@ FLAG FORMAT:
 | Train location style LoRAs | MEDIUM | MMB, Facility 7, Atlanta ruins, safehouse |
 | Define zimage segment handling | MEDIUM | May not use YOLO face segments |
 | Test zimage multi-character workflows | MEDIUM | Cat + Chen, Daniel + Webb combinations |
-| Validate prompt length limit (200 tokens) | COMPLETED | Token budget allocation defined in Section 17, enforcement via `estimatePromptTokens()` |
+| Validate prompt length limit (200 tokens) | COMPLETED | Replaced with adaptive budgets in v0.19 (Section 17). Per-beat calculation via `calculateAdaptiveTokenBudget()` |
 | Test weighted syntax rules | LOW | Some templates use weights - clarify when acceptable |
 
 ---
@@ -3304,6 +3328,7 @@ FLAG FORMAT:
 
 | Version | Date | Change |
 |---------|------|--------|
+| 0.19 | 2026-02-08 | **Adaptive Token Budgets & Override-Aware Character Injection.** Replaced fixed 200-token hard limit with per-beat adaptive budgets based on shot type, character count, helmet state, and vehicle presence (Section 17 rewritten). New functions: `calculateAdaptiveTokenBudget()`, `condenseOverrideForShot()`, `injectMissingCharacterOverrides()`. Character injection now uses condensed `swarmui_prompt_override` content inserted at attention-optimal position (token 31-80 zone) instead of weak "nearby" phrases appended at end. Gemini system instruction updated with adaptive budget ranges. `TokenBudget` type added. Validation uses adaptive limits. |
 | 0.18 | 2026-02-07 | **FLUX Prompt Engine Architect Memo integration.** Added: T5 Attention Model (5A), Scene Persistent State (10.4), Token Budget (17), Canonical Descriptions (18), FLUX Rendering Rules (19), Decision Frameworks (20), Scene Type Templates (21), Template Selection Logic (22), Model Recommendation (23). Strengthened: Helmet zero-tolerance (3.6.4), Dual character rules with Cat as Visual Anchor (8.4-8.5), Camera Realism with FLUX-incompatible language (16.9). |
 | 0.17 | 2026-02-06 | **Visual Moment Rewrite.** Beat definition changed from "narrative unit" (45-90 sec, 2-5 sentences) to "visual moment" (15-30 sec, one camera composition). Target 45-60 beats per scene (was 15-20). NEW_IMAGE target 37-50/scene (was 11-15). YouTube format changed: each scene is standalone 15-20 min video (was 8-4-4-3 model). Ad break applies to ALL scenes at ~46% (8 min mark). Added cinematographic direction requirement (FLUX-validated shot type + angle + depth + lighting in `cameraAngleSuggestion`). Added Section 14.6 (Transition Rules for Static-Image Video), Section 14.7 (Visual Moment Split Rules). Updated Section 11A.1 (standalone scene model + tension arc phases), 11A.4 (ad break all scenes), 14.2 (beat duration), 14.5 (image decision targets). Updated `geminiService.ts`, `multiProviderAnalysisService.ts`, `qwenService.ts` system instructions and schemas. Updated `fluxVocabularyService.ts` SCENE_ROLE_TREATMENT.beatCountRange to [45,60]. Updated `sceneContextService.ts` isAdBreakScene (always true), estimateAdBreakBeat (0.46). |
 | 0.16 | 2026-02-05 | Added Section 4.8 (Per-Scene Analysis Pipeline). Documented architectural change from chunk-and-merge to per-scene analysis in `multiProviderAnalysisService.ts`. Scripts now split by `===SCENE N: Title===` markers via `splitScriptByScenes()`, each scene analyzed independently with scene-specific context via `compactSceneContext()`, all scenes run in parallel via `Promise.all`, assembled into single `AnalyzedEpisode`. `processEpisodeWithState()` moved from individual provider functions (geminiService, qwenService) to orchestrator, called once on full assembled episode. Updated Section 4.5 rule 4 (state resets at scene boundary, not episode boundary) and added rule 5 (orchestrator-level carryover state). Eliminated duplicate scene entries and out-of-order scene bugs caused by word-count chunking. |

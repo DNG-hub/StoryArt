@@ -510,6 +510,28 @@ export interface SceneTypeTemplate {
 }
 
 /**
+ * Adaptive token budget calculated per-beat based on shot type, character count,
+ * helmet state, and vehicle presence. Replaces fixed 200-token hard limit.
+ * v0.19: Adaptive Token Budgets
+ */
+export interface TokenBudget {
+  /** Total token budget for this beat */
+  total: number;
+  /** First ~30 tokens — shot type, spatial arrangement (highest T5 attention) */
+  composition: number;
+  /** Character 1 description budget (scaled by shot type) */
+  character1: number;
+  /** Character 2 description budget (0 if single character) */
+  character2: number;
+  /** Location + vehicle description */
+  environment: number;
+  /** Lighting + color grade */
+  atmosphere: number;
+  /** Segment tags (roughly constant ~15) */
+  segments: number;
+}
+
+/**
  * Post-generation prompt validation result.
  * Belt-and-suspenders enforcement: logs warnings, does NOT block generation.
  */
@@ -537,6 +559,8 @@ export interface PromptValidationResult {
   injectedCharacters: string[];
   /** Whether vehicle reference was injected (motorcycle missing from in_motion scene) */
   vehicleInjected: boolean;
+  /** The adaptive token budget calculated for this beat (v0.19) */
+  adaptiveTokenBudget?: number;
   /** All validation warnings collected */
   warnings: string[];
 }

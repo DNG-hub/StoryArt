@@ -1,11 +1,13 @@
 /**
- * v0.18 Validation Test - Episode 2 Scenes 2-4 (Aegis Suit Scenes)
+ * v0.19 Validation Test - Episode 2 Scenes 2-4 (Aegis Suit Scenes)
  *
  * Regenerates prompts for the Aegis Suit / motorcycle scenes using the
- * updated v0.18 pipeline with:
+ * updated v0.19 pipeline with:
+ * - Adaptive token budgets (per-beat, shot-type-aware)
+ * - Override-aware character injection (condensed swarmui_prompt_override)
  * - Scene persistent state tracking
  * - Scene type template detection
- * - Post-generation validation (token budget, continuity, canonical terms)
+ * - Post-generation validation (adaptive budget, continuity, canonical terms)
  * - Updated Gemini system instruction
  *
  * Uses real session data from Redis and database character contexts.
@@ -25,7 +27,7 @@ const SESSION_FILE = 'E:/REPOS/StoryArt/temp_session.json';
 
 async function run() {
     console.log('==============================================================');
-    console.log('v0.18 VALIDATION - Episode 2 Scenes 2-4 (Aegis/Motorcycle)');
+    console.log('v0.19 VALIDATION - Episode 2 Scenes 2-4 (Aegis/Motorcycle)');
     console.log('==============================================================\n');
 
     // Load real session data
@@ -137,9 +139,10 @@ async function run() {
         }
 
         if (hasIssues) {
+            const budgetLimit = v!.adaptiveTokenBudget || 200;
             console.log(`${result.beatId}:`);
             if (v!.tokenBudgetExceeded) {
-                console.log(`  [TOKEN BUDGET EXCEEDED] ${v!.tokenCount} tokens (limit: 200)`);
+                console.log(`  [TOKEN BUDGET EXCEEDED] ${v!.tokenCount} tokens (adaptive limit: ${budgetLimit})`);
                 totalTokenWarnings++;
             }
             if (v!.vehicleInjected) {
@@ -196,7 +199,8 @@ async function run() {
             const prompt = result.cinematic?.prompt || '(no prompt)';
             console.log(`  ${prompt.substring(0, 300)}${prompt.length > 300 ? '...' : ''}`);
             if (result.validation) {
-                console.log(`  [tokens: ${result.validation.tokenCount}, template: ${result.validation.sceneTemplate?.templateType || 'n/a'}]`);
+                const budget = result.validation.adaptiveTokenBudget || 200;
+                console.log(`  [tokens: ${result.validation.tokenCount}/${budget}, template: ${result.validation.sceneTemplate?.templateType || 'n/a'}]`);
             }
             console.log('');
         }

@@ -1,6 +1,6 @@
 // FIX: Corrected import path for Google GenAI SDK.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig, BeatAnalysisWithState, ScenePersistentState, PromptValidationResult, SceneTypeTemplate } from '../types';
+import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig, BeatAnalysisWithState, ScenePersistentState, PromptValidationResult, SceneTypeTemplate, TokenBudget } from '../types';
 import { processEpisodeWithFullContext, type FullyProcessedBeat } from './beatStateService';
 import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { getStoryContext } from './storyContextService';
@@ -104,6 +104,117 @@ function estimatePromptTokens(prompt: string): number {
 }
 
 /**
+ * Calculate adaptive token budget based on shot type, character count, helmet states, and vehicle presence.
+ * Replaces the fixed 200-token hard limit with per-beat allocations.
+ *
+ * Budget logic:
+ * - Close-ups need more tokens per character (face/expression detail)
+ * - Wide/establishing shots need fewer character tokens (figures are small)
+ * - Helmets free ~30 tokens (no hair, face, eye color) reinvested into suit detail
+ * - Vehicle scenes get +20 tokens for motorcycle description
+ *
+ * v0.19: Adaptive Token Budgets
+ */
+function calculateAdaptiveTokenBudget(
+  shotType: string,
+  characterCount: number,
+  helmetStates: Array<'sealed' | 'visor_up' | 'off' | null>,
+  hasVehicle: boolean
+): TokenBudget {
+  // Base totals by shot type and character count (from production analysis)
+  const BASE_BUDGETS: Record<string, { one: number; two: number }> = {
+    'close-up shot':    { one: 250, two: 280 },
+    'close-up':         { one: 250, two: 280 },
+    'medium close-up':  { one: 235, two: 270 },
+    'medium shot':      { one: 220, two: 260 },
+    'medium wide shot': { one: 200, two: 230 },
+    'wide shot':        { one: 180, two: 200 },
+    'extreme wide shot':{ one: 150, two: 170 },
+    'establishing shot':{ one: 150, two: 150 },
+  };
+
+  // Normalize shot type to lookup key
+  const normalizedShot = shotType.toLowerCase().trim();
+  const baseBudget = BASE_BUDGETS[normalizedShot] || BASE_BUDGETS['medium shot'];
+  const effectiveCharCount = Math.min(characterCount, 2);
+  let total = effectiveCharCount >= 2 ? baseBudget.two : baseBudget.one;
+
+  // Helmet savings: each sealed helmet frees ~30 tokens (no hair ~15, no face ~10, no eye color ~5)
+  // Reinvest 25 tokens per helmeted character into suit detail
+  let helmetSavings = 0;
+  for (const state of helmetStates) {
+    if (state === 'sealed') {
+      helmetSavings += 30;
+      total -= 30; // Remove hair/face budget
+      total += 25; // Reinvest into suit detail
+    }
+  }
+
+  // Vehicle scenes: +20 tokens for motorcycle description + spatial arrangement
+  if (hasVehicle) {
+    total += 20;
+  }
+
+  // Allocate budget across sections
+  const isCloseUp = normalizedShot.includes('close');
+  const isWide = normalizedShot.includes('wide') || normalizedShot.includes('establishing');
+
+  const composition = 30; // Always 30 — first tokens, highest T5 attention
+  const segments = 15;    // Segment tags are roughly constant
+  const remaining = total - composition - segments;
+
+  let character1: number;
+  let character2: number;
+  let environment: number;
+  let atmosphere: number;
+
+  if (effectiveCharCount >= 2) {
+    if (isCloseUp) {
+      character1 = Math.round(remaining * 0.30);
+      character2 = Math.round(remaining * 0.28);
+      environment = Math.round(remaining * 0.22);
+      atmosphere = remaining - character1 - character2 - environment;
+    } else if (isWide) {
+      character1 = Math.round(remaining * 0.18);
+      character2 = Math.round(remaining * 0.16);
+      environment = Math.round(remaining * 0.36);
+      atmosphere = remaining - character1 - character2 - environment;
+    } else {
+      // Medium shots
+      character1 = Math.round(remaining * 0.25);
+      character2 = Math.round(remaining * 0.23);
+      environment = Math.round(remaining * 0.28);
+      atmosphere = remaining - character1 - character2 - environment;
+    }
+  } else {
+    character2 = 0;
+    if (isCloseUp) {
+      character1 = Math.round(remaining * 0.45);
+      environment = Math.round(remaining * 0.28);
+      atmosphere = remaining - character1 - environment;
+    } else if (isWide) {
+      character1 = Math.round(remaining * 0.22);
+      environment = Math.round(remaining * 0.45);
+      atmosphere = remaining - character1 - environment;
+    } else {
+      character1 = Math.round(remaining * 0.35);
+      environment = Math.round(remaining * 0.35);
+      atmosphere = remaining - character1 - environment;
+    }
+  }
+
+  return {
+    total,
+    composition,
+    character1,
+    character2,
+    environment,
+    atmosphere,
+    segments,
+  };
+}
+
+/**
  * Check prompt against forbidden fabrication terms.
  * RULE: Character/gear descriptions must come VERBATIM from canonical reference.
  */
@@ -203,24 +314,119 @@ function determineModelRecommendation(
 }
 
 /**
- * Inject missing character LoRA triggers and vehicle references into a prompt.
- * When Gemini drops a character (e.g., reduces "Daniel and Cat" to "two figures")
- * or omits the vehicle in a motorcycle scene, this function appends the missing
- * elements with contextually appropriate phrasing.
+ * Condense a full swarmui_prompt_override based on shot type and helmet state.
+ * Full overrides are 70-164 tokens — too large for wide/extreme wide shots.
+ * This function extracts the most visually important parts for the given shot type.
  *
- * Uses persistentState to determine:
- * - Character positions (e.g., "front/driving", "behind/passenger" for motorcycle)
- * - Vehicle state (in_motion -> riding context, inject motorcycle if missing)
- * - Gear state (helmet state for description)
+ * v0.19: Override-Aware Character Injection
  *
- * Returns the modified prompt, list of injected characters, and whether vehicle was injected.
+ * @param override - Full swarmui_prompt_override from database
+ * @param shotType - FLUX shot type (close-up, medium, wide, extreme wide)
+ * @param helmetState - 'sealed' | 'visor_up' | 'off' | null
+ * @returns Condensed override string suitable for injection
  */
-function injectMissingContinuityElements(
+function condenseOverrideForShot(
+  override: string,
+  shotType: string,
+  helmetState: 'sealed' | 'visor_up' | 'off' | null
+): string {
+  const normalizedShot = shotType.toLowerCase().trim();
+
+  // Strip existing segment tags — they're handled separately by applyDatabaseSegments
+  const textOnly = override.replace(/<segment:[^>]+>/g, '').trim();
+
+  // Parse override into semantic sections by splitting on commas
+  const parts = textOnly.split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length === 0) return override;
+
+  // Identify trigger (first part, contains the LoRA trigger word)
+  const trigger = parts[0];
+
+  // Categorize remaining parts
+  const physicalTraits: string[] = [];   // age, eye color, skin, face shape
+  const hairParts: string[] = [];        // hair descriptions
+  const suitParts: string[] = [];        // suit/clothing/armor
+  const helmetParts: string[] = [];      // helmet/visor
+  const accessoryParts: string[] = [];   // gauntlets, LEDs, secondary gear
+
+  for (let i = 1; i < parts.length; i++) {
+    const lower = parts[i].toLowerCase();
+    if (lower.includes('hair') || lower.includes('ponytail') || lower.includes('updo') || lower.includes('tousled')) {
+      hairParts.push(parts[i]);
+    } else if (lower.includes('helmet') || lower.includes('visor')) {
+      helmetParts.push(parts[i]);
+    } else if (lower.includes('suit') || lower.includes('bodysuit') || lower.includes('aegis') ||
+               lower.includes('armor') || lower.includes('mesh') || lower.includes('bust panel') ||
+               lower.includes('chest plate') || lower.includes('collar') || lower.includes('zipper') ||
+               lower.includes('hexagonal') || lower.includes('compression') || lower.includes('matte')) {
+      suitParts.push(parts[i]);
+    } else if (lower.includes('gauntlet') || lower.includes('led') || lower.includes('forearm') ||
+               lower.includes('underglow') || lower.includes('indicator')) {
+      accessoryParts.push(parts[i]);
+    } else if (lower.includes('age') || lower.includes('eyes') || lower.includes('skin') ||
+               lower.includes('face') || lower.includes('jawline') || lower.includes('brow') ||
+               lower.includes('old') || lower.includes('young') || lower.includes('woman') ||
+               lower.includes('man ') || /^\d+/.test(lower)) {
+      physicalTraits.push(parts[i]);
+    } else {
+      // Default: treat as accessory/secondary
+      accessoryParts.push(parts[i]);
+    }
+  }
+
+  // Apply helmet state: if sealed, strip hair and face, add helmet description
+  const effectiveHair = (helmetState === 'sealed' || helmetState === 'visor_up') ? [] : hairParts;
+  const effectiveFace = helmetState === 'sealed' ? [] : physicalTraits;
+  const helmetFragment = helmetState === 'sealed'
+    ? ['sealed Wraith helmet with dark opaque visor']
+    : helmetState === 'visor_up'
+      ? ['Wraith helmet visor raised']
+      : helmetParts;
+
+  // Build condensed override based on shot type
+  let condensed: string[];
+
+  if (normalizedShot.includes('close')) {
+    // Close-up: full detail — all sections
+    condensed = [trigger, ...effectiveFace, ...effectiveHair, ...suitParts, ...helmetFragment, ...accessoryParts];
+  } else if (normalizedShot.includes('extreme wide') || normalizedShot.includes('establishing')) {
+    // Extreme wide: trigger + minimal suit reference
+    const suitSummary = suitParts.length > 0 ? suitParts[0] : 'matte-black tactical suit';
+    condensed = [trigger, suitSummary];
+    if (helmetState === 'sealed') {
+      condensed.push('sealed helmet');
+    }
+  } else if (normalizedShot.includes('wide')) {
+    // Wide: trigger + core suit + helmet state
+    condensed = [trigger, ...suitParts.slice(0, 2), ...helmetFragment.slice(0, 1)];
+  } else {
+    // Medium shot: trigger + face + suit core, drop trailing accessories
+    condensed = [trigger, ...effectiveFace.slice(0, 2), ...effectiveHair.slice(0, 1), ...suitParts.slice(0, 2), ...helmetFragment.slice(0, 1)];
+  }
+
+  return condensed.filter(Boolean).join(', ');
+}
+
+/**
+ * Override-aware character injection. When a character is missing from Gemini's output,
+ * pulls their condensed swarmui_prompt_override from Episode Context and injects it
+ * at the attention-optimal position (token 31-80 zone, after first character description).
+ *
+ * Replaces injectMissingContinuityElements() from v0.18 which only appended
+ * weak phrases like "JRUMLV woman nearby" at the end of the prompt.
+ *
+ * v0.19: Override-Aware Character Injection
+ */
+function injectMissingCharacterOverrides(
   prompt: string,
   beatId: string,
   persistentState: ScenePersistentState | undefined,
   characterTriggers: Map<string, string>,
-  characterContexts: Array<{ character_name: string; aliases: string[]; base_trigger: string }>
+  characterContexts: Array<{ character_name: string; aliases: string[]; base_trigger: string }>,
+  parsedEpisodeContext: any,
+  sceneNumber: number,
+  shotType: string,
+  helmetState: string | null | undefined
 ): { prompt: string; injectedCharacters: string[]; vehicleInjected: boolean } {
   if (!persistentState) {
     return { prompt, injectedCharacters: [], vehicleInjected: false };
@@ -230,15 +436,12 @@ function injectMissingContinuityElements(
   const injectedCharacters: string[] = [];
   let vehicleInjected = false;
 
-  // --- Vehicle injection ---
-  // If vehicle is in_motion but prompt doesn't mention it, inject motorcycle reference
+  // --- Vehicle injection (same as v0.18 — insert after first comma) ---
   if (persistentState.vehicle && persistentState.vehicleState === 'in_motion') {
     const hasVehicleRef = lowerPrompt.includes('motorcycle') ||
                           lowerPrompt.includes('bike') ||
                           lowerPrompt.includes('dinghy');
     if (!hasVehicleRef) {
-      // Insert vehicle early in prompt for T5 attention (after the shot type)
-      // Find first comma (typically after "wide shot" or "close-up shot") and insert after it
       const firstComma = prompt.indexOf(',');
       if (firstComma > 0) {
         prompt = prompt.slice(0, firstComma + 1) +
@@ -248,72 +451,89 @@ function injectMissingContinuityElements(
         prompt = 'matte-black armored motorcycle speeding on cracked asphalt, ' + prompt;
       }
       vehicleInjected = true;
-      lowerPrompt = prompt.toLowerCase(); // refresh for character checks below
+      lowerPrompt = prompt.toLowerCase();
       console.log(`[VehicleInjection] ${beatId}: Injected motorcycle reference (vehicleState: in_motion)`);
     }
   }
 
-  // --- Character trigger injection ---
+  // --- Override-aware character injection ---
   for (const charName of persistentState.charactersPresent) {
-    // Skip Ghost - non-physical entity
     if (charName.toLowerCase() === 'ghost') continue;
 
     const trigger = characterTriggers.get(charName);
     if (!trigger) continue;
 
-    // Check if trigger already present
     if (lowerPrompt.includes(trigger.toLowerCase())) continue;
 
-    // This character is missing - build injection phrase
-    const position = persistentState.characterPositions[charName];
-    const isVehicleScene = persistentState.vehicleState === 'in_motion';
-    const isHelmetDown = persistentState.gearState?.includes('HELMET_DOWN') ||
-                         lowerPrompt.includes('visor down') ||
-                         lowerPrompt.includes('sealed wraith helmet');
+    // This character is missing — get their override for condensed injection
+    const normalizedHelmet = helmetState === 'VISOR_DOWN' ? 'sealed'
+      : helmetState === 'VISOR_UP' ? 'visor_up'
+      : helmetState === 'HELMET_OFF' || helmetState === 'IN_HAND' || helmetState === 'ON_VEHICLE' ? 'off'
+      : null;
 
-    // Determine gender descriptor — only add if trigger doesn't already include it
-    // base_trigger may be "HSCEIA" or "HSCEIA man" depending on data source
-    const isCat = charName.toLowerCase().includes('cat');
-    const genderDesc = isCat ? 'woman' : 'man';
-    const triggerHasGender = trigger.toLowerCase().includes('man') || trigger.toLowerCase().includes('woman');
-    const subjectPrefix = triggerHasGender ? trigger : `${trigger} ${genderDesc}`;
-
-    // Build contextual phrase
     let injection = '';
 
-    if (isVehicleScene && position) {
-      // Motorcycle context: use position info
-      if (position.includes('driving') || position.includes('front')) {
-        injection = `${subjectPrefix} driving`;
-      } else if (position.includes('passenger') || position.includes('behind')) {
-        injection = `${subjectPrefix} seated behind`;
-      } else {
-        injection = `${subjectPrefix} on motorcycle`;
-      }
-      if (isHelmetDown) {
-        injection += ' in sealed Wraith helmet';
-      }
-    } else if (isHelmetDown) {
-      // Non-vehicle but helmeted
-      injection = `${subjectPrefix} in sealed Wraith helmet`;
+    // Try to get full override from Episode Context
+    const fullOverride = parsedEpisodeContext && sceneNumber
+      ? getCharacterOverrideForScene(parsedEpisodeContext, sceneNumber, trigger)
+      : null;
+
+    if (fullOverride) {
+      // Condense override based on shot type and helmet state
+      injection = condenseOverrideForShot(fullOverride, shotType, normalizedHelmet);
+      console.log(`[OverrideInjection] ${beatId}: Condensed override for ${charName} (${shotType}): "${injection.substring(0, 80)}..."`);
     } else {
-      // Generic presence injection
-      injection = `${subjectPrefix} nearby`;
+      // Fallback: build contextual phrase (same logic as v0.18 but with position context)
+      const isCat = charName.toLowerCase().includes('cat');
+      const genderDesc = isCat ? 'woman' : 'man';
+      const triggerHasGender = trigger.toLowerCase().includes('man') || trigger.toLowerCase().includes('woman');
+      const subjectPrefix = triggerHasGender ? trigger : `${trigger} ${genderDesc}`;
+      const position = persistentState.characterPositions[charName];
+      const isVehicleScene = persistentState.vehicleState === 'in_motion';
+      const isHelmetDown = normalizedHelmet === 'sealed';
+
+      if (isVehicleScene && position) {
+        if (position.includes('driving') || position.includes('front')) {
+          injection = `${subjectPrefix} driving`;
+        } else if (position.includes('passenger') || position.includes('behind')) {
+          injection = `${subjectPrefix} seated behind`;
+        } else {
+          injection = `${subjectPrefix} on motorcycle`;
+        }
+        if (isHelmetDown) injection += ' in sealed Wraith helmet';
+      } else if (isHelmetDown) {
+        injection = `${subjectPrefix} in sealed Wraith helmet`;
+      } else {
+        injection = `${subjectPrefix} in skin-tight matte charcoal-black Aegis suit`;
+      }
+      console.log(`[TriggerInjection] ${beatId}: Fallback injection for ${charName} -> "${injection}"`);
     }
 
-    // Append to prompt with comma separator
-    prompt = prompt.trimEnd();
-    if (!prompt.endsWith(',')) {
-      prompt += ',';
+    // INSERT at attention-optimal position (after first character description, token 31-80 zone)
+    // Find the second comma (first comma is after shot type, second is after first character desc)
+    const firstComma = prompt.indexOf(',');
+    const secondComma = firstComma >= 0 ? prompt.indexOf(',', firstComma + 1) : -1;
+
+    if (secondComma > 0) {
+      // Insert after second comma — places injection in token 31-80 zone
+      prompt = prompt.slice(0, secondComma + 1) +
+        ` ${injection},` +
+        prompt.slice(secondComma + 1);
+    } else if (firstComma > 0) {
+      // Only one comma found — insert after it
+      prompt = prompt.slice(0, firstComma + 1) +
+        ` ${injection},` +
+        prompt.slice(firstComma + 1);
+    } else {
+      // No commas — append
+      prompt = `${prompt}, ${injection}`;
     }
-    prompt += ` ${injection}`;
 
     injectedCharacters.push(charName);
-    console.log(`[TriggerInjection] ${beatId}: Injected missing ${charName} -> "${injection}"`);
+    lowerPrompt = prompt.toLowerCase();
   }
 
   if (injectedCharacters.length > 0 || vehicleInjected) {
-    // Clean up trailing/double commas and spaces
     prompt = prompt.replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').trim();
   }
 
@@ -331,13 +551,15 @@ function runPostGenerationValidation(
   characterTriggers: Map<string, string>,
   sceneTemplate?: SceneTypeTemplate,
   injectedCharacters: string[] = [],
-  vehicleInjected: boolean = false
+  vehicleInjected: boolean = false,
+  adaptiveBudget?: TokenBudget
 ): PromptValidationResult {
-  // 1. Token budget
+  // 1. Token budget (v0.19: use adaptive budget, fallback to 300 max)
   const tokenCount = estimatePromptTokens(prompt);
-  const tokenBudgetExceeded = tokenCount > 200;
+  const budgetLimit = adaptiveBudget?.total || 300;
+  const tokenBudgetExceeded = tokenCount > budgetLimit;
   if (tokenBudgetExceeded) {
-    console.warn(`[TokenBudget] ${beatId}: ${tokenCount} tokens (exceeds 200 limit)`);
+    console.warn(`[TokenBudget] ${beatId}: ${tokenCount} tokens (exceeds ${budgetLimit} adaptive limit)`);
   }
 
   // 2. Continuity
@@ -360,7 +582,7 @@ function runPostGenerationValidation(
 
   // Collect all warnings
   const warnings: string[] = [];
-  if (tokenBudgetExceeded) warnings.push(`Token budget exceeded: ${tokenCount}/200`);
+  if (tokenBudgetExceeded) warnings.push(`Token budget exceeded: ${tokenCount}/${budgetLimit}`);
   warnings.push(...continuity.warnings);
   if (forbiddenTermsFound.length > 0) warnings.push(`Fabricated terms: ${forbiddenTermsFound.join(', ')}`);
   if (visorViolation) warnings.push('Visor-down but hair/face descriptions present');
@@ -378,6 +600,7 @@ function runPostGenerationValidation(
     sceneTemplate,
     injectedCharacters,
     vehicleInjected,
+    adaptiveTokenBudget: adaptiveBudget?.total,
     warnings,
   };
 }
@@ -1778,18 +2001,23 @@ SUIT-UP: \`medium shot, shallow depth of field, [character] standing motionless 
 
 ---
 
-**TOKEN BUDGET (MANDATORY — 200 token hard limit):**
+**TOKEN BUDGET (ADAPTIVE — varies by shot type):**
 
-Total prompt MUST stay under 200 tokens. Budget allocation:
-- COMPOSITION & POSITIONING: first ~30 tokens (20%) — THIS IS THE MOST IMPORTANT
-- CHARACTER 1 DESCRIPTION: ~35 tokens (20%)
-- CHARACTER 2 DESCRIPTION: ~35 tokens (20%)
-- VEHICLE/LOCATION: ~30 tokens (15%)
-- LIGHTING & ATMOSPHERE: ~25 tokens (15%)
-- SEGMENT TAGS: ~15 tokens (10%)
+Your token budget is calculated PER BEAT based on shot type and character count.
+The budget for this beat is provided in the beat context as \`tokenBudget\`.
 
-COMPOSITION COMES FIRST. If WHO is WHERE doing WHAT is not in the first 30 tokens, FLUX will improvise wrong.
-Core composition sweet spot: 40-80 tokens. Beyond 200 total, FLUX loses coherence.
+APPROXIMATE RANGES:
+- Close-up (1 char): ~250 tokens | Close-up (2 chars): ~280 tokens
+- Medium shot (1 char): ~220 tokens | Medium (2 chars): ~260 tokens
+- Wide shot (1 char): ~180 tokens | Wide (2 chars): ~200 tokens
+- Extreme wide / establishing: ~150 tokens
+
+COMPOSITION COMES FIRST. The first ~30 tokens define WHO is WHERE doing WHAT.
+Character details go in tokens 31-80 (GOOD attention zone).
+Beyond your budget, T5 loses coherence — stay within budget.
+
+HELMET SAVINGS: When helmet is sealed, skip hair and face details.
+Reinvest those ~30 freed tokens into suit material detail and spatial positioning.
 
 **FLUX RENDERING RULES:**
 1. Subject-first ordering: Primary visual subject MUST lead the prompt
@@ -2137,6 +2365,24 @@ Context Source: ${contextSource}`;
                 intensityLevel: beatWithState.beatVisualGuidance.intensityLevel,
             } : undefined;
 
+            // Calculate adaptive token budget for this beat (v0.19)
+            const helmetStates: Array<'sealed' | 'visor_up' | 'off' | null> = [];
+            if (hairContext) {
+                const hs = hairContext.helmetState;
+                helmetStates.push(
+                    hs === 'VISOR_DOWN' ? 'sealed'
+                    : hs === 'VISOR_UP' ? 'visor_up'
+                    : hs ? 'off'
+                    : null
+                );
+            }
+            const tokenBudget = calculateAdaptiveTokenBudget(
+                beatWithState.fluxShotType || 'medium shot',
+                (beat as any).characters?.length || 1,
+                helmetStates,
+                !!(beatWithState.scenePersistentState?.vehicle)
+            );
+
             return {
                 ...beat,
                 styleGuide: {
@@ -2159,6 +2405,8 @@ Context Source: ${contextSource}`;
                 scenePersistentState: beatWithState.scenePersistentState || undefined,
                 // Scene type template for prompt skeleton selection (Architect Memo Section 14-15)
                 sceneTemplate: beatWithState.sceneTemplate || undefined,
+                // Adaptive token budget for Gemini to target (v0.19)
+                tokenBudget: { total: tokenBudget.total, perCharacter: tokenBudget.character1 },
             };
         });
 
@@ -2572,15 +2820,23 @@ Context Source: ${contextSource}`;
                     console.log(`[Sanitize] ${bp.beatId}: Removed/replaced forbidden terms`);
                 }
 
-                // Step 3.7: Inject missing continuity elements (characters + vehicle)
-                // If Gemini dropped a character (e.g., "two figures" instead of named characters)
-                // or omitted the motorcycle in a vehicle scene, inject them with contextual phrasing.
-                const injectionResult = injectMissingContinuityElements(
+                // Step 3.7: Override-aware character injection (v0.19)
+                // When Gemini drops a character, inject their condensed swarmui_prompt_override
+                // at attention-optimal position (token 31-80 zone) instead of weak "nearby" phrases.
+                const beatHelmetState = bp.scenePersistentState?.gearState || null;
+                // Detect shot type from the prompt itself (first word cluster before comma)
+                const shotTypeMatch = processedCinematic.match(/^([\w\s-]+?)\s*,/);
+                const detectedShotType = shotTypeMatch ? shotTypeMatch[1].trim() : 'medium shot';
+                const injectionResult = injectMissingCharacterOverrides(
                     processedCinematic,
                     bp.beatId,
                     bp.scenePersistentState,
                     characterTriggerMap,
-                    characterContexts
+                    characterContexts,
+                    contextObj,
+                    sceneNumber || 1,
+                    detectedShotType,
+                    beatHelmetState
                 );
                 processedCinematic = injectionResult.prompt;
 
@@ -2588,6 +2844,24 @@ Context Source: ${contextSource}`;
                 // Persistent state and template are re-attached from input beats after Gemini response
                 const beatPersistentState = bp.scenePersistentState;
                 const beatSceneTemplate = bp.sceneTemplate;
+                // Calculate adaptive token budget for validation (v0.19)
+                const validationHelmetStates: Array<'sealed' | 'visor_up' | 'off' | null> = [];
+                if (beatHelmetState) {
+                    validationHelmetStates.push(
+                        beatHelmetState.includes('HELMET_DOWN') || beatHelmetState.includes('VISOR_DOWN') ? 'sealed'
+                        : beatHelmetState.includes('VISOR_UP') ? 'visor_up'
+                        : 'off'
+                    );
+                }
+                const charCount = bp.scenePersistentState?.charactersPresent?.length || 1;
+                const hasVehicle = !!(bp.scenePersistentState?.vehicle);
+                const adaptiveBudget = calculateAdaptiveTokenBudget(
+                    detectedShotType,
+                    charCount,
+                    validationHelmetStates,
+                    hasVehicle
+                );
+
                 const validation = runPostGenerationValidation(
                     processedCinematic,
                     bp.beatId,
@@ -2595,7 +2869,8 @@ Context Source: ${contextSource}`;
                     characterTriggerMap,
                     beatSceneTemplate,
                     injectionResult.injectedCharacters,
-                    injectionResult.vehicleInjected
+                    injectionResult.vehicleInjected,
+                    adaptiveBudget
                 );
 
                 // Log if any processing occurred
@@ -2632,9 +2907,11 @@ Context Source: ${contextSource}`;
                 const totalInjections = validationResults.reduce((sum, v) => sum + v.injectedCharacters.length, 0);
                 const vehiclesInjected = validationResults.filter(v => v.vehicleInjected).length;
 
-                console.log('\n[Validation Summary] Architect Memo Enforcement');
+                const avgBudget = Math.round(validationResults.reduce((sum, v) => sum + (v.adaptiveTokenBudget || 200), 0) / validationResults.length);
+
+                console.log('\n[Validation Summary] Architect Memo Enforcement (v0.19 Adaptive Budgets)');
                 console.log(`  Prompts validated: ${validationResults.length}`);
-                console.log(`  Average tokens: ${avgTokens}/200`);
+                console.log(`  Average tokens: ${avgTokens}/${avgBudget} (adaptive budget)`);
                 console.log(`  Token budget exceeded: ${tokenExceeded}/${validationResults.length}`);
                 console.log(`  Continuity issues (missing chars/vehicle): ${continuityIssues}/${validationResults.length}`);
                 console.log(`  Characters injected: ${totalInjections} across ${triggersInjected}/${validationResults.length} prompts`);
