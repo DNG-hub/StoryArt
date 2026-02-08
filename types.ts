@@ -533,6 +533,8 @@ export interface PromptValidationResult {
   modelRecommendationReason: string;
   /** Detected scene type template */
   sceneTemplate?: SceneTypeTemplate;
+  /** Characters whose LoRA triggers were injected by post-processing (not by Gemini) */
+  injectedCharacters: string[];
   /** All validation warnings collected */
   warnings: string[];
 }

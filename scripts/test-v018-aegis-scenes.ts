@@ -120,16 +120,26 @@ async function run() {
     let totalCanonicalWarnings = 0;
     let totalAlternateRecs = 0;
     let totalVisorViolations = 0;
+    let totalTriggersInjected = 0;
+    let beatsWithInjections = 0;
 
     for (const result of results) {
         const v = result.validation;
-        const hasIssues = v && (v.tokenBudgetExceeded || v.missingCharacters.length > 0 || v.missingVehicle || v.forbiddenTermsFound.length > 0 || v.visorViolation || v.modelRecommendation === 'ALTERNATE');
+        const hasIssues = v && (v.tokenBudgetExceeded || v.missingCharacters.length > 0 || v.missingVehicle || v.forbiddenTermsFound.length > 0 || v.visorViolation || v.modelRecommendation === 'ALTERNATE' || v.injectedCharacters.length > 0);
+
+        if (v && v.injectedCharacters.length > 0) {
+            totalTriggersInjected += v.injectedCharacters.length;
+            beatsWithInjections++;
+        }
 
         if (hasIssues) {
             console.log(`${result.beatId}:`);
             if (v!.tokenBudgetExceeded) {
                 console.log(`  [TOKEN BUDGET EXCEEDED] ${v!.tokenCount} tokens (limit: 200)`);
                 totalTokenWarnings++;
+            }
+            if (v!.injectedCharacters.length > 0) {
+                console.log(`  [INJECTED] Missing triggers added: ${v!.injectedCharacters.join(', ')}`);
             }
             if (v!.missingCharacters.length > 0) {
                 console.log(`  [CONTINUITY] Missing characters: ${v!.missingCharacters.join(', ')}`);
@@ -160,7 +170,8 @@ async function run() {
     console.log('==============================================================');
     console.log(`Total prompts generated: ${results.length}`);
     console.log(`Token budget exceeded:   ${totalTokenWarnings} / ${results.length}`);
-    console.log(`Continuity warnings:     ${totalContinuityWarnings}`);
+    console.log(`Triggers injected:       ${totalTriggersInjected} characters across ${beatsWithInjections} / ${results.length} prompts`);
+    console.log(`Continuity warnings:     ${totalContinuityWarnings} (post-injection residual)`);
     console.log(`Canonical violations:    ${totalCanonicalWarnings}`);
     console.log(`Visor violations:        ${totalVisorViolations}`);
     console.log(`ALTERNATE model recs:    ${totalAlternateRecs}`);
