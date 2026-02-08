@@ -535,6 +535,8 @@ export interface PromptValidationResult {
   sceneTemplate?: SceneTypeTemplate;
   /** Characters whose LoRA triggers were injected by post-processing (not by Gemini) */
   injectedCharacters: string[];
+  /** Whether vehicle reference was injected (motorcycle missing from in_motion scene) */
+  vehicleInjected: boolean;
   /** All validation warnings collected */
   warnings: string[];
 }

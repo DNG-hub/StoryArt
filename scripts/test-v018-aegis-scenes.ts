@@ -122,14 +122,18 @@ async function run() {
     let totalVisorViolations = 0;
     let totalTriggersInjected = 0;
     let beatsWithInjections = 0;
+    let totalVehicleInjections = 0;
 
     for (const result of results) {
         const v = result.validation;
-        const hasIssues = v && (v.tokenBudgetExceeded || v.missingCharacters.length > 0 || v.missingVehicle || v.forbiddenTermsFound.length > 0 || v.visorViolation || v.modelRecommendation === 'ALTERNATE' || v.injectedCharacters.length > 0);
+        const hasIssues = v && (v.tokenBudgetExceeded || v.missingCharacters.length > 0 || v.missingVehicle || v.forbiddenTermsFound.length > 0 || v.visorViolation || v.modelRecommendation === 'ALTERNATE' || v.injectedCharacters.length > 0 || v.vehicleInjected);
 
         if (v && v.injectedCharacters.length > 0) {
             totalTriggersInjected += v.injectedCharacters.length;
             beatsWithInjections++;
+        }
+        if (v && v.vehicleInjected) {
+            totalVehicleInjections++;
         }
 
         if (hasIssues) {
@@ -137,6 +141,9 @@ async function run() {
             if (v!.tokenBudgetExceeded) {
                 console.log(`  [TOKEN BUDGET EXCEEDED] ${v!.tokenCount} tokens (limit: 200)`);
                 totalTokenWarnings++;
+            }
+            if (v!.vehicleInjected) {
+                console.log(`  [INJECTED] Motorcycle reference added`);
             }
             if (v!.injectedCharacters.length > 0) {
                 console.log(`  [INJECTED] Missing triggers added: ${v!.injectedCharacters.join(', ')}`);
@@ -170,7 +177,8 @@ async function run() {
     console.log('==============================================================');
     console.log(`Total prompts generated: ${results.length}`);
     console.log(`Token budget exceeded:   ${totalTokenWarnings} / ${results.length}`);
-    console.log(`Triggers injected:       ${totalTriggersInjected} characters across ${beatsWithInjections} / ${results.length} prompts`);
+    console.log(`Characters injected:     ${totalTriggersInjected} across ${beatsWithInjections} / ${results.length} prompts`);
+    console.log(`Vehicles injected:       ${totalVehicleInjections} / ${results.length} prompts`);
     console.log(`Continuity warnings:     ${totalContinuityWarnings} (post-injection residual)`);
     console.log(`Canonical violations:    ${totalCanonicalWarnings}`);
     console.log(`Visor violations:        ${totalVisorViolations}`);

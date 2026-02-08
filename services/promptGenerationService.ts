@@ -203,31 +203,57 @@ function determineModelRecommendation(
 }
 
 /**
- * Inject missing character LoRA triggers into a prompt.
- * When Gemini drops a character (e.g., reduces "Daniel and Cat" to "two figures"),
- * this function appends the missing character with contextually appropriate phrasing.
+ * Inject missing character LoRA triggers and vehicle references into a prompt.
+ * When Gemini drops a character (e.g., reduces "Daniel and Cat" to "two figures")
+ * or omits the vehicle in a motorcycle scene, this function appends the missing
+ * elements with contextually appropriate phrasing.
  *
  * Uses persistentState to determine:
  * - Character positions (e.g., "front/driving", "behind/passenger" for motorcycle)
- * - Vehicle state (in_motion -> riding context)
+ * - Vehicle state (in_motion -> riding context, inject motorcycle if missing)
  * - Gear state (helmet state for description)
  *
- * Returns the modified prompt and list of injected characters.
+ * Returns the modified prompt, list of injected characters, and whether vehicle was injected.
  */
-function injectMissingCharacterTriggers(
+function injectMissingContinuityElements(
   prompt: string,
   beatId: string,
   persistentState: ScenePersistentState | undefined,
   characterTriggers: Map<string, string>,
   characterContexts: Array<{ character_name: string; aliases: string[]; base_trigger: string }>
-): { prompt: string; injectedCharacters: string[] } {
+): { prompt: string; injectedCharacters: string[]; vehicleInjected: boolean } {
   if (!persistentState) {
-    return { prompt, injectedCharacters: [] };
+    return { prompt, injectedCharacters: [], vehicleInjected: false };
   }
 
-  const lowerPrompt = prompt.toLowerCase();
+  let lowerPrompt = prompt.toLowerCase();
   const injectedCharacters: string[] = [];
+  let vehicleInjected = false;
 
+  // --- Vehicle injection ---
+  // If vehicle is in_motion but prompt doesn't mention it, inject motorcycle reference
+  if (persistentState.vehicle && persistentState.vehicleState === 'in_motion') {
+    const hasVehicleRef = lowerPrompt.includes('motorcycle') ||
+                          lowerPrompt.includes('bike') ||
+                          lowerPrompt.includes('dinghy');
+    if (!hasVehicleRef) {
+      // Insert vehicle early in prompt for T5 attention (after the shot type)
+      // Find first comma (typically after "wide shot" or "close-up shot") and insert after it
+      const firstComma = prompt.indexOf(',');
+      if (firstComma > 0) {
+        prompt = prompt.slice(0, firstComma + 1) +
+          ' matte-black armored motorcycle speeding on cracked asphalt,' +
+          prompt.slice(firstComma + 1);
+      } else {
+        prompt = 'matte-black armored motorcycle speeding on cracked asphalt, ' + prompt;
+      }
+      vehicleInjected = true;
+      lowerPrompt = prompt.toLowerCase(); // refresh for character checks below
+      console.log(`[VehicleInjection] ${beatId}: Injected motorcycle reference (vehicleState: in_motion)`);
+    }
+  }
+
+  // --- Character trigger injection ---
   for (const charName of persistentState.charactersPresent) {
     // Skip Ghost - non-physical entity
     if (charName.toLowerCase() === 'ghost') continue;
@@ -245,10 +271,12 @@ function injectMissingCharacterTriggers(
                          lowerPrompt.includes('visor down') ||
                          lowerPrompt.includes('sealed wraith helmet');
 
-    // Determine gender descriptor from character context
-    const charCtx = characterContexts.find(c => c.character_name === charName);
+    // Determine gender descriptor — only add if trigger doesn't already include it
+    // base_trigger may be "HSCEIA" or "HSCEIA man" depending on data source
     const isCat = charName.toLowerCase().includes('cat');
     const genderDesc = isCat ? 'woman' : 'man';
+    const triggerHasGender = trigger.toLowerCase().includes('man') || trigger.toLowerCase().includes('woman');
+    const subjectPrefix = triggerHasGender ? trigger : `${trigger} ${genderDesc}`;
 
     // Build contextual phrase
     let injection = '';
@@ -256,21 +284,21 @@ function injectMissingCharacterTriggers(
     if (isVehicleScene && position) {
       // Motorcycle context: use position info
       if (position.includes('driving') || position.includes('front')) {
-        injection = `${trigger} ${genderDesc} driving`;
+        injection = `${subjectPrefix} driving`;
       } else if (position.includes('passenger') || position.includes('behind')) {
-        injection = `${trigger} ${genderDesc} seated behind`;
+        injection = `${subjectPrefix} seated behind`;
       } else {
-        injection = `${trigger} ${genderDesc} on motorcycle`;
+        injection = `${subjectPrefix} on motorcycle`;
       }
       if (isHelmetDown) {
         injection += ' in sealed Wraith helmet';
       }
     } else if (isHelmetDown) {
       // Non-vehicle but helmeted
-      injection = `${trigger} ${genderDesc} in sealed Wraith helmet`;
+      injection = `${subjectPrefix} in sealed Wraith helmet`;
     } else {
       // Generic presence injection
-      injection = `${trigger} ${genderDesc} nearby`;
+      injection = `${subjectPrefix} nearby`;
     }
 
     // Append to prompt with comma separator
@@ -284,12 +312,12 @@ function injectMissingCharacterTriggers(
     console.log(`[TriggerInjection] ${beatId}: Injected missing ${charName} -> "${injection}"`);
   }
 
-  if (injectedCharacters.length > 0) {
+  if (injectedCharacters.length > 0 || vehicleInjected) {
     // Clean up trailing/double commas and spaces
     prompt = prompt.replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').trim();
   }
 
-  return { prompt, injectedCharacters };
+  return { prompt, injectedCharacters, vehicleInjected };
 }
 
 /**
@@ -302,7 +330,8 @@ function runPostGenerationValidation(
   persistentState: ScenePersistentState | undefined,
   characterTriggers: Map<string, string>,
   sceneTemplate?: SceneTypeTemplate,
-  injectedCharacters: string[] = []
+  injectedCharacters: string[] = [],
+  vehicleInjected: boolean = false
 ): PromptValidationResult {
   // 1. Token budget
   const tokenCount = estimatePromptTokens(prompt);
@@ -348,6 +377,7 @@ function runPostGenerationValidation(
     modelRecommendationReason: modelRec.reason,
     sceneTemplate,
     injectedCharacters,
+    vehicleInjected,
     warnings,
   };
 }
@@ -2542,10 +2572,10 @@ Context Source: ${contextSource}`;
                     console.log(`[Sanitize] ${bp.beatId}: Removed/replaced forbidden terms`);
                 }
 
-                // Step 3.7: Inject missing character LoRA triggers
-                // If Gemini dropped a character (e.g., "two figures" instead of named characters),
-                // append the missing character with contextual phrasing from persistent state.
-                const injectionResult = injectMissingCharacterTriggers(
+                // Step 3.7: Inject missing continuity elements (characters + vehicle)
+                // If Gemini dropped a character (e.g., "two figures" instead of named characters)
+                // or omitted the motorcycle in a vehicle scene, inject them with contextual phrasing.
+                const injectionResult = injectMissingContinuityElements(
                     processedCinematic,
                     bp.beatId,
                     bp.scenePersistentState,
@@ -2564,7 +2594,8 @@ Context Source: ${contextSource}`;
                     beatPersistentState,
                     characterTriggerMap,
                     beatSceneTemplate,
-                    injectionResult.injectedCharacters
+                    injectionResult.injectedCharacters,
+                    injectionResult.vehicleInjected
                 );
 
                 // Log if any processing occurred
@@ -2599,13 +2630,15 @@ Context Source: ${contextSource}`;
                 const avgTokens = Math.round(validationResults.reduce((sum, v) => sum + v.tokenCount, 0) / validationResults.length);
                 const triggersInjected = validationResults.filter(v => v.injectedCharacters.length > 0).length;
                 const totalInjections = validationResults.reduce((sum, v) => sum + v.injectedCharacters.length, 0);
+                const vehiclesInjected = validationResults.filter(v => v.vehicleInjected).length;
 
                 console.log('\n[Validation Summary] Architect Memo Enforcement');
                 console.log(`  Prompts validated: ${validationResults.length}`);
                 console.log(`  Average tokens: ${avgTokens}/200`);
                 console.log(`  Token budget exceeded: ${tokenExceeded}/${validationResults.length}`);
                 console.log(`  Continuity issues (missing chars/vehicle): ${continuityIssues}/${validationResults.length}`);
-                console.log(`  Triggers injected: ${totalInjections} characters across ${triggersInjected}/${validationResults.length} prompts`);
+                console.log(`  Characters injected: ${totalInjections} across ${triggersInjected}/${validationResults.length} prompts`);
+                console.log(`  Vehicles injected: ${vehiclesInjected}/${validationResults.length} prompts`);
                 console.log(`  Fabrication violations: ${fabricationIssues}/${validationResults.length}`);
                 console.log(`  Visor violations: ${visorIssues}/${validationResults.length}`);
                 console.log(`  ALTERNATE model recommended: ${alternateModel}/${validationResults.length}`);
