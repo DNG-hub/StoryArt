@@ -1,6 +1,6 @@
 // FIX: Corrected import path for Google GenAI SDK.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig, BeatAnalysisWithState } from '../types';
+import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig, BeatAnalysisWithState, ScenePersistentState, PromptValidationResult, SceneTypeTemplate } from '../types';
 import { processEpisodeWithFullContext, type FullyProcessedBeat } from './beatStateService';
 import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { getStoryContext } from './storyContextService';
@@ -8,6 +8,259 @@ import { applyLoraTriggerSubstitution } from '../utils';
 import { getGeminiModel, getGeminiTemperature } from './geminiService';
 import { detectHelmetState } from './beatTypeService';
 import { selectHairFragment, type HairFragmentResult } from './hairFragmentService';
+
+// ============================================================================
+// FLUX Prompt Engine Architect Memo: Validation Constants & Functions
+// Belt-and-suspenders enforcement layer: logs warnings, does NOT block generation.
+// ============================================================================
+
+/**
+ * Fabricated terms that are NOT in the canonical Aegis description.
+ * The prompt generator must NEVER use these.
+ * Source: Architect Memo Section 3 - Canonical Descriptions Only.
+ */
+const FORBIDDEN_FABRICATION_TERMS = [
+  'tactical sensor arrays',
+  'integrated weapon mounting points',
+  'combat webbing',
+  'ammunition pouches',
+  'angular aggressive design',
+  'subtle geometric sensor patterns',
+  'integrated biometric monitors',
+  'reinforced joints at knees and elbows',
+  'side-mounted sensors',
+  'cargo pockets',
+  'loose fitting',
+  'fatigues',
+];
+
+/**
+ * Canonical Aegis terms (approved for use in prompts).
+ * Source: Architect Memo Section 3.
+ */
+const CANONICAL_AEGIS_TERMS = [
+  'skin-tight matte charcoal-black Aegis suit',
+  'hexagonal weave pattern',
+  'vacuum-sealed second-skin fit',
+  'smooth latex-like surface',
+  'molded armored bust panels',
+  'molded chest armor plates',
+  'LED underglow',
+  'Wraith helmet',
+  'dark opaque visor',
+  'matte charcoal angular faceplate',
+  'ribbed reinforcement panels',
+];
+
+/**
+ * Forbidden-to-canonical replacement map for prompt sanitization.
+ * Replaces fabricated military terms with canonical Aegis vocabulary.
+ * Empty string means "delete without replacement" (term adds no visual value).
+ */
+const FABRICATION_REPLACEMENTS: [RegExp, string][] = [
+  [/,?\s*tactical sensor arrays/gi, ''],
+  [/,?\s*integrated weapon mounting points on thighs and back/gi, ''],
+  [/,?\s*integrated weapon mounting points/gi, ''],
+  [/,?\s*combat webbing with ammunition pouches/gi, ''],
+  [/,?\s*combat webbing/gi, ''],
+  [/,?\s*ammunition pouches/gi, ''],
+  [/angular aggressive design with side-mounted sensors/gi, 'angular matte black shell'],
+  [/angular aggressive design/gi, 'angular matte black shell'],
+  [/,?\s*side-mounted sensors/gi, ''],
+  [/,?\s*subtle geometric sensor patterns/gi, ', non-reflective hexagonal weave'],
+  [/,?\s*integrated biometric monitors on forearms/gi, ', forearm gauntlets with LEDs'],
+  [/,?\s*integrated biometric monitors/gi, ''],
+  [/,?\s*reinforced joints at knees and elbows/gi, ''],
+  [/,?\s*reinforced joints/gi, ''],
+  [/,?\s*cargo pockets/gi, ''],
+  [/loose fitting/gi, 'skin-tight'],
+  [/\bfatigues\b/gi, 'Aegis adaptive biosuit'],
+];
+
+/**
+ * Sanitize a prompt override or generated prompt by replacing forbidden
+ * fabrication terms with canonical Aegis vocabulary.
+ * Acts as a safety net for stale cached data or Gemini non-compliance.
+ */
+function sanitizePromptOverride(text: string): string {
+  let sanitized = text;
+  for (const [pattern, replacement] of FABRICATION_REPLACEMENTS) {
+    sanitized = sanitized.replace(pattern, replacement);
+  }
+  // Clean up double commas/spaces from removals
+  sanitized = sanitized.replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').trim();
+  return sanitized;
+}
+
+/**
+ * Estimate T5 token count for a prompt.
+ * T5 tokenizer averages ~4 characters per token for English text.
+ * RULE: Total prompt MUST stay under 200 tokens (Architect Memo Section 3/12B).
+ */
+function estimatePromptTokens(prompt: string): number {
+  // Strip segment tags from count (processed separately by SwarmUI)
+  const withoutSegments = prompt.replace(/<segment:[^>]+>/g, '').trim();
+  return Math.ceil(withoutSegments.length / 4);
+}
+
+/**
+ * Check prompt against forbidden fabrication terms.
+ * RULE: Character/gear descriptions must come VERBATIM from canonical reference.
+ */
+function validateCanonicalDescriptions(prompt: string, beatId: string): string[] {
+  const lowerPrompt = prompt.toLowerCase();
+  const violations: string[] = [];
+
+  for (const term of FORBIDDEN_FABRICATION_TERMS) {
+    if (lowerPrompt.includes(term.toLowerCase())) {
+      violations.push(term);
+    }
+  }
+
+  if (violations.length > 0) {
+    console.warn(`[CanonicalValidation] ${beatId}: Found ${violations.length} fabricated term(s): ${violations.join(', ')}`);
+  }
+
+  return violations;
+}
+
+/**
+ * Validate that persistent scene elements appear in the generated prompt.
+ * RULE: All persistent elements carry forward until narrative EXPLICITLY changes them.
+ * Validation check: "What would a camera literally see right now?"
+ */
+function validatePromptContinuity(
+  prompt: string,
+  beatId: string,
+  persistentState: ScenePersistentState | undefined,
+  characterTriggers: Map<string, string>
+): { missingCharacters: string[]; missingVehicle: boolean; warnings: string[] } {
+  const warnings: string[] = [];
+  const missingCharacters: string[] = [];
+  let missingVehicle = false;
+
+  if (!persistentState) {
+    return { missingCharacters, missingVehicle, warnings };
+  }
+
+  const lowerPrompt = prompt.toLowerCase();
+
+  // Check all present characters appear (by trigger word)
+  for (const charName of persistentState.charactersPresent) {
+    const trigger = characterTriggers.get(charName);
+    if (trigger && !lowerPrompt.includes(trigger.toLowerCase())) {
+      missingCharacters.push(charName);
+      warnings.push(`Missing character: ${charName} (trigger: ${trigger}) should be in scene`);
+    }
+  }
+
+  // Check vehicle presence when in_motion
+  if (persistentState.vehicle && persistentState.vehicleState === 'in_motion') {
+    if (!lowerPrompt.includes('motorcycle') && !lowerPrompt.includes('bike') && !lowerPrompt.includes('dinghy')) {
+      missingVehicle = true;
+      warnings.push(`Missing vehicle: Dinghy is in_motion but not in prompt`);
+    }
+  }
+
+  if (warnings.length > 0) {
+    console.warn(`[ContinuityValidation] ${beatId}: ${warnings.length} issue(s):`);
+    warnings.forEach(w => console.warn(`  - ${w}`));
+  }
+
+  return { missingCharacters, missingVehicle, warnings };
+}
+
+/**
+ * Determine if FLUX or ALTERNATE model should be used.
+ * RULE: If ALL characters have visors DOWN (no faces visible),
+ * flag for ALTERNATE model rendering (Architect Memo Section 9).
+ */
+function determineModelRecommendation(
+  prompt: string,
+  beatId: string
+): { model: 'FLUX' | 'ALTERNATE'; reason: string } {
+  const lowerPrompt = prompt.toLowerCase();
+
+  const hasFaceSegments = lowerPrompt.includes('<segment:yolo-face');
+
+  const hasVisorDown = lowerPrompt.includes('visor down') ||
+    lowerPrompt.includes('sealed wraith helmet') ||
+    lowerPrompt.includes('dark visor') ||
+    lowerPrompt.includes('dark opaque visor');
+
+  const hasFaceVisible = lowerPrompt.includes('face visible') ||
+    lowerPrompt.includes('visor raised') ||
+    lowerPrompt.includes('visor up');
+
+  if (!hasFaceSegments && hasVisorDown && !hasFaceVisible) {
+    console.log(`[ModelRec] ${beatId}: ALTERNATE recommended (no faces, complex composition likely)`);
+    return { model: 'ALTERNATE', reason: 'no_faces_complex_composition' };
+  }
+
+  return { model: 'FLUX', reason: 'faces_visible' };
+}
+
+/**
+ * Run all post-generation validation checks on a prompt.
+ * Belt-and-suspenders enforcement: logs warnings, does NOT block generation.
+ */
+function runPostGenerationValidation(
+  prompt: string,
+  beatId: string,
+  persistentState: ScenePersistentState | undefined,
+  characterTriggers: Map<string, string>,
+  sceneTemplate?: SceneTypeTemplate
+): PromptValidationResult {
+  // 1. Token budget
+  const tokenCount = estimatePromptTokens(prompt);
+  const tokenBudgetExceeded = tokenCount > 200;
+  if (tokenBudgetExceeded) {
+    console.warn(`[TokenBudget] ${beatId}: ${tokenCount} tokens (exceeds 200 limit)`);
+  }
+
+  // 2. Continuity
+  const continuity = validatePromptContinuity(prompt, beatId, persistentState, characterTriggers);
+
+  // 3. Canonical descriptions
+  const forbiddenTermsFound = validateCanonicalDescriptions(prompt, beatId);
+
+  // 4. Visor violation check
+  const lowerPrompt = prompt.toLowerCase();
+  const hasVisorDown = lowerPrompt.includes('visor down') || lowerPrompt.includes('sealed wraith helmet');
+  const hasHairOrFace = !!lowerPrompt.match(/\bhair\b.*\b(color|style|ponytail|flowing|brown|white|dark)\b|\bexposing face\b|\bshowing face\b/);
+  const visorViolation = hasVisorDown && hasHairOrFace;
+  if (visorViolation) {
+    console.warn(`[VisorViolation] ${beatId}: Hair/face description found with visor-down helmet`);
+  }
+
+  // 5. Model recommendation
+  const modelRec = determineModelRecommendation(prompt, beatId);
+
+  // Collect all warnings
+  const warnings: string[] = [];
+  if (tokenBudgetExceeded) warnings.push(`Token budget exceeded: ${tokenCount}/200`);
+  warnings.push(...continuity.warnings);
+  if (forbiddenTermsFound.length > 0) warnings.push(`Fabricated terms: ${forbiddenTermsFound.join(', ')}`);
+  if (visorViolation) warnings.push('Visor-down but hair/face descriptions present');
+
+  return {
+    beatId,
+    tokenCount,
+    tokenBudgetExceeded,
+    missingCharacters: continuity.missingCharacters,
+    missingVehicle: continuity.missingVehicle,
+    forbiddenTermsFound,
+    visorViolation,
+    modelRecommendation: modelRec.model,
+    modelRecommendationReason: modelRec.reason,
+    sceneTemplate,
+    warnings,
+  };
+}
+
+// ============================================================================
+// JSON Repair Utilities
+// ============================================================================
 
 /**
  * Attempt to repair truncated or malformed JSON from LLM response.
@@ -451,7 +704,7 @@ function getCharacterOverrideForScene(
             (c: any) => c.base_trigger === characterTrigger
         );
         if (charFromScene?.location_context?.swarmui_prompt_override) {
-            return charFromScene.location_context.swarmui_prompt_override;
+            return sanitizePromptOverride(charFromScene.location_context.swarmui_prompt_override);
         }
 
         // Check scene.character_appearances
@@ -459,7 +712,7 @@ function getCharacterOverrideForScene(
             (c: any) => c.base_trigger === characterTrigger
         );
         if (charFromAppearances?.location_context?.swarmui_prompt_override) {
-            return charFromAppearances.location_context.swarmui_prompt_override;
+            return sanitizePromptOverride(charFromAppearances.location_context.swarmui_prompt_override);
         }
 
         return null;
@@ -1014,7 +1267,29 @@ A prompt must describe ONLY what a camera can directly observe. If a detail cann
     // PROMPT GENERATION RULES - Authoritative source: StoryTeller/.claude/skills/prompt-generation-rules/SKILL.md v0.13
     // This system instruction implements SKILL.md rules for LLM prompt generation.
     // Key sections: 1.1-1.4 (Templates), 3.6 (Helmet/Dingy), 8 (Dual Character), 16 (Camera Realism)
-    const systemInstruction = `You are a SwarmUI prompt generator following SKILL.md v0.13 rules. Generate clean, token-efficient prompts:
+    const systemInstruction = `You are a SwarmUI prompt generator following SKILL.md v0.18 rules. Generate clean, token-efficient prompts:
+
+**T5 ATTENTION MODEL (Critical — understand how FLUX processes your prompts):**
+
+FLUX uses a T5-XXL text encoder. T5 understands SENTENCES, not tag lists. Attention follows a decay curve:
+- Tokens 1-30: STRONG (THE IMAGE — primary subject, composition, spatial relationship)
+- Tokens 31-80: GOOD (character details, gear, posture)
+- Tokens 81-150: MODERATE (environment, lighting, atmosphere)
+- Tokens 151-200: WEAK (color grade, technical quality, segments)
+- Tokens 200+: EFFECTIVELY IGNORED
+
+The FIRST CONCRETE NOUN determines what FLUX thinks the image IS:
+- "HSCEIA man field operative..." → FLUX renders a MAN, everything else is decoration
+- "matte-black armored motorcycle with two riders..." → FLUX renders a MOTORCYCLE with riders on it
+
+DECISION: What is this image OF? That leads the prompt.
+- Motorcycle scene → motorcycle first
+- Character moment → character first
+- Location reveal → location first
+
+Write grammatically coherent SENTENCES. Link concepts with spatial relationships ("behind", "beside", "gripping", "on").
+WRONG: "woman, black suit, motorcycle, man, riding, behind, night, forest"
+RIGHT: "woman seated behind man on matte-black motorcycle speeding through dark forest road at night"
 
 **PROMPT TEMPLATE (Parentheses Grouping):**
 \`\`\`
@@ -1075,6 +1350,13 @@ Every prompt MUST begin with the shot type from \`styleGuide.camera\`:
 ---
 
 **CHARACTER VISUAL (UNIFIED APPROACH):**
+
+**DESCRIPTION SCALING BY SHOT TYPE (MANDATORY):**
+Suit/gear description length MUST scale with shot proximity:
+- CLOSE-UP: Full canonical description (material, texture, LED color, mesh, ribbed reinforcement)
+- MEDIUM SHOT: Standard (suit color, hexagonal weave, helmet state, LED underglow, primary accessory)
+- WIDE SHOT: ~15 tokens per character ("skin-tight matte charcoal-black Aegis suit with hexagonal weave and sealed Wraith helmet")
+- EXTREME WIDE: ~8 tokens combined ("matching matte-black tactical suits and sealed helmets")
 
 FIRST, check for \`swarmui_prompt_override\`:
 - Find in: \`character.location_context.swarmui_prompt_override\`
@@ -1142,6 +1424,21 @@ CHAR1 (attributes) on left and CHAR2 (attributes) on right, [interaction], [loca
 
 Without parentheses in dual scenes, FLUX causes attribute bleed (woman gets white hair, man gets green eyes).
 
+**DUAL CHARACTER POSITIONING:**
+- Daniel: camera-LEFT (larger frame, protective positioning)
+- Cat: camera-RIGHT (analytical, observing)
+- On motorcycle: Daniel FRONT (driving), Cat BEHIND (passenger) — ALWAYS this arrangement
+- Both faces must be in frame for dual YOLO segments (visor-up scenes only)
+
+**CAT AS VISUAL ANCHOR (Director's Standing Note):**
+Cat is the visual center of gravity. The cinematographer frames her as an action heroine — powerful, capable, and physically compelling.
+- VISOR DOWN on motorcycle: rear three-quarter angle, silhouette emphasized, curves of suit catching light
+- VISOR DOWN standing: low angle, shape against environment/sky
+- VISOR UP / face visible: face is primary anchor, medium close-up or close-up, eye level or slight low angle
+- In motion: rear three-quarter or side angle, athletic silhouette
+- The Aegis suit is skin-tight — frame to show athletic hourglass figure, defined waist. The suit does the work.
+- NOT pin-up posing. She never poses for the camera. Femininity serves characterization, not decoration.
+
 ---
 
 **CARRYOVER STATE (Beat Continuity):**
@@ -1171,6 +1468,41 @@ Some beats include a \`carryoverContext\` object with state carried from previou
 
 **Variety Adjustments:**
 If beat has \`carryoverContext.varietyAdjusted: true\`, the shot type in \`styleGuide.camera\` has been adjusted to prevent visual monotony. Trust this adjustment.
+
+---
+
+**SCENE CONTINUITY CARRY-FORWARD (MANDATORY):**
+
+Some beats include a \`scenePersistentState\` object with elements that MUST persist:
+
+\`\`\`json
+{
+  "scenePersistentState": {
+    "vehicle": "matte-black armored motorcycle (The Dinghy)",
+    "vehicleState": "in_motion",
+    "charactersPresent": ["Cat", "Daniel"],
+    "characterPositions": { "Daniel": "front/driving", "Cat": "behind/passenger" },
+    "gearState": "HELMET_DOWN",
+    "location": "Georgia forest road at night"
+  }
+}
+\`\`\`
+
+**RULES:**
+- ALL elements in \`scenePersistentState\` MUST appear in the prompt unless the beat EXPLICITLY changes them
+- A beat about Cat's dialogue does NOT remove Daniel — he is still there
+- If \`vehicleState\` is "in_motion", the vehicle MUST be in the prompt
+- If \`charactersPresent\` has 2+ characters, ALL must appear (using their triggers)
+- VALIDATION: Before finalizing, ask: "What would a camera literally see right now?"
+
+Some beats also include a \`sceneTemplate\` identifying the scene type:
+- "vehicle": Use motorcycle template (wide shot, both riders, vehicle leads prompt)
+- "indoor_dialogue": Both characters positioned in room
+- "combat": Wide/medium, helmet HUD active, LED underglow RED
+- "stealth": Low light, visor DOWN, blue LED only
+- "establishing": Location leads, characters small in frame
+- "suit_up": Medium shot, suit detail is the subject
+- "ghost": Ghost through environment, no physical body
 
 ---
 
@@ -1284,6 +1616,60 @@ medium shot, HSCEIA man (35, white hair, gray eyes, tactical vest, rifle slung) 
 
 ---
 
+**SCENE TYPE TEMPLATES (match beat to template, then fill specifics):**
+
+VEHICLE (motorcycle): \`[shot] from [angle], [vehicle] [state] on [road], [char1_position] in [suit_abbrev] and [helmet], [char2_position] in [suit_abbrev] and [helmet], [environment], [lighting], [color_grade]\`
+- Default: wide shot, low rear three-quarter angle (if Cat present). Riding = always visor DOWN, no face segments.
+
+INDOOR DIALOGUE: \`[shot], [depth], [char1] [room_position] [action/posture], [expression], and [char2] [room_position], [expression], [location], [lighting] <segments>\`
+- Both characters present even if beat focuses on one speaking. Faces visible = face segments.
+
+COMBAT/BREACH: \`[shot] from [angle], [char1] [combat_action] in [full_suit] with [weapon] and [helmet_HUD], [char2_if_present], [environment], [lighting]\`
+- HUD active, no faces, LED underglow RED (combat) or AMBER (elevated threat).
+
+STEALTH: \`[shot], [characters] moving tactically through [environment], [suit] with [helmet_DOWN], [posture], [lighting]\`
+- Visor DOWN, blue LED only, deep shadows, low light.
+
+ESTABLISHING: \`extreme wide shot, [location], [characters_tiny_if_present], [environmental_detail], [lighting], [atmosphere]\`
+- Location leads prompt. Characters small. No face segments.
+
+SUIT-UP: \`medium shot, shallow depth of field, [character] standing motionless in [full_suit_detail] vacuum-sealed, [hair_visible], [expression], [prep_area], [diagnostic_lighting]\`
+- Hair visible (no helmet). Face segments YES. Suit detail IS the subject.
+
+**DECISION FRAMEWORK (when no styleGuide or template match):**
+1. What is the SUBJECT? (determines what leads prompt and shot type)
+2. What is the MOOD? (determines lighting/color grade)
+3. Where is the CAMERA? (determines angle — apply Cat visual anchor if she is in frame)
+
+---
+
+**TOKEN BUDGET (MANDATORY — 200 token hard limit):**
+
+Total prompt MUST stay under 200 tokens. Budget allocation:
+- COMPOSITION & POSITIONING: first ~30 tokens (20%) — THIS IS THE MOST IMPORTANT
+- CHARACTER 1 DESCRIPTION: ~35 tokens (20%)
+- CHARACTER 2 DESCRIPTION: ~35 tokens (20%)
+- VEHICLE/LOCATION: ~30 tokens (15%)
+- LIGHTING & ATMOSPHERE: ~25 tokens (15%)
+- SEGMENT TAGS: ~15 tokens (10%)
+
+COMPOSITION COMES FIRST. If WHO is WHERE doing WHAT is not in the first 30 tokens, FLUX will improvise wrong.
+Core composition sweet spot: 40-80 tokens. Beyond 200 total, FLUX loses coherence.
+
+**FLUX RENDERING RULES:**
+1. Subject-first ordering: Primary visual subject MUST lead the prompt
+2. Spatial relationships MUST be explicit ("man driving motorcycle with woman seated behind him arms wrapped around his waist")
+3. NO prompt weighting — (concept:1.5) does NOT work on FLUX, T5 ignores it
+4. NO negative prompts — FLUX does not support them
+5. Natural language sentences, NOT comma-separated keyword lists
+6. Every element must be camera-observable (no emotions, story context, sound, internal states)
+
+**CANONICAL DESCRIPTIONS ONLY (ZERO TOLERANCE):**
+NEVER fabricate gear details. Aegis is a BIOSUIT, not military tactical gear.
+FORBIDDEN: "tactical sensor arrays", "weapon mounting points", "combat webbing", "ammunition pouches", "geometric sensor patterns", "biometric monitors on forearms", "reinforced joints at knees and elbows"
+CANONICAL: "skin-tight matte charcoal-black Aegis suit with hexagonal weave pattern", "molded armored bust panels with [COLOR] LED underglow" (Cat), "molded chest armor plates with [COLOR] LED underglow" (Daniel), "Wraith helmet fully sealed with dark opaque visor"
+NEVER use: tactical vest, cargo pockets, loose fitting, BDU, fatigues, combat webbing, ammunition pouches.
+
 **PROMPT COMPACTION (Token Efficiency):**
 
 Apply these compaction strategies to reduce tokens without losing visual information:
@@ -1342,6 +1728,13 @@ When generating a prompt for a character wearing ANY helmet state (visor up, vis
 - "HSCEIA man, stark white military-cut hair, helmet HUD active" (WRONG - hair is under the helmet)
 
 **HELMET OFF only:** INCLUDE hair description (ponytail, hair color, style visible) because the character's head is uncovered.
+
+**HELMET STATE ZERO-TOLERANCE RULES:**
+- RIDING AT SPEED (any speed above walking) → visor DOWN. No exceptions. No hair. No face. No face segments.
+- STANDING/STATIONARY IN FIELD → visor UP (default). Face visible. Face segments included.
+- COMBAT/BREACH → HUD ACTIVE. No hair. No face segment.
+- STEALTH/INFILTRATION → visor DOWN. Sealed for noise/light discipline.
+- When visor is DOWN, prompt MUST NOT contain: any hair description, any facial expression, any face segment tag, "exposing face", "showing face", "visor raised"
 
 **INFERENCE RULES (when beat doesn't specify):**
 - Combat/breach scenes → Default to VISOR DOWN
@@ -1627,6 +2020,10 @@ Context Source: ${contextSource}`;
                 visualGuidance,
                 // Hair/helmet context for correct character appearance (SKILL.md Section 3.6.2)
                 hairContext,
+                // Scene persistent state for continuity carry-forward (Architect Memo Section 2)
+                scenePersistentState: beatWithState.scenePersistentState || undefined,
+                // Scene type template for prompt skeleton selection (Architect Memo Section 14-15)
+                sceneTemplate: beatWithState.sceneTemplate || undefined,
             };
         });
 
@@ -1951,6 +2348,15 @@ Context Source: ${contextSource}`;
             console.log(`🔍 LORA Substitution: Processing ${characterContexts.length} character context(s):`,
                 characterContexts.map(c => `${c.character_name} -> ${c.base_trigger}`).join(', '));
 
+            // Build character trigger map for continuity validation
+            const characterTriggerMap = new Map<string, string>();
+            for (const ctx of characterContexts) {
+                characterTriggerMap.set(ctx.character_name, ctx.base_trigger);
+                for (const alias of (ctx.aliases || [])) {
+                    characterTriggerMap.set(alias, ctx.base_trigger);
+                }
+            }
+
             const finalResults = allResults.map(bp => {
                 const originalCinematic = bp.cinematic.prompt;
 
@@ -2014,6 +2420,25 @@ Context Source: ${contextSource}`;
                     }
                 }
 
+                // Step 3.5: Sanitize forbidden fabrication terms from generated prompt
+                const preSanitize = processedCinematic;
+                processedCinematic = sanitizePromptOverride(processedCinematic);
+                if (preSanitize !== processedCinematic) {
+                    console.log(`[Sanitize] ${bp.beatId}: Removed/replaced forbidden terms`);
+                }
+
+                // Step 4: Post-generation validation (Architect Memo: belt-and-suspenders)
+                // Look up this beat's persistent state from the processed beats
+                const beatPersistentState = (bp as any).scenePersistentState as ScenePersistentState | undefined;
+                const beatSceneTemplate = (bp as any).sceneTemplate as SceneTypeTemplate | undefined;
+                const validation = runPostGenerationValidation(
+                    processedCinematic,
+                    bp.beatId,
+                    beatPersistentState,
+                    characterTriggerMap,
+                    beatSceneTemplate
+                );
+
                 // Log if any processing occurred
                 if (originalCinematic !== processedCinematic) {
                     console.log(`[PostProcess] Applied for beat ${bp.beatId}`);
@@ -2027,9 +2452,33 @@ Context Source: ${contextSource}`;
                     cinematic: {
                         ...bp.cinematic,
                         prompt: processedCinematic,
-                    }
+                    },
+                    validation,
                 };
             });
+
+            // Validation summary (Architect Memo: belt-and-suspenders)
+            const validationResults = finalResults
+                .filter(r => r.validation)
+                .map(r => r.validation!);
+
+            if (validationResults.length > 0) {
+                const tokenExceeded = validationResults.filter(v => v.tokenBudgetExceeded).length;
+                const continuityIssues = validationResults.filter(v => v.missingCharacters.length > 0 || v.missingVehicle).length;
+                const fabricationIssues = validationResults.filter(v => v.forbiddenTermsFound.length > 0).length;
+                const visorIssues = validationResults.filter(v => v.visorViolation).length;
+                const alternateModel = validationResults.filter(v => v.modelRecommendation === 'ALTERNATE').length;
+                const avgTokens = Math.round(validationResults.reduce((sum, v) => sum + v.tokenCount, 0) / validationResults.length);
+
+                console.log('\n[Validation Summary] Architect Memo Enforcement');
+                console.log(`  Prompts validated: ${validationResults.length}`);
+                console.log(`  Average tokens: ${avgTokens}/200`);
+                console.log(`  Token budget exceeded: ${tokenExceeded}/${validationResults.length}`);
+                console.log(`  Continuity issues (missing chars/vehicle): ${continuityIssues}/${validationResults.length}`);
+                console.log(`  Fabrication violations: ${fabricationIssues}/${validationResults.length}`);
+                console.log(`  Visor violations: ${visorIssues}/${validationResults.length}`);
+                console.log(`  ALTERNATE model recommended: ${alternateModel}/${validationResults.length}`);
+            }
 
             // Token tracking: Final summary
             console.log('\n╔═══════════════════════════════════════════════════════════════╗');

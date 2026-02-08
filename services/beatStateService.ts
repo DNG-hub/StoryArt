@@ -26,6 +26,8 @@ import type {
   CharacterBeatState,
   SceneVarietyState,
   SceneBeatState,
+  ScenePersistentState,
+  SceneTypeTemplate,
   AnalyzedScene,
   AnalyzedEpisode
 } from '../types';
@@ -87,6 +89,8 @@ import {
 export interface ExtendedSceneBeatState extends SceneBeatState {
   visualContext: SceneVisualContext | null;
   sceneProgression: string[];
+  /** Persistent elements that carry forward between beats (Architect Memo Section 2) */
+  persistentState: ScenePersistentState;
 }
 
 /**
@@ -107,6 +111,10 @@ export interface FullyProcessedBeat extends BeatAnalysisWithState {
   shotTypeValidated: boolean;
   angleValidated: boolean;
   expressionValidated: boolean;
+
+  // Scene persistent state (Architect Memo: continuity carry-forward)
+  scenePersistentState?: ScenePersistentState;
+  sceneTemplate?: SceneTypeTemplate;
 }
 
 // ============================================================================
@@ -160,6 +168,15 @@ export function createExtendedSceneState(
     },
     visualContext,
     sceneProgression,
+    persistentState: {
+      vehicle: null,
+      vehicleState: null,
+      charactersPresent: [],
+      characterPositions: {},
+      gearState: null,
+      location: null,
+      lighting: null,
+    },
   };
 }
 
@@ -338,6 +355,198 @@ export function updateVarietyState(
 }
 
 // ============================================================================
+// Scene Persistent State (Architect Memo: Continuity Carry-Forward)
+// ============================================================================
+
+/**
+ * Initializes persistent state from scene metadata.
+ * Scans scene beats for vehicle mentions, character names, and location info.
+ *
+ * RULE: All persistent elements carry forward until narrative EXPLICITLY changes them.
+ * A beat about one character's dialogue does NOT clear other characters.
+ */
+function initializePersistentState(scene: AnalyzedScene): ScenePersistentState {
+  const state: ScenePersistentState = {
+    vehicle: null,
+    vehicleState: null,
+    charactersPresent: [],
+    characterPositions: {},
+    gearState: null,
+    location: scene.title || null,
+    lighting: null,
+  };
+
+  // Extract unique characters from all beats in scene
+  const allCharacters = new Set<string>();
+  for (const beat of scene.beats) {
+    const chars: string[] = (beat as any).characters || [];
+    chars.forEach(c => allCharacters.add(c));
+  }
+  state.charactersPresent = Array.from(allCharacters);
+
+  // Scan early beats for vehicle references (Dingy/motorcycle)
+  const earlyBeatsText = scene.beats.slice(0, 5)
+    .map(b => b.beat_script_text || '').join(' ').toLowerCase();
+  const fullSceneText = scene.beats
+    .map(b => b.beat_script_text || '').join(' ').toLowerCase();
+
+  if (fullSceneText.match(/\bdingy\b|\bdinghy\b|\bmotorcycle\b|\bbike\b/)) {
+    state.vehicle = 'matte-black armored motorcycle (The Dinghy)';
+    // Determine motion state from first mention context
+    if (earlyBeatsText.match(/riding|speeding|accelerat|tearing|racing|roaring|weaving|mph/)) {
+      state.vehicleState = 'in_motion';
+    } else if (earlyBeatsText.match(/parked|stopped|dismount|stationary|leaning against/)) {
+      state.vehicleState = 'parked';
+    }
+  }
+
+  // Set default motorcycle positions when both Cat and Daniel present
+  if (state.vehicle && state.charactersPresent.length >= 2) {
+    const hasDaniel = state.charactersPresent.some(c => c.toLowerCase().includes('daniel'));
+    const hasCat = state.charactersPresent.some(c => c.toLowerCase().includes('cat'));
+    if (hasDaniel && hasCat && state.vehicleState === 'in_motion') {
+      state.characterPositions['Daniel'] = 'front/driving';
+      state.characterPositions['Cat'] = 'behind/passenger';
+    }
+  }
+
+  // Detect gear context from early beats
+  if (fullSceneText.match(/\baegis\b|\bbodysuit\b|\btactical suit\b|\bhelmet\b|\bwraith\b/)) {
+    if (fullSceneText.match(/visor down|sealed|helmet sealed|riding at speed/)) {
+      state.gearState = 'HELMET_DOWN';
+    } else if (fullSceneText.match(/visor up|visor raised|raises visor/)) {
+      state.gearState = 'HELMET_VISOR_UP';
+    } else if (fullSceneText.match(/helmet off|removes helmet|no helmet/)) {
+      state.gearState = 'HELMET_OFF';
+    }
+  }
+
+  console.log(`[PersistentState] Scene ${scene.sceneNumber} initialized:`,
+    `chars=[${state.charactersPresent.join(', ')}]`,
+    state.vehicle ? `vehicle=${state.vehicleState}` : 'no vehicle',
+    state.gearState ? `gear=${state.gearState}` : '');
+
+  return state;
+}
+
+/**
+ * Updates persistent state based on beat narrative.
+ * Only modifies elements that are EXPLICITLY changed in the beat text.
+ * Conservative matching prevents false positives.
+ */
+function updatePersistentState(
+  state: ScenePersistentState,
+  beat: BeatAnalysis
+): ScenePersistentState {
+  const updated = { ...state, characterPositions: { ...state.characterPositions } };
+  const text = (beat.beat_script_text || '').toLowerCase();
+
+  // Check for explicit character departures
+  if (text.match(/\b(leaves|departs|exits|walks away|runs off|disappears|stays behind)\b/)) {
+    const beatChars: string[] = (beat as any).characters || [];
+    for (const char of beatChars) {
+      if (text.includes(char.toLowerCase()) &&
+          text.match(new RegExp(`${char.toLowerCase()}\\s+(leaves|departs|exits|walks away|runs off|stays behind)`, 'i'))) {
+        updated.charactersPresent = updated.charactersPresent.filter(c => c !== char);
+        delete updated.characterPositions[char];
+        console.log(`[PersistentState] ${beat.beatId}: ${char} departed scene`);
+      }
+    }
+  }
+
+  // Check for character arrivals
+  if (text.match(/\b(arrives|enters|approaches|joins|appears|steps into)\b/)) {
+    const beatChars: string[] = (beat as any).characters || [];
+    for (const char of beatChars) {
+      if (!updated.charactersPresent.includes(char)) {
+        updated.charactersPresent.push(char);
+        console.log(`[PersistentState] ${beat.beatId}: ${char} arrived in scene`);
+      }
+    }
+  }
+
+  // Vehicle state transitions
+  if (updated.vehicle) {
+    if (text.match(/\b(dismount|stop|park|pull over|brake|come to a halt|idle|kills the engine)\b/)) {
+      if (updated.vehicleState === 'in_motion') {
+        updated.vehicleState = 'parked';
+        console.log(`[PersistentState] ${beat.beatId}: vehicle now parked`);
+      }
+    }
+    if (text.match(/\b(mount|ride|accelerat|depart|take off|speed|kick.?start|roar|gun)\b/)) {
+      if (updated.vehicleState === 'parked' || updated.vehicleState === null) {
+        updated.vehicleState = 'in_motion';
+        console.log(`[PersistentState] ${beat.beatId}: vehicle now in motion`);
+      }
+    }
+  }
+
+  // Gear state changes (explicit only)
+  if (text.match(/\b(seal|visor down|visor seals|helmet sealed|lowers? visor)\b/)) {
+    updated.gearState = 'HELMET_DOWN';
+  } else if (text.match(/\b(visor up|raises? visor|lifts? visor|flips? visor)\b/)) {
+    updated.gearState = 'HELMET_VISOR_UP';
+  } else if (text.match(/\b(removes? helmet|takes? off helmet|helmet off|pulls? off helmet)\b/)) {
+    updated.gearState = 'HELMET_OFF';
+  }
+
+  return updated;
+}
+
+/**
+ * Detects scene type template for prompt skeleton selection.
+ * Implements Architect Memo Section 15 decision tree.
+ */
+function detectSceneTemplate(
+  beat: BeatAnalysis,
+  persistentState: ScenePersistentState
+): SceneTypeTemplate {
+  const text = (beat.beat_script_text || '').toLowerCase();
+
+  // Vehicle in motion?
+  if (persistentState.vehicle && persistentState.vehicleState === 'in_motion') {
+    return { templateType: 'vehicle', templateReason: 'vehicle in motion during scene' };
+  }
+  if (text.match(/\b(riding|motorcycle|bike|driving|speeding)\b/) && persistentState.vehicle) {
+    return { templateType: 'vehicle', templateReason: 'beat references vehicle in motion' };
+  }
+
+  // Active combat or breach?
+  if (text.match(/\b(breach|firing|firefight|combat|gunfire|weapon|shoots?|muzzle flash|tactical engage)\b/)) {
+    return { templateType: 'combat', templateReason: 'active combat or breach detected' };
+  }
+
+  // Covert movement?
+  if (text.match(/\b(stealth|sneak|covert|infiltrat|creep|crouch|low profile|quietly)\b/)) {
+    return { templateType: 'stealth', templateReason: 'stealth or covert movement' };
+  }
+
+  // Donning or calibrating gear?
+  if (text.match(/\b(suit up|suiting up|calibrat|diagnostic|seal.{0,5}suit|don.{0,5}(aegis|suit|gear))\b/)) {
+    return { templateType: 'suit_up', templateReason: 'gear donning or calibration' };
+  }
+
+  // Ghost communication or digital anomaly?
+  if (text.match(/\b(ghost|hud rewrite|i am everyone|bioluminescent|fungal|glitch|digital anomaly|cyan text)\b/)) {
+    return { templateType: 'ghost', templateReason: 'Ghost manifestation or digital anomaly' };
+  }
+
+  // New location reveal or scene transition?
+  const beatChars: string[] = (beat as any).characters || [];
+  if (beatChars.length === 0 || text.match(/\b(establishing|reveal|transition|the silence|panoramic)\b/)) {
+    return { templateType: 'establishing', templateReason: 'environment-only or location reveal' };
+  }
+
+  // Interior with dialogue/planning?
+  if (text.match(/\b(said|says|spoke|speaking|asked|replied|argued|planning|briefing|discuss)\b/)) {
+    return { templateType: 'indoor_dialogue', templateReason: 'dialogue or planning scene' };
+  }
+
+  // Default: generic (use Three-Question Framework)
+  return { templateType: 'generic', templateReason: 'no specific template match - use Three-Question Framework' };
+}
+
+// ============================================================================
 // Main Processing Functions
 // ============================================================================
 
@@ -467,6 +676,17 @@ export function processBeatWithFullContext(
     result.fluxCameraAngle
   );
 
+  // --- SCENE PERSISTENT STATE & TEMPLATE (Architect Memo) ---
+
+  // Update persistent state based on this beat's narrative
+  sceneState.persistentState = updatePersistentState(sceneState.persistentState, beat);
+
+  // Attach snapshot of current persistent state to this beat
+  result.scenePersistentState = { ...sceneState.persistentState };
+
+  // Detect scene type template for this beat
+  result.sceneTemplate = detectSceneTemplate(beat, sceneState.persistentState);
+
   return result;
 }
 
@@ -550,6 +770,9 @@ export function processSceneWithFullContext(
     scene.beats.length,
     sceneOptions
   );
+
+  // Initialize persistent state from scene metadata (Architect Memo Section 2)
+  extendedState.persistentState = initializePersistentState(scene);
 
   const processedBeats = scene.beats.map((beat, index) => {
     return processBeatWithFullContext(beat, extendedState, index);

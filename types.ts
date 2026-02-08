@@ -50,6 +50,8 @@ export interface BeatPrompts {
   cinematic: SwarmUIPrompt;
   vertical?: SwarmUIPrompt; // Vertical (9:16) prompts for long-form storytelling based on beat analysis
   marketingVertical?: SwarmUIPrompt; // Vertical (9:16) prompts specifically for marketing, based on full episode analysis
+  /** Post-generation validation results (belt-and-suspenders enforcement) */
+  validation?: PromptValidationResult;
 }
 
 export interface BeatAnalysis {
@@ -466,6 +468,68 @@ export interface SceneBeatState {
   characterStates: Record<string, CharacterBeatState>;
   /** Variety tracking for shot/angle diversity */
   varietyState: SceneVarietyState;
+}
+
+/**
+ * Persistent scene elements that carry forward between beats.
+ * FLUX Prompt Engine Architect Memo: Scene Continuity Carry-Forward.
+ * All elements persist until the narrative EXPLICITLY changes them.
+ * A beat about one character's dialogue does NOT clear other characters.
+ */
+export interface ScenePersistentState {
+  /** Vehicle in scene (e.g., "matte-black armored motorcycle (The Dinghy)") */
+  vehicle: string | null;
+  /** Vehicle state determines visual appearance per SKILL.md 3.6.3 */
+  vehicleState: 'in_motion' | 'parked' | null;
+  /** All characters currently present in the scene */
+  charactersPresent: string[];
+  /** Spatial positions (e.g., { "Daniel": "front/driving", "Cat": "behind/passenger" }) */
+  characterPositions: Record<string, string>;
+  /** Current gear state (e.g., "HELMET_DOWN", "HELMET_VISOR_UP", "HELMET_OFF") */
+  gearState: string | null;
+  /** Location description for prompt carry-forward */
+  location: string | null;
+  /** Lighting conditions for prompt carry-forward */
+  lighting: string | null;
+}
+
+/**
+ * Scene type template identification for prompt skeleton selection.
+ * Maps to reusable templates from Architect Memo Section 14.
+ */
+export interface SceneTypeTemplate {
+  /** Which template skeleton to use */
+  templateType: 'vehicle' | 'indoor_dialogue' | 'combat' | 'stealth' | 'establishing' | 'suit_up' | 'ghost' | 'generic';
+  /** Why this template was selected (for logging/debugging) */
+  templateReason: string;
+}
+
+/**
+ * Post-generation prompt validation result.
+ * Belt-and-suspenders enforcement: logs warnings, does NOT block generation.
+ */
+export interface PromptValidationResult {
+  beatId: string;
+  /** Estimated T5 token count (~4 chars/token) */
+  tokenCount: number;
+  /** True if token count exceeds 200 limit */
+  tokenBudgetExceeded: boolean;
+  /** Characters that should be in scene but are missing from prompt */
+  missingCharacters: string[];
+  /** True if vehicle should be in scene (in_motion) but is missing from prompt */
+  missingVehicle: boolean;
+  /** Fabricated terms found that are not in canonical descriptions */
+  forbiddenTermsFound: string[];
+  /** True if visor-down but hair/face descriptions present */
+  visorViolation: boolean;
+  /** FLUX when faces visible, ALTERNATE when all visors down */
+  modelRecommendation: 'FLUX' | 'ALTERNATE';
+  /** Reason for model recommendation */
+  modelRecommendationReason: string;
+  /** Detected scene type template */
+  sceneTemplate?: SceneTypeTemplate;
+  /** All validation warnings collected */
+  warnings: string[];
 }
 
 /**

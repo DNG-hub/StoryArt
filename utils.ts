@@ -94,6 +94,116 @@ export function postProcessAnalysis(analysis: AnalyzedEpisode): AnalyzedEpisode 
     return analysis;
 }
 
+// ============================================================================
+// Per-Scene Script Splitting (eliminates chunk-and-merge duplication bug)
+// ============================================================================
+
+export interface SceneScript {
+  sceneNumber: number;
+  title: string;
+  text: string;
+}
+
+/**
+ * Splits a standardized episode script into individual scenes by ===SCENE=== markers.
+ * Used for per-scene analysis to prevent duplicate scene entries from chunk merging.
+ */
+export function splitScriptByScenes(scriptText: string): SceneScript[] {
+  const scenes: SceneScript[] = [];
+  const sceneHeaderPattern = /===\s*SCENE\s+(\d+)\s*:\s*(.+?)\s*===/gi;
+
+  const matches = [...scriptText.matchAll(sceneHeaderPattern)];
+
+  if (matches.length === 0) {
+    return [{
+      sceneNumber: 1,
+      title: 'Full Script',
+      text: scriptText
+    }];
+  }
+
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    const sceneNumber = parseInt(match[1], 10);
+    const title = match[2].trim();
+    const startIndex = match.index!;
+    const endIndex = i < matches.length - 1 ? matches[i + 1].index! : scriptText.length;
+    const text = scriptText.substring(startIndex, endIndex).trim();
+    scenes.push({ sceneNumber, title, text });
+  }
+
+  return scenes;
+}
+
+/**
+ * Extracts episode number and title from the script header.
+ */
+export function parseEpisodeHeader(scriptText: string): { episodeNumber: number; title: string } {
+  const headerMatch = scriptText.match(/EPISODE:\s*(\d+)\s+TITLE:\s*(.+?)(?:\s*===|\n|$)/i);
+  if (headerMatch) {
+    return {
+      episodeNumber: parseInt(headerMatch[1], 10),
+      title: headerMatch[2].trim()
+    };
+  }
+  const epMatch = scriptText.match(/EPISODE:\s*(\d+)/i);
+  return {
+    episodeNumber: epMatch ? parseInt(epMatch[1], 10) : 1,
+    title: 'Unknown Episode'
+  };
+}
+
+/**
+ * Compacts Episode Context JSON for a single scene.
+ * Includes all episode-level characters but only the specific scene's location/artifacts.
+ */
+export function compactSceneContext(fullContextJson: string, sceneNumber: number): string {
+  try {
+    const fullContext = JSON.parse(fullContextJson);
+    if (!fullContext.episode || !Array.isArray(fullContext.episode.scenes)) {
+      return compactEpisodeContext(fullContextJson);
+    }
+
+    const sceneCtx = fullContext.episode.scenes.find(
+      (s: any) => s.scene_number === sceneNumber
+    );
+
+    if (!sceneCtx) {
+      console.warn(`compactSceneContext: Scene ${sceneNumber} not found in context, falling back to full episode`);
+      return compactEpisodeContext(fullContextJson);
+    }
+
+    const compact = {
+      episode: {
+        episode_number: fullContext.episode.episode_number,
+        episode_title: fullContext.episode.episode_title,
+        characters: fullContext.episode.characters?.map((character: any) => ({
+          character_name: character.character_name,
+          aliases: character.aliases,
+          base_trigger: character.base_trigger,
+          visual_description: character.visual_description
+        })) || [],
+        scenes: [{
+          scene_number: sceneCtx.scene_number,
+          scene_title: sceneCtx.scene_title,
+          location: {
+            name: sceneCtx.location?.name,
+            visual_description: sceneCtx.location?.visual_description,
+            artifacts: (sceneCtx.location?.artifacts || []).map((artifact: any) => ({
+              name: artifact.name,
+              prompt_fragment: artifact.prompt_fragment
+            }))
+          }
+        }]
+      }
+    };
+    return JSON.stringify(compact, null, 2);
+  } catch (error) {
+    console.error("Failed to compact scene context:", error);
+    return fullContextJson;
+  }
+}
+
 /**
  * Escapes RegExp special characters in a string.
  */
