@@ -50,6 +50,10 @@ export interface BeatPrompts {
   cinematic: SwarmUIPrompt;
   vertical?: SwarmUIPrompt; // Vertical (9:16) prompts for long-form storytelling based on beat analysis
   marketingVertical?: SwarmUIPrompt; // Vertical (9:16) prompts specifically for marketing, based on full episode analysis
+  /** Scene persistent state for continuity validation */
+  scenePersistentState?: ScenePersistentState;
+  /** Scene type template for validation */
+  sceneTemplate?: SceneTypeTemplate;
   /** Post-generation validation results (belt-and-suspenders enforcement) */
   validation?: PromptValidationResult;
 }
@@ -57,6 +61,7 @@ export interface BeatPrompts {
 export interface BeatAnalysis {
   beatId: string; // e.g., s1-b1
   beat_script_text: string; // The verbatim text content of the beat.
+  source_paragraph?: string; // The original narrative paragraph from the script this beat was extracted from.
   visualSignificance: 'High' | 'Medium' | 'Low';
   imageDecision: ImageDecision;
   cameraAngleSuggestion?: string;

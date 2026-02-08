@@ -136,6 +136,14 @@ const BeatAnalysisCard: React.FC<{
         <blockquote className="border-l-4 border-gray-600 pl-4 text-gray-400 italic mb-4 whitespace-pre-wrap">
             {beat.beat_script_text || 'No script text available'}
         </blockquote>
+        {(beat as any).source_paragraph && (
+            <details className="mb-4">
+                <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-400">Source Narrative</summary>
+                <blockquote className="border-l-4 border-blue-800 pl-4 text-gray-500 italic mt-2 text-sm whitespace-pre-wrap">
+                    {(beat as any).source_paragraph}
+                </blockquote>
+            </details>
+        )}
 
         <div className="space-y-3 text-sm">
             {beat.locationAttributes && Array.isArray(beat.locationAttributes) && beat.locationAttributes.length > 0 && (

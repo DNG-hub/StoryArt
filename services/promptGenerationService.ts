@@ -146,7 +146,9 @@ function validatePromptContinuity(
   const lowerPrompt = prompt.toLowerCase();
 
   // Check all present characters appear (by trigger word)
+  // Skip Ghost - non-physical entity that cannot be rendered in most beats
   for (const charName of persistentState.charactersPresent) {
+    if (charName.toLowerCase() === 'ghost') continue;
     const trigger = characterTriggers.get(charName);
     if (trigger && !lowerPrompt.includes(trigger.toLowerCase())) {
       missingCharacters.push(charName);
@@ -1430,6 +1432,16 @@ Without parentheses in dual scenes, FLUX causes attribute bleed (woman gets whit
 - On motorcycle: Daniel FRONT (driving), Cat BEHIND (passenger) — ALWAYS this arrangement
 - Both faces must be in frame for dual YOLO segments (visor-up scenes only)
 
+**CHARACTER TRIGGER MANDATORY (ZERO TOLERANCE):**
+EVERY character in \`charactersPresent\` MUST appear with their LoRA trigger in EVERY prompt.
+- NEVER reduce to "two figures", "two riders", "two people", or "two silhouettes"
+- Even with sealed helmets and no faces visible: "HSCEIA man" and "JRUMLV woman" MUST appear
+- FLUX needs the trigger to render correct body type, build, and anatomy
+- Helmet-sealed vehicle example: "HSCEIA man driving with JRUMLV woman seated behind him, both in sealed Wraith helmets"
+- NOT: "motorcycle with two riders in matching suits"
+- If a beat mentions a character by name, that character's trigger MUST be in the prompt
+- Ghost is the ONLY exception (no physical body to render)
+
 **CAT AS VISUAL ANCHOR (Director's Standing Note):**
 Cat is the visual center of gravity. The cinematographer frames her as an action heroine — powerful, capable, and physically compelling.
 - VISOR DOWN on motorcycle: rear three-quarter angle, silhouette emphasized, curves of suit catching light
@@ -1618,7 +1630,8 @@ medium shot, HSCEIA man (35, white hair, gray eyes, tactical vest, rifle slung) 
 
 **SCENE TYPE TEMPLATES (match beat to template, then fill specifics):**
 
-VEHICLE (motorcycle): \`[shot] from [angle], [vehicle] [state] on [road], [char1_position] in [suit_abbrev] and [helmet], [char2_position] in [suit_abbrev] and [helmet], [environment], [lighting], [color_grade]\`
+VEHICLE (motorcycle): \`[shot] from [angle], [vehicle] [state] on [road], HSCEIA man driving in [suit_abbrev] and [helmet], JRUMLV woman seated behind in [suit_abbrev] and [helmet], [environment], [lighting], [color_grade]\`
+- MANDATORY: Use LoRA triggers (HSCEIA man, JRUMLV woman) even with sealed helmets — NEVER "two riders" or "two figures"
 - Default: wide shot, low rear three-quarter angle (if Cat present). Riding = always visor DOWN, no face segments.
 
 INDOOR DIALOGUE: \`[shot], [depth], [char1] [room_position] [action/posture], [expression], and [char2] [room_position], [expression], [location], [lighting] <segments>\`
@@ -1630,8 +1643,8 @@ COMBAT/BREACH: \`[shot] from [angle], [char1] [combat_action] in [full_suit] wit
 STEALTH: \`[shot], [characters] moving tactically through [environment], [suit] with [helmet_DOWN], [posture], [lighting]\`
 - Visor DOWN, blue LED only, deep shadows, low light.
 
-ESTABLISHING: \`extreme wide shot, [location], [characters_tiny_if_present], [environmental_detail], [lighting], [atmosphere]\`
-- Location leads prompt. Characters small. No face segments.
+ESTABLISHING: \`extreme wide shot, [location], [TRIGGER characters_tiny_if_present], [environmental_detail], [lighting], [atmosphere]\`
+- Location leads prompt. Characters small. No face segments. Still use LoRA triggers even at distance.
 
 SUIT-UP: \`medium shot, shallow depth of field, [character] standing motionless in [full_suit_detail] vacuum-sealed, [hair_visible], [expression], [prep_area], [diagnostic_lighting]\`
 - Hair visible (no helmet). Face segments YES. Suit detail IS the subject.
@@ -2143,6 +2156,12 @@ Context Source: ${contextSource}`;
                 }
             }
             
+            // Build lookup from input beats to re-attach persistent state after Gemini response
+            const inputBeatLookup = new Map<string, any>();
+            for (const b of beatsWithStyleGuide) {
+                inputBeatLookup.set(b.beatId, b);
+            }
+
             // Post-process: Ensure correct steps and FLUX-specific parameters (Phase C optimization)
             // Now uses image_config from Episode Context when available (Phase 4 enhancement)
             const correctedBatch = batchResult.map(bp => {
@@ -2176,11 +2195,15 @@ Context Source: ${contextSource}`;
                     model: verticalParams.model,
                 } : undefined;
 
+                // Re-attach persistent state and template from input beats (not in Gemini response)
+                const inputBeat = inputBeatLookup.get(bp.beatId);
                 const corrected: BeatPrompts = {
                     beatId: bp.beatId,
                     cinematic: correctedCinematic,
                     vertical: correctedVertical,
                     marketingVertical: correctedMarketingVertical,
+                    scenePersistentState: inputBeat?.scenePersistentState,
+                    sceneTemplate: inputBeat?.sceneTemplate,
                 };
 
                 // Log if values were corrected from AI response to image_config values
@@ -2428,9 +2451,9 @@ Context Source: ${contextSource}`;
                 }
 
                 // Step 4: Post-generation validation (Architect Memo: belt-and-suspenders)
-                // Look up this beat's persistent state from the processed beats
-                const beatPersistentState = (bp as any).scenePersistentState as ScenePersistentState | undefined;
-                const beatSceneTemplate = (bp as any).sceneTemplate as SceneTypeTemplate | undefined;
+                // Persistent state and template are re-attached from input beats after Gemini response
+                const beatPersistentState = bp.scenePersistentState;
+                const beatSceneTemplate = bp.sceneTemplate;
                 const validation = runPostGenerationValidation(
                     processedCinematic,
                     bp.beatId,
