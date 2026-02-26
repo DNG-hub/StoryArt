@@ -78,13 +78,39 @@ const FABRICATION_REPLACEMENTS: [RegExp, string][] = [
 ];
 
 /**
+ * Detect whether the current episode uses Aegis suits by checking all characters'
+ * clothing_description and swarmui_prompt_override fields for "aegis" references.
+ * Returns true if any character in any scene references Aegis gear.
+ */
+function detectAegisEpisode(parsedEpisodeContext: any): boolean {
+  try {
+    const scenes = parsedEpisodeContext?.episode?.scenes;
+    if (!Array.isArray(scenes)) return false;
+    for (const scene of scenes) {
+      const allChars = [...(scene.characters || []), ...(scene.character_appearances || [])];
+      for (const char of allChars) {
+        const loc = char.location_context;
+        if (loc?.clothing_description && /aegis/i.test(loc.clothing_description)) return true;
+        if (loc?.swarmui_prompt_override && /aegis/i.test(loc.swarmui_prompt_override)) return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Sanitize a prompt override or generated prompt by replacing forbidden
  * fabrication terms with canonical Aegis vocabulary.
  * Acts as a safety net for stale cached data or Gemini non-compliance.
+ * @param isAegisContext - When false, skip Aegis-specific replacements (e.g. fatigues → Aegis biosuit)
  */
-function sanitizePromptOverride(text: string): string {
+function sanitizePromptOverride(text: string, isAegisContext: boolean = true): string {
   let sanitized = text;
   for (const [pattern, replacement] of FABRICATION_REPLACEMENTS) {
+    // Skip Aegis-specific replacements when not in an Aegis context
+    if (!isAegisContext && replacement.toLowerCase().includes('aegis')) continue;
     sanitized = sanitized.replace(pattern, replacement);
   }
   // Clean up double commas/spaces from removals
@@ -426,7 +452,8 @@ function injectMissingCharacterOverrides(
   parsedEpisodeContext: any,
   sceneNumber: number,
   shotType: string,
-  helmetState: string | null | undefined
+  helmetState: string | null | undefined,
+  isAegisContext: boolean = true
 ): { prompt: string; injectedCharacters: string[]; vehicleInjected: boolean } {
   if (!persistentState) {
     return { prompt, injectedCharacters: [], vehicleInjected: false };
@@ -475,7 +502,7 @@ function injectMissingCharacterOverrides(
 
     // Try to get full override from Episode Context
     const fullOverride = parsedEpisodeContext && sceneNumber
-      ? getCharacterOverrideForScene(parsedEpisodeContext, sceneNumber, trigger)
+      ? getCharacterOverrideForScene(parsedEpisodeContext, sceneNumber, trigger, isAegisContext)
       : null;
 
     if (fullOverride) {
@@ -492,7 +519,14 @@ function injectMissingCharacterOverrides(
       const isVehicleScene = persistentState.vehicleState === 'in_motion';
       const isHelmetDown = normalizedHelmet === 'sealed';
 
-      if (isVehicleScene && position) {
+      // Try clothing_description as secondary fallback before hardcoded default
+      const clothingDesc = parsedEpisodeContext && sceneNumber
+        ? getCharacterClothingForScene(parsedEpisodeContext, sceneNumber, trigger)
+        : null;
+
+      if (clothingDesc) {
+        injection = `${subjectPrefix} wearing ${clothingDesc}`;
+      } else if (isVehicleScene && position) {
         if (position.includes('driving') || position.includes('front')) {
           injection = `${subjectPrefix} driving`;
         } else if (position.includes('passenger') || position.includes('behind')) {
@@ -503,8 +537,11 @@ function injectMissingCharacterOverrides(
         if (isHelmetDown) injection += ' in sealed Wraith helmet';
       } else if (isHelmetDown) {
         injection = `${subjectPrefix} in sealed Wraith helmet`;
-      } else {
+      } else if (isAegisContext) {
         injection = `${subjectPrefix} in skin-tight matte charcoal-black Aegis suit`;
+      } else {
+        // Generic fallback — just trigger + gender, no clothing assumption
+        injection = subjectPrefix;
       }
       console.log(`[TriggerInjection] ${beatId}: Fallback injection for ${charName} -> "${injection}"`);
     }
@@ -1038,7 +1075,8 @@ function getCharacterClothingForScene(
 function getCharacterOverrideForScene(
     episodeContext: any,
     sceneNumber: number,
-    characterTrigger: string
+    characterTrigger: string,
+    isAegisContext: boolean = true
 ): string | null {
     try {
         const scene = episodeContext.episode?.scenes?.find(
@@ -1051,7 +1089,7 @@ function getCharacterOverrideForScene(
             (c: any) => c.base_trigger === characterTrigger
         );
         if (charFromScene?.location_context?.swarmui_prompt_override) {
-            return sanitizePromptOverride(charFromScene.location_context.swarmui_prompt_override);
+            return sanitizePromptOverride(charFromScene.location_context.swarmui_prompt_override, isAegisContext);
         }
 
         // Check scene.character_appearances
@@ -1059,7 +1097,7 @@ function getCharacterOverrideForScene(
             (c: any) => c.base_trigger === characterTrigger
         );
         if (charFromAppearances?.location_context?.swarmui_prompt_override) {
-            return sanitizePromptOverride(charFromAppearances.location_context.swarmui_prompt_override);
+            return sanitizePromptOverride(charFromAppearances.location_context.swarmui_prompt_override, isAegisContext);
         }
 
         return null;
@@ -1604,6 +1642,14 @@ A prompt must describe ONLY what a camera can directly observe. If a detail cann
         console.log('[Phase B] No storyId provided, skipping story context enhancement');
     }
 
+    // Detect whether this episode uses Aegis suits (data-driven, not hardcoded)
+    let isAegisEpisode = false;
+    try {
+        const parsedForAegisCheck = JSON.parse(enhancedContextJson);
+        isAegisEpisode = detectAegisEpisode(parsedForAegisCheck);
+    } catch { /* leave as false */ }
+    console.log(`[AegisDetection] isAegisEpisode=${isAegisEpisode}`);
+
     // Create system instruction with context source information
     const systemInstructionLength = storyContextAvailable ? '[with episode context]' : '[without episode context]';
     console.log(`[Phase B] Building system instruction ${systemInstructionLength}`);
@@ -1684,7 +1730,7 @@ Every prompt MUST begin with the shot type from \`styleGuide.camera\`:
 
 **Example:**
 - \`styleGuide.camera\`: "close-up shot, shallow depth of field"
-- Prompt starts: \`close-up shot, JRUMLV woman (30 years old...\`
+- Prompt starts: \`close-up shot, [base_trigger] ([VERBATIM visual_description from Episode Context])...\`
 
 **LIGHTING (from styleGuide):**
 - Use \`beat.styleGuide.lighting\` for lighting direction (e.g., "dramatic rim light", "soft natural lighting")
@@ -1700,10 +1746,13 @@ Every prompt MUST begin with the shot type from \`styleGuide.camera\`:
 
 **DESCRIPTION SCALING BY SHOT TYPE (MANDATORY):**
 Suit/gear description length MUST scale with shot proximity:
-- CLOSE-UP: Full canonical description (material, texture, LED color, mesh, ribbed reinforcement)
+${isAegisEpisode ? `- CLOSE-UP: Full canonical description (material, texture, LED color, mesh, ribbed reinforcement)
 - MEDIUM SHOT: Standard (suit color, hexagonal weave, helmet state, LED underglow, primary accessory)
 - WIDE SHOT: ~15 tokens per character ("skin-tight matte charcoal-black Aegis suit with hexagonal weave and sealed Wraith helmet")
-- EXTREME WIDE: ~8 tokens combined ("matching matte-black tactical suits and sealed helmets")
+- EXTREME WIDE: ~8 tokens combined ("matching matte-black tactical suits and sealed helmets")` : `- CLOSE-UP: Full canonical description from swarmui_prompt_override (material, texture, accessories)
+- MEDIUM SHOT: Standard (clothing color, key features, primary accessory)
+- WIDE SHOT: ~15 tokens per character (core clothing + silhouette)
+- EXTREME WIDE: ~8 tokens combined (brief clothing summary)`}
 
 FIRST, check for \`swarmui_prompt_override\`:
 - Find in: \`character.location_context.swarmui_prompt_override\`
@@ -1717,14 +1766,15 @@ ONLY if swarmui_prompt_override is empty/missing, build from individual fields:
 1. **[TRIGGER]**: Character's \`base_trigger\` (e.g., "HSCEIA man", "JRUMLV woman")
    - Find in: \`episode.scenes[N].characters[].base_trigger\` or \`episode.characters[].base_trigger\`
 
-2. **[AGE]**: Character age + "years old" (e.g., "35 years old")
-   - Find in: \`character.location_context.age_at_context\` or derive from character description
-
-3. **[PHYSICAL]**: Physical attributes from character (e.g., "with short cropped white hair, fit athletic build")
-   - Find in: \`character.location_context.physical_description\` or \`character.visual_description\`
-
-4. **[CLOTHING]**: Location-specific clothing (e.g., "wearing tactical vest over olive shirt")
-   - Find in: \`character.location_context.clothing_description\`
+2. **[PHYSICAL + CLOTHING]**: Character appearance from the Episode Context JSON
+   - **CRITICAL: Copy the visual_description or physical_description text VERBATIM into the prompt**
+   - Do NOT summarize, abbreviate, paraphrase, or drop any details
+   - Find in (priority order):
+     1. \`episode.scenes[N].character_appearances[].location_context.physical_description\`
+     2. \`episode.characters[].location_contexts[].physical_description\`
+     3. \`episode.characters[].visual_description\`
+   - This text is professionally curated for image generation - trust it exactly as written
+   - Example: if visual_description says "35 years old, 6'2\\" imposing muscular build, stark white military-cut hair, green eyes. Wearing a fitted black long-sleeve fitted base layer with sleeves stretched over muscular biceps, MultiCam woodland camouflage tactical pants." then the prompt MUST contain ALL of those details, not a shortened version
 
 5. **[ACTION]**: What the character is DOING in this beat
    - Extract from: \`beat.beat_script_text\` - identify the primary visual action
@@ -1793,7 +1843,7 @@ Cat is the visual center of gravity. The cinematographer frames her as an action
 - VISOR DOWN standing: low angle, shape against environment/sky
 - VISOR UP / face visible: face is primary anchor, medium close-up or close-up, eye level or slight low angle
 - In motion: rear three-quarter or side angle, athletic silhouette
-- The Aegis suit is skin-tight — frame to show athletic hourglass figure, defined waist. The suit does the work.
+${isAegisEpisode ? `- The Aegis suit is skin-tight — frame to show athletic hourglass figure, defined waist. The suit does the work.` : `- Frame to show athletic build and defined silhouette through clothing fit.`}
 - NOT pin-up posing. She never poses for the camera. Femininity serves characterization, not decoration.
 
 ---
@@ -1944,30 +1994,32 @@ wide interior shot, cramped converted trailer, salvaged server racks, multiple m
 
 **CHARACTER SHOT EXAMPLE (Parentheses Grouping):**
 \`\`\`
-medium shot, HSCEIA man (35 years old, short cropped white hair, gray eyes, athletic build, tactical vest over olive shirt) examining tablet, neutral expression intense gaze, sterile corridor, server racks, blinking status lights, harsh fluorescent lighting, volumetric dust <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
+[SHOT_TYPE], [TRIGGER] ([VERBATIM visual_description from Episode Context]) [ACTION], [EXPRESSION], [LOCATION visual_description], [LIGHTING], [ATMOSPHERE] <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
 \`\`\`
 
 **Structure breakdown (showing styleGuide mapping):**
-- Shot type: \`medium shot,\` ← FROM \`beat.styleGuide.camera\`
-- Trigger + Parens: \`HSCEIA man (35 years old, short cropped white hair, gray eyes, athletic build, tactical vest over olive shirt)\`
-- Action: \`examining tablet,\` ← FROM \`beat.fluxPose\` or narrative
-- Expression: \`neutral expression intense gaze,\` ← FROM \`beat.fluxExpression\` or narrative
-- Location (body): \`sterile corridor, server racks, blinking status lights,\`
-- Lighting (body): \`harsh fluorescent lighting,\` ← FROM \`beat.styleGuide.lighting\`
-- Environment FX: \`volumetric dust\` ← FROM \`beat.styleGuide.environmentFX\`
+- Shot type: \`[SHOT_TYPE],\` ← FROM \`beat.styleGuide.camera\`
+- Trigger + Parens: \`[TRIGGER] (FULL visual_description from Episode Context JSON - copy VERBATIM, NEVER abbreviate or summarize)\`
+- Action: \`[ACTION],\` ← FROM \`beat.fluxPose\` or narrative
+- Expression: \`[EXPRESSION],\` ← FROM \`beat.fluxExpression\` or narrative
+- Location (body): copied VERBATIM from \`episode.scenes[N].location.visual_description\`
+- Lighting (body): ← FROM \`beat.styleGuide.lighting\`
+- Environment FX: ← FROM \`beat.styleGuide.environmentFX\`
 - Segment: \`<segment:...>\`
 
 **DUAL CHARACTER EXAMPLE:**
 \`\`\`
-medium shot, HSCEIA man (35, white hair, gray eyes, tactical vest, rifle slung) on left and JRUMLV woman (28, tactical bun, green eyes, tactical vest) on right, professional distance, bombed server room, cold blue emergency glow <segment:yolo-face_yolov9c.pt-0,0.35,0.5> <segment:yolo-face_yolov9c.pt-1,0.35,0.5>
+[SHOT_TYPE], [TRIGGER_1] ([VERBATIM visual_description for character 1]) on left and [TRIGGER_2] ([VERBATIM visual_description for character 2]) on right, [INTERACTION], [LOCATION visual_description], [LIGHTING] <segment:yolo-face_yolov9c.pt-0,0.35,0.5> <segment:yolo-face_yolov9c.pt-1,0.35,0.5>
 \`\`\`
+
+**CRITICAL**: The text inside parentheses after each trigger MUST be the EXACT visual_description from the Episode Context JSON for that character. Do NOT summarize, shorten, paraphrase, or rearrange the description. It is pre-written for image generation fidelity.
 
 **RULES:**
 1. NO character names (Cat, Daniel, etc.) - ONLY use base_trigger
 2. NO location names (NHIA Facility 7, CDC, NHIA Facility 7, etc.) - use visual elements only
 3. NO contradictory moods (cannot be "relaxed" AND "tense")
 4. NO weighted syntax like (((term:1.5))) - use natural language
-5. Keep prompts under 200 tokens
+5. Keep prompts under 350 tokens (character visual_description text is EXEMPT from this limit - never abbreviate character appearance to save tokens)
 6. NO narrative elements (backstory, psychology, symbolism, "former", "what it used to be")
 7. NO internal states ("haunted by loss", "analytical mind") - only observable expressions
 
@@ -2027,11 +2079,14 @@ Reinvest those ~30 freed tokens into suit material detail and spatial positionin
 5. Natural language sentences, NOT comma-separated keyword lists
 6. Every element must be camera-observable (no emotions, story context, sound, internal states)
 
-**CANONICAL DESCRIPTIONS ONLY (ZERO TOLERANCE):**
+${isAegisEpisode ? `**CANONICAL DESCRIPTIONS ONLY (ZERO TOLERANCE):**
 NEVER fabricate gear details. Aegis is a BIOSUIT, not military tactical gear.
 FORBIDDEN: "tactical sensor arrays", "weapon mounting points", "combat webbing", "ammunition pouches", "geometric sensor patterns", "biometric monitors on forearms", "reinforced joints at knees and elbows"
 CANONICAL: "skin-tight matte charcoal-black Aegis suit with hexagonal weave pattern", "molded armored bust panels with [COLOR] LED underglow" (Cat), "molded chest armor plates with [COLOR] LED underglow" (Daniel), "Wraith helmet fully sealed with dark opaque visor"
-NEVER use: tactical vest, cargo pockets, loose fitting, BDU, fatigues, combat webbing, ammunition pouches.
+NEVER use: tactical vest, cargo pockets, loose fitting, BDU, fatigues, combat webbing, ammunition pouches.` : `**USE DATABASE CLOTHING DESCRIPTIONS (ZERO TOLERANCE):**
+NEVER fabricate clothing or gear details. Use ONLY the clothing described in swarmui_prompt_override or clothing_description from the episode context.
+FORBIDDEN: "tactical sensor arrays", "weapon mounting points", "combat webbing", "ammunition pouches", "geometric sensor patterns", "biometric monitors on forearms", "reinforced joints at knees and elbows"
+NEVER use: tactical vest, cargo pockets, BDU, combat webbing, ammunition pouches.`}
 
 **PROMPT COMPACTION (Token Efficiency):**
 
@@ -2068,7 +2123,7 @@ What remains: Everything the camera can see.
 
 **TACTICAL GEAR (Database-Driven):**
 
-Character gear (Aegis suits, helmets, loadouts) comes from \`swarmui_prompt_override\`.
+Character gear (${isAegisEpisode ? 'Aegis suits, helmets, loadouts' : 'clothing, accessories, gear'}) comes from \`swarmui_prompt_override\`.
 The database provides complete, pre-assembled gear descriptions - use them directly.
 
 **HELMET STATE DETECTION:**
@@ -2768,7 +2823,8 @@ Context Source: ${contextSource}`;
                             const originalOverride = getCharacterOverrideForScene(
                                 contextObj,
                                 sceneNumber,
-                                charCtx.base_trigger
+                                charCtx.base_trigger,
+                                isAegisEpisode
                             );
                             if (originalOverride) {
                                 const beforeSegments = processedCinematic;
@@ -2815,7 +2871,7 @@ Context Source: ${contextSource}`;
 
                 // Step 3.5: Sanitize forbidden fabrication terms from generated prompt
                 const preSanitize = processedCinematic;
-                processedCinematic = sanitizePromptOverride(processedCinematic);
+                processedCinematic = sanitizePromptOverride(processedCinematic, isAegisEpisode);
                 if (preSanitize !== processedCinematic) {
                     console.log(`[Sanitize] ${bp.beatId}: Removed/replaced forbidden terms`);
                 }
@@ -2836,7 +2892,8 @@ Context Source: ${contextSource}`;
                     contextObj,
                     sceneNumber || 1,
                     detectedShotType,
-                    beatHelmetState
+                    beatHelmetState,
+                    isAegisEpisode
                 );
                 processedCinematic = injectionResult.prompt;
 
