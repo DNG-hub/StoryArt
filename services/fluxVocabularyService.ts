@@ -453,31 +453,31 @@ export const SCENE_ROLE_TREATMENT: Record<SceneRole, SceneRoleVisualTreatment> =
     shotPreference: 'Wide/establishing -> medium',
     lightingPreference: 'Natural, setting mood',
     pacing: 'measured',
-    beatCountRange: [45, 60], // 15-20 min standalone video, 15-30 sec per beat
+    beatCountRange: [35, 45], // 15-20 min standalone video, 15-30 sec per beat
   },
   development: {
     shotPreference: 'Mixed variety',
     lightingPreference: 'Standard',
     pacing: 'measured',
-    beatCountRange: [45, 60], // 15-20 min standalone video
+    beatCountRange: [35, 45], // 15-20 min standalone video
   },
   escalation: {
     shotPreference: 'Tightening over scene',
     lightingPreference: 'Building contrast',
     pacing: 'brisk',
-    beatCountRange: [45, 60], // 15-20 min standalone video
+    beatCountRange: [35, 45], // 15-20 min standalone video
   },
   climax: {
     shotPreference: 'Close-ups, dramatic angles',
     lightingPreference: 'High contrast, dramatic',
     pacing: 'frenetic',
-    beatCountRange: [45, 60], // 15-20 min standalone video
+    beatCountRange: [35, 45], // 15-20 min standalone video
   },
   resolution: {
     shotPreference: 'Widening out',
     lightingPreference: 'Softer, calming',
     pacing: 'slow',
-    beatCountRange: [45, 60], // 15-20 min standalone video
+    beatCountRange: [35, 45], // 15-20 min standalone video
   },
 };
 

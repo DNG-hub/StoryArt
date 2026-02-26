@@ -30,7 +30,7 @@ const episodeAnalysisSchema = {
           },
           beats: {
             type: 'array',
-            description: 'A list of distinct narrative beats that structure the scene. Generate 30-40 beats per scene (target: 35 beats) to capture every significant story moment with fine granularity.',
+            description: 'A list of distinct narrative beats that structure the scene. Generate 35-45 beats per scene (target: 40 beats) to capture every significant story moment with fine granularity.',
             items: {
               type: 'object',
               properties: {
@@ -104,10 +104,10 @@ export const analyzeScriptWithProviderManager = async (
 **Your Detailed Workflow:**
 
 1.  **Holistic Scene Analysis & Beat Segmentation (CRITICAL TASK):**
-    *   **Objective:** Your main task is to analyze each scene and segment it into **MANY distinct narrative beats**. You MUST generate at least 25 beats per scene, ideally 30-40 beats. A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development. Capture EVERY significant moment, dialogue exchange, action, and character interaction with COMPLETE DETAIL.
+    *   **Objective:** Your main task is to analyze each scene and segment it into **MANY distinct narrative beats**. You MUST generate at least 35 beats per scene, ideally 35-45 beats (target 40). A beat is NOT a single line; it is a complete unit of narrative action, perspective, or thematic development. Capture EVERY significant moment, dialogue exchange, action, and character interaction with COMPLETE DETAIL.
     *   **Beat Definition:** A **Beat** advances plot, character, or theme, and can be represented by a single key image. It is a significant narrative or emotional inflection point. Beats should be FINE-GRAINED — each individual dialogue line, reaction, gesture, or visual change is its own beat.
     *   **Pacing Rule:** Each beat you define should correspond to approximately **15-30 seconds** of narrative time. For NEW_IMAGE beats, target **15-25 seconds** to maintain rapid visual pacing. For REUSE_IMAGE beats, use **10-20 seconds** since they don't require new visual processing. You must estimate this and populate \`beat_duration_estimate_sec\`.
-    *   **Segmentation Process:** Read an entire scene carefully. You MUST identify at least 25 distinct beats, ideally 30-40 beats. Break down EVERY dialogue line into its own beat. Break down EVERY action, reaction, gesture, character entrance/exit, emotional shift, and plot development into separate beats. Each beat should contain 1-3 sentences of script text. Be MAXIMALLY granular — every single dialogue line gets its own beat, every reaction shot gets its own beat, every new camera angle or visual change gets its own beat. Include ALL action lines and dialogue across beats.
+    *   **Segmentation Process:** Read an entire scene carefully. You MUST identify at least 35 distinct beats, ideally 35-45 beats (target 40). Break down EVERY dialogue line into its own beat. Break down EVERY action, reaction, gesture, character entrance/exit, emotional shift, and plot development into separate beats. Each beat should contain 1-3 sentences of script text. Be MAXIMALLY granular — every single dialogue line gets its own beat, every reaction shot gets its own beat, every new camera angle or visual change gets its own beat. Include ALL action lines and dialogue across beats.
 
 2.  **Populate Beat Metadata (CORE TASK):** For every single beat you have identified:
     a.  **Identifiers:** Assign a unique \`beatId\` ('sX-bY') and a sequential \`beat_number\`.
@@ -129,7 +129,7 @@ export const analyzeScriptWithProviderManager = async (
         i.  **Look Back:** Review all *previous* beats in the script.
         ii. **Decide the Type:**
             - **'NEW_IMAGE':** Choose this if the beat represents a distinct visual moment: a new location, a character's first appearance, a significant change in composition, a key action, an emotional revelation, etc.
-            - **'REUSE_IMAGE':** Choose this if the visual scene is substantially identical to a previous beat. The same characters, same location, same general framing—but perhaps a continuation of dialogue or subtle action. This saves image generation costs. Target: 20-30 NEW_IMAGE beats per scene, with remaining beats as REUSE_IMAGE for efficiency.
+            - **'REUSE_IMAGE':** Choose this if the visual scene is substantially identical to a previous beat. The same characters, same location, same general framing—but perhaps a continuation of dialogue or subtle action. This saves image generation costs. Target: 28-36 NEW_IMAGE beats per scene, with 7-12 REUSE_IMAGE beats for efficiency.
             - **'NO_IMAGE':** Rarely used. For beats with no visual component at all (e.g., pure internal monologue with no character shown).
         iii. **Provide Justification:** Write a concise 'reason' for your decision.
         iv. **Create the Link (CRITICAL):** If your 'type' is 'REUSE_IMAGE', you MUST populate 'reuseSourceBeatId' with the 'beatId' from the earlier beat whose image you are reusing. This is not optional.

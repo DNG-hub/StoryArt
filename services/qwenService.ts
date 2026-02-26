@@ -16,9 +16,9 @@ export const analyzeScriptWithQwen = async (
 - Each beat MUST include full cinematographic direction in \`cameraAngleSuggestion\`.
 
 **SCENE TARGETS:**
-- Total beats per scene: 45-60 (target 50)
-- NEW_IMAGE: 37-50 per scene
-- REUSE_IMAGE: 8-15 per scene (never 2+ consecutive)
+- Total beats per scene: 35-45 (target 40)
+- NEW_IMAGE: 28-36 per scene
+- REUSE_IMAGE: 7-12 per scene (never 2+ consecutive)
 - Beat duration: 15-30 sec
 
 **CINEMATOGRAPHIC DIRECTION (REQUIRED):**
@@ -30,9 +30,9 @@ Example: "medium close-up, three-quarter view, shallow depth of field, dramatic 
 2.  **Visually-Focused Episode Context JSON:** Visual data for characters and locations.
 
 **Workflow:**
-1.  Decompose the scene into **45-60 visual moments**. Think like a cinematographer.
+1.  Decompose the scene into **35-45 visual moments** (target 40). Think like a cinematographer.
 2.  For each beat: populate identifiers, visual content, narrative analysis, cinematographic direction, and image decision.
-3.  Image decisions: NEW_IMAGE (default, 37-50/scene), REUSE_IMAGE (8-15/scene, never 2+ consecutive), NO_IMAGE (0-2 max).
+3.  Image decisions: NEW_IMAGE (default, 28-36/scene), REUSE_IMAGE (7-12/scene, never 2+ consecutive), NO_IMAGE (0-2 max).
 
 **Output:** Single JSON object adhering to the provided schema.`;
 
@@ -60,7 +60,7 @@ Example: "medium close-up, three-quarter view, shallow depth of field, dramatic 
             },
             beats: {
               type: "array",
-              description: "A list of 45-60 visual moment beats per scene. Each beat = one camera composition (one image on screen for 15-30 seconds).",
+              description: "A list of 35-45 visual moment beats per scene (target 40). Each beat = one camera composition (one image on screen for 15-30 seconds).",
               items: {
                 type: "object",
                 properties: {
