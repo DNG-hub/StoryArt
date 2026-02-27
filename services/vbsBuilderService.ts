@@ -45,6 +45,13 @@ export async function buildVisualBeatSpec(
   const locationChanged = previousBeat &&
     (beat.resolvedLocationId !== previousBeat.resolvedLocationId);
 
+  // Update persistent state with characters present in this beat
+  // Beat has charactersPresent from analysis; update state before building subjects
+  const beatCharacters = (beat as any).charactersPresent || [];
+  if (beatCharacters.length > 0) {
+    persistentState.charactersPresent = beatCharacters;
+  }
+
   // Determine model route: FLUX if any face visible, ALTERNATE if all visors down
   const subjects = buildSubjects(
     beat,
