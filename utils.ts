@@ -31,11 +31,38 @@ export function compactEpisodeContext(fullContextJson: string): string {
           character_name: character.character_name,
           aliases: character.aliases,
           base_trigger: character.base_trigger,
-          visual_description: character.visual_description
+          visual_description: character.visual_description,
+          // Multi-phase support (v0.20): phase labels and triggers for beat analysis
+          available_phases: (character.location_contexts || [])
+            .reduce((phases: any[], context: any) => {
+              const phaseLabel = context.context_phase || 'default';
+              // Avoid duplicate phases
+              if (!phases.some(p => p.phase === phaseLabel)) {
+                phases.push({
+                  phase: phaseLabel,
+                  trigger: context.phase_trigger_text || null
+                });
+              }
+              return phases;
+            }, [])
         })) || [],
         scenes: fullContext.episode.scenes.map((scene: any) => ({
           scene_number: scene.scene_number,
           scene_title: scene.scene_title,
+          character_appearances: (scene.character_appearances || []).map((appearance: any) => ({
+            character_name: appearance.character_name,
+            available_phases: (appearance.phases || [appearance.location_context])
+              .map((phase: any) => ({
+                phase: phase.context_phase || 'default',
+                trigger: phase.phase_trigger_text || null
+              }))
+              .reduce((unique: any[], phase: any) => {
+                if (!unique.some(p => p.phase === phase.phase)) {
+                  unique.push(phase);
+                }
+                return unique;
+              }, [])
+          })),
           location: {
             name: scene.location?.name,
             visual_description: scene.location?.visual_description,

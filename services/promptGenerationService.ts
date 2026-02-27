@@ -500,9 +500,10 @@ function injectMissingCharacterOverrides(
 
     let injection = '';
 
-    // Try to get full override from Episode Context
+    // Try to get full override from Episode Context (multi-phase support v0.20)
+    const characterPhase = persistentState.characterPhases[charName] || 'default';
     const fullOverride = parsedEpisodeContext && sceneNumber
-      ? getCharacterOverrideForScene(parsedEpisodeContext, sceneNumber, trigger, isAegisContext)
+      ? getCharacterOverrideForScene(parsedEpisodeContext, sceneNumber, trigger, isAegisContext, characterPhase)
       : null;
 
     if (fullOverride) {
@@ -1076,7 +1077,8 @@ function getCharacterOverrideForScene(
     episodeContext: any,
     sceneNumber: number,
     characterTrigger: string,
-    isAegisContext: boolean = true
+    isAegisContext: boolean = true,
+    phase: string = 'default'
 ): string | null {
     try {
         const scene = episodeContext.episode?.scenes?.find(
@@ -1092,12 +1094,24 @@ function getCharacterOverrideForScene(
             return sanitizePromptOverride(charFromScene.location_context.swarmui_prompt_override, isAegisContext);
         }
 
-        // Check scene.character_appearances
+        // Check scene.character_appearances (multi-phase support v0.20)
         const charFromAppearances = scene.character_appearances?.find(
             (c: any) => c.base_trigger === characterTrigger
         );
-        if (charFromAppearances?.location_context?.swarmui_prompt_override) {
-            return sanitizePromptOverride(charFromAppearances.location_context.swarmui_prompt_override, isAegisContext);
+        if (charFromAppearances) {
+            // Multi-phase support: try to find matching phase first
+            if (charFromAppearances.phases && Array.isArray(charFromAppearances.phases)) {
+                const phaseMatch = charFromAppearances.phases.find((p: any) => p.context_phase === phase)
+                    ?? charFromAppearances.phases.find((p: any) => p.context_phase === 'default')
+                    ?? charFromAppearances.phases[0];
+                if (phaseMatch?.swarmui_prompt_override) {
+                    return sanitizePromptOverride(phaseMatch.swarmui_prompt_override, isAegisContext);
+                }
+            }
+            // Fallback to single location_context
+            if (charFromAppearances.location_context?.swarmui_prompt_override) {
+                return sanitizePromptOverride(charFromAppearances.location_context.swarmui_prompt_override, isAegisContext);
+            }
         }
 
         return null;
@@ -2817,20 +2831,22 @@ Context Source: ${contextSource}`;
                 const sceneNumber = sceneMatch ? parseInt(sceneMatch[1]) : null;
 
                 if (sceneNumber) {
-                    // Find which character's trigger appears in this prompt and get their override
+                    // Find which character's trigger appears in this prompt and get their override (multi-phase v0.20)
                     for (const charCtx of characterContexts) {
                         if (processedCinematic.includes(charCtx.base_trigger)) {
+                            const charPhase = bp.scenePersistentState?.characterPhases?.[charCtx.character_name] || 'default';
                             const originalOverride = getCharacterOverrideForScene(
                                 contextObj,
                                 sceneNumber,
                                 charCtx.base_trigger,
-                                isAegisEpisode
+                                isAegisEpisode,
+                                charPhase
                             );
                             if (originalOverride) {
                                 const beforeSegments = processedCinematic;
                                 processedCinematic = applyDatabaseSegments(processedCinematic, originalOverride);
                                 if (beforeSegments !== processedCinematic) {
-                                    console.log(`[Segments] Database segments applied for ${charCtx.character_name} in beat ${bp.beatId}`);
+                                    console.log(`[Segments] Database segments applied for ${charCtx.character_name} in beat ${bp.beatId} (phase: ${charPhase})`);
                                 }
                             }
                             break; // Only apply for first matched character (primary subject)

@@ -143,6 +143,18 @@ const responseSchema = {
                     description: "An array of `prompt_fragment` strings extracted from the most relevant `artifacts` in the Episode Context JSON that apply to this specific beat.",
                     items: { type: Type.STRING }
                 },
+                phaseTransitions: {
+                    type: Type.ARRAY,
+                    description: "Multi-phase character appearance support (v0.20). List of character appearance phase transitions that occur in this beat. Each transition specifies which character transitions to which appearance phase (e.g., 'transit' to 'arrival' or 'arrival' to 'settled'). Only populate when the narrative explicitly describes the transition (arriving, changing clothes, suiting up, etc.). Leave empty if no phase transitions occur.",
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        character: { type: Type.STRING, description: "The name of the character who is transitioning" },
+                        toPhase: { type: Type.STRING, description: "The appearance phase this character transitions TO (e.g., 'transit', 'arrival', 'settled', 'departure', or custom phase label)" }
+                      },
+                      required: ['character', 'toPhase']
+                    }
+                },
               },
               required: [
                 'beatId', 'beat_number', 'beat_title', 'beat_type', 'narrative_function', 'setting',
@@ -356,6 +368,12 @@ export const analyzeScript = async (
         *   \`visual_anchor\`: Describe the single most powerful image that represents this beat.
         *   \`transition_trigger\`: What event in this beat leads to the next one?
         *   \`locationAttributes\`: From the Episode Context's 'artifacts' for the current scene's location, you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's action and populate the array. This is mandatory for visual consistency. **USE THE RICH LOCATION DATA:** Include atmosphere descriptions, environmental details, key features, and artifact prompt fragments from the detailed location context provided. Pay special attention to 'atmosphere', 'atmosphere_category', 'geographical_location', 'time_period', and rich artifact descriptions with their 'prompt_fragment' values.
+    f.  **Character Appearance Phase Transitions (v0.20 - Multi-Phase Support):**
+        *   Some locations may have multiple appearance phases for a character (e.g., 'transit', 'arrival', 'settled'). The Episode Context's 'character_appearances' includes 'available_phases' for each character.
+        *   When the narrative text explicitly describes a phase transition (e.g., "Cat arrives and dismounts," "Daniel changes into tactical gear," "she removes her helmet"), populate \`phaseTransitions\` with the character name and the phase they transition TO.
+        *   Example: If a beat describes "Cat parks the motorcycle and enters the building," this is a transition from 'transit' to 'arrival'. You would add: \`{ character: "Cat", toPhase: "arrival" }\`.
+        *   Only populate \`phaseTransitions\` when the narrative explicitly describes the transition. Do NOT guess or infer transitions from context alone.
+        *   Leave \`phaseTransitions\` empty if no phase transitions occur in the beat.
     e.  **Image Decision (Continuity Task):**
         i.  **Look Back:** Review all *previous* beats in the script.
         ii. **Decide the Type:**

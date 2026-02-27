@@ -170,7 +170,7 @@ export async function getCharacterLocationData(storyId: string): Promise<Databas
   const cacheKey = `character_locations_${storyId}`;
   const cached = getCachedData(cacheKey);
   if (cached) return cached;
-  
+
   const query = `
     SELECT clc.id, clc.character_id, c.name as character_name,
            clc.location_arc_id, loc.name as location_name,
@@ -178,17 +178,21 @@ export async function getCharacterLocationData(storyId: string): Promise<Databas
            clc.clothing_description, clc.hair_description, clc.demeanor_description,
            clc.swarmui_prompt_override, clc.lora_weight_adjustment,
            clc.helmet_fragment_off, clc.helmet_fragment_visor_up,
-           clc.helmet_fragment_visor_down, clc.face_segment_rule
+           clc.helmet_fragment_visor_down, clc.face_segment_rule,
+           clc.context_phase, clc.phase_trigger_text
     FROM character_location_contexts clc
     JOIN characters c ON clc.character_id = c.id
     JOIN location_arcs loc ON clc.location_arc_id = loc.id
     WHERE c.story_id = $1
-    ORDER BY clc.created_at
+    ORDER BY clc.character_id, clc.location_arc_id,
+             CASE WHEN clc.context_phase = 'default' THEN 0 ELSE 1 END DESC,
+             clc.context_phase ASC,
+             clc.created_at
   `;
-  
+
   const results = await queryDatabase(query, [storyId]);
   setCachedData(cacheKey, results);
-  
+
   return results;
 }
 
@@ -270,7 +274,7 @@ export async function generateEnhancedEpisodeContext(
       return acc;
     }, {} as Record<string, DatabaseCharacterLocationData[]>);
 
-    // Create enhanced characters with location contexts
+    // Create enhanced characters with location contexts (multi-phase support)
     const characters: CharacterContext[] = [];
     const characterMap = new Map<string, CharacterContext>();
 
@@ -299,7 +303,10 @@ export async function generateEnhancedEpisodeContext(
           helmet_fragment_off: context.helmet_fragment_off,
           helmet_fragment_visor_up: context.helmet_fragment_visor_up,
           helmet_fragment_visor_down: context.helmet_fragment_visor_down,
-          face_segment_rule: context.face_segment_rule as 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER' | undefined
+          face_segment_rule: context.face_segment_rule as 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER' | undefined,
+          // Multi-phase support (v0.20)
+          context_phase: context.context_phase,
+          phase_trigger_text: context.phase_trigger_text
         });
       }
     });
@@ -357,10 +364,10 @@ export async function generateEnhancedEpisodeContext(
           scene_specific: artifact.scene_specific
         }));
 
-        // Map character appearances directly from the resolved location
-        const characterAppearances: CharacterAppearance[] = locationResolution.characterAppearances.map(context => ({
-          character_name: context.character_name,
-          location_context: {
+        // Map character appearances directly from the resolved location (multi-phase support)
+        const characterAppearances: CharacterAppearance[] = locationResolution.characterAppearances.map(context => {
+          // Build the CharacterLocationContext object
+          const locationContextObj: CharacterLocationContext = {
             location_name: context.location_name,
             physical_description: context.physical_description,
             clothing_description: context.clothing_description,
@@ -372,9 +379,38 @@ export async function generateEnhancedEpisodeContext(
             helmet_fragment_off: context.helmet_fragment_off,
             helmet_fragment_visor_up: context.helmet_fragment_visor_up,
             helmet_fragment_visor_down: context.helmet_fragment_visor_down,
-            face_segment_rule: context.face_segment_rule as 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER' | undefined
-          }
-        }));
+            face_segment_rule: context.face_segment_rule as 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER' | undefined,
+            // Multi-phase support (v0.20)
+            context_phase: context.context_phase,
+            phase_trigger_text: context.phase_trigger_text
+          };
+
+          // Group all phases for this character-location combo (multi-phase support)
+          const allPhasesForCharacter = locationResolution.characterAppearances
+            .filter(c => c.character_name === context.character_name)
+            .map(c => ({
+              location_name: c.location_name,
+              physical_description: c.physical_description,
+              clothing_description: c.clothing_description,
+              demeanor_description: c.demeanor_description,
+              swarmui_prompt_override: c.swarmui_prompt_override,
+              temporal_context: c.temporal_context,
+              lora_weight_adjustment: c.lora_weight_adjustment,
+              helmet_fragment_off: c.helmet_fragment_off,
+              helmet_fragment_visor_up: c.helmet_fragment_visor_up,
+              helmet_fragment_visor_down: c.helmet_fragment_visor_down,
+              face_segment_rule: c.face_segment_rule as 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER' | undefined,
+              context_phase: c.context_phase,
+              phase_trigger_text: c.phase_trigger_text
+            }));
+
+          return {
+            character_name: context.character_name,
+            location_context: locationContextObj,
+            // Include all phases if multiple exist for this character-location combo
+            phases: allPhasesForCharacter.length > 1 ? allPhasesForCharacter : undefined
+          };
+        });
 
         // Generate location-specific prompt fragments
         const locationPromptFragments = generateLocationPromptFragments(location);

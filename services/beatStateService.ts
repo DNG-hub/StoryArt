@@ -176,6 +176,7 @@ export function createExtendedSceneState(
       gearState: null,
       location: null,
       lighting: null,
+      characterPhases: {}, // Multi-phase character appearance support (v0.20)
     },
   };
 }
@@ -374,6 +375,8 @@ function initializePersistentState(scene: AnalyzedScene): ScenePersistentState {
     gearState: null,
     location: scene.title || null,
     lighting: null,
+    // Multi-phase character appearance support (v0.20): initialize all characters to 'default' phase
+    characterPhases: {},
   };
 
   // Extract unique characters from all beats in scene
@@ -383,6 +386,11 @@ function initializePersistentState(scene: AnalyzedScene): ScenePersistentState {
     chars.forEach(c => allCharacters.add(c));
   }
   state.charactersPresent = Array.from(allCharacters);
+
+  // Initialize character phases to 'default' (v0.20: multi-phase support)
+  state.charactersPresent.forEach(char => {
+    state.characterPhases[char] = 'default';
+  });
 
   // Scan early beats for vehicle references (Dingy/motorcycle)
   const earlyBeatsText = scene.beats.slice(0, 5)
@@ -675,6 +683,19 @@ export function processBeatWithFullContext(
     result.fluxShotType,
     result.fluxCameraAngle
   );
+
+  // --- MULTI-PHASE CHARACTER APPEARANCE (v0.20) ---
+
+  // Process phase transitions from Gemini beat analysis
+  if ((beat as any).phaseTransitions && Array.isArray((beat as any).phaseTransitions)) {
+    for (const transition of (beat as any).phaseTransitions) {
+      if (transition.character && transition.toPhase) {
+        const oldPhase = sceneState.persistentState.characterPhases[transition.character] || 'default';
+        sceneState.persistentState.characterPhases[transition.character] = transition.toPhase;
+        console.log(`[BeatState] Phase transition for ${transition.character}: ${oldPhase} -> ${transition.toPhase} (beat ${beat.beatId})`);
+      }
+    }
+  }
 
   // --- SCENE PERSISTENT STATE & TEMPLATE (Architect Memo) ---
 

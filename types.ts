@@ -74,6 +74,11 @@ export interface BeatAnalysis {
     marketingVertical?: SwarmUIPrompt; // For marketing based on full episode analysis
   };
   hookNarrative?: string; // For Phase 1.4
+  // Multi-phase character appearance support (v0.20)
+  phaseTransitions?: Array<{
+    character: string;       // Character name
+    toPhase: string;         // Phase label the character transitions TO in this beat
+  }>;
 }
 
 // Video Short Marketing Types
@@ -173,6 +178,9 @@ export interface CharacterLocationContext {
   helmet_fragment_visor_up?: string; // Helmet with visor raised - face visible
   helmet_fragment_visor_down?: string; // Helmet with visor down - face hidden
   face_segment_rule?: 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER'; // Face segment inclusion rule
+  // Multi-phase character appearance support (v0.20)
+  context_phase?: string;           // 'default' | 'transit' | 'arrival' | 'settled' | 'departure' | custom
+  phase_trigger_text?: string;      // Human-readable description of what narrative event triggers this phase
 }
 
 export interface SceneContext {
@@ -211,7 +219,9 @@ export interface ArtifactContext {
 
 export interface CharacterAppearance {
   character_name: string;
-  location_context: CharacterLocationContext; // Matched to scene location
+  location_context: CharacterLocationContext; // Backward compat: the default/only phase or first phase
+  // Multi-phase support (v0.20): all available phases for this character at this location
+  phases?: CharacterLocationContext[];
 }
 
 // Database service interfaces
@@ -262,6 +272,9 @@ export interface DatabaseCharacterLocationData {
   helmet_fragment_visor_up?: string;
   helmet_fragment_visor_down?: string;
   face_segment_rule?: string;
+  // Multi-phase character appearance support (v0.20)
+  context_phase?: string;           // 'default' | 'transit' | 'arrival' | 'settled' | 'departure' | custom
+  phase_trigger_text?: string;      // Human-readable trigger description
 }
 
 export interface DatabaseStoryData {
@@ -496,6 +509,8 @@ export interface ScenePersistentState {
   location: string | null;
   /** Lighting conditions for prompt carry-forward */
   lighting: string | null;
+  /** Multi-phase character appearance support (v0.20): current appearance phase per character */
+  characterPhases: Record<string, string>; // e.g. { "Cat": "transit", "Daniel": "default" }
 }
 
 /**
