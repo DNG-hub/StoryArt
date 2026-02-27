@@ -270,16 +270,15 @@ export function buildFallbackFillIn(
     return fillIn;
   });
 
-  // Derive composition from visual_anchor or shot type
-  let shotComposition = 'standard framing';
+  // Derive composition from visual_anchor only
+  // NOTE: shotType and cameraAngle are already handled by compileVBSToPrompt,
+  // so composition should ONLY contain additional framing/perspective detail
+  let shotComposition = '';
   const visualAnchor = (beatAnalysis as any).visual_anchor;
   if (visualAnchor) {
-    shotComposition = `${visualAnchor}, ${partialVBS.shot.shotType}`;
-  } else if (partialVBS.shot.cameraAngle) {
-    shotComposition = `${partialVBS.shot.shotType}, ${partialVBS.shot.cameraAngle}`;
-  } else {
-    shotComposition = partialVBS.shot.shotType;
+    shotComposition = visualAnchor;
   }
+  // If no visual anchor, composition stays empty (shot/angle alone are sufficient)
 
   return {
     beatId: partialVBS.beatId,

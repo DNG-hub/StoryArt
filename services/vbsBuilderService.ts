@@ -132,6 +132,8 @@ function buildSubjects(
   console.log(`  Episode has ${episodeContext.episode.characters.length} characters`);
   console.log(`  Scene ${sceneNumber} found: ${episodeContext.episode.scenes.find(s => s.scene_number === sceneNumber) ? 'yes' : 'no'}`);
 
+  let faceIndex = 0; // Track which face this is (0 for first character, 1 for second, etc.)
+
   for (const charName of persistentState.charactersPresent) {
     // Skip Ghost — non-physical entity
     if (charName.toLowerCase() === 'ghost') continue;
@@ -189,8 +191,13 @@ function buildSubjects(
     };
 
     // Add face segment if visible
+    // Format: <segment:yolo-face_yolov9c.pt-{faceIndex},{denoise},{confidence}>
+    // faceIndex: 0=first face, 1=second face, etc.
+    // denoise: 0.35 (strength of refinement pass)
+    // confidence: 0.5 (threshold for face detection)
     if (faceVisible && locationContext.face_segment_rule !== 'NEVER') {
-      segments.face = '<segment:yolo-face>';
+      segments.face = `<segment:yolo-face_yolov9c.pt-${faceIndex},0.35,0.5>`;
+      console.log(`  ✓ ${charName}: Generated YOLO face segment (index ${faceIndex})`);
     }
 
     const subject: VBSSubject = {
@@ -206,6 +213,7 @@ function buildSubjects(
     };
 
     subjects.push(subject);
+    faceIndex++; // Increment for next character
   }
 
   return subjects;
