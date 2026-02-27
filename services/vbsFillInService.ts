@@ -3,10 +3,11 @@
  *
  * Fills only the action/expression/composition slots that cannot be deterministically set.
  * Uses a focused ~400-token system instruction (CINEMATOGRAPHER_RULES.md).
+ * Rules are loaded at runtime from skill files for synchronicity with beat/scene context.
  * Currently uses Gemini; multi-provider support can be added later.
  * JSON output with fallback to deterministic fill-in on LLM failure.
  *
- * v0.21 Compiler-Style Prompt Generation
+ * v0.21 Compiler-Style Prompt Generation + Dynamic Skill Integration
  */
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import { getGeminiModel, getGeminiTemperature, getGeminiMaxTokens } from './geminiService';
+import { skillApplicatorService } from './skillApplicatorService';
 
 /**
  * JSON schema for VBSFillIn validation.
@@ -47,10 +49,26 @@ const VBS_FILL_IN_SCHEMA = {
 
 /**
  * Build the system instruction for Phase B LLM.
- * Focused on translating visual_anchor and writing camera-observable descriptions.
+ * Loads from CINEMATOGRAPHER_RULES.md skill file at runtime.
+ * Falls back to hardcoded version if skill loading fails.
  * Zero story names, zero character appearance details.
  */
-function buildCinematographerSystemInstruction(beatAnalysis: BeatAnalysis): string {
+async function buildCinematographerSystemInstruction(beatAnalysis: BeatAnalysis): Promise<string> {
+  try {
+    // Try to load from skill file (runtime integration)
+    console.log(`[VBSFillIn] Loading CINEMATOGRAPHER_RULES for beat ${beatAnalysis.beatId}...`);
+    const skillInstruction = await skillApplicatorService.getCinematographerInstruction();
+
+    if (skillInstruction && skillInstruction.length > 100) {
+      console.log(`[VBSFillIn] ✅ Using dynamic CINEMATOGRAPHER_RULES (${skillInstruction.length} chars)`);
+      return skillInstruction;
+    }
+  } catch (error) {
+    console.warn(`[VBSFillIn] ⚠️  Failed to load CINEMATOGRAPHER_RULES skill:`, error);
+  }
+
+  // Fallback to hardcoded version
+  console.log(`[VBSFillIn] Using fallback cinematographer instruction`);
   return `You are a cinematographer filling in missing visual details for an AI image generation pipeline.
 
 Your job: complete the Visual Beat Spec by filling in only what a camera would literally see.
@@ -109,7 +127,7 @@ export async function fillVBSWithLLM(
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    const systemInstruction = buildCinematographerSystemInstruction(beatAnalysis);
+    const systemInstruction = await buildCinematographerSystemInstruction(beatAnalysis);
     const userPrompt = buildFillInUserPrompt(partialVBS, beatAnalysis);
 
     // Call Gemini API
