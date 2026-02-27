@@ -1,6 +1,6 @@
 // FIX: Corrected import path for Google GenAI SDK.
 import { GoogleGenAI, Type } from "@google/genai";
-import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig, BeatAnalysisWithState, ScenePersistentState, PromptValidationResult, SceneTypeTemplate, TokenBudget } from '../types';
+import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, EnhancedEpisodeContext, LLMProvider, SwarmUIPrompt, ImageConfig, BeatAnalysisWithState } from '../types';
 import { processEpisodeWithFullContext, type FullyProcessedBeat } from './beatStateService';
 import { generateEnhancedEpisodeContext } from './databaseContextService';
 import { getStoryContext } from './storyContextService';
@@ -8,644 +8,6 @@ import { applyLoraTriggerSubstitution } from '../utils';
 import { getGeminiModel, getGeminiTemperature } from './geminiService';
 import { detectHelmetState } from './beatTypeService';
 import { selectHairFragment, type HairFragmentResult } from './hairFragmentService';
-
-// ============================================================================
-// FLUX Prompt Engine Architect Memo: Validation Constants & Functions
-// Belt-and-suspenders enforcement layer: logs warnings, does NOT block generation.
-// ============================================================================
-
-/**
- * Fabricated terms that are NOT in the canonical Aegis description.
- * The prompt generator must NEVER use these.
- * Source: Architect Memo Section 3 - Canonical Descriptions Only.
- */
-const FORBIDDEN_FABRICATION_TERMS = [
-  'tactical sensor arrays',
-  'integrated weapon mounting points',
-  'combat webbing',
-  'ammunition pouches',
-  'angular aggressive design',
-  'subtle geometric sensor patterns',
-  'integrated biometric monitors',
-  'reinforced joints at knees and elbows',
-  'side-mounted sensors',
-  'cargo pockets',
-  'loose fitting',
-  'fatigues',
-];
-
-/**
- * Canonical Aegis terms (approved for use in prompts).
- * Source: Architect Memo Section 3.
- */
-const CANONICAL_AEGIS_TERMS = [
-  'skin-tight matte charcoal-black Aegis suit',
-  'hexagonal weave pattern',
-  'vacuum-sealed second-skin fit',
-  'smooth latex-like surface',
-  'molded armored bust panels',
-  'molded chest armor plates',
-  'LED underglow',
-  'Wraith helmet',
-  'dark opaque visor',
-  'matte charcoal angular faceplate',
-  'ribbed reinforcement panels',
-];
-
-/**
- * Forbidden-to-canonical replacement map for prompt sanitization.
- * Replaces fabricated military terms with canonical Aegis vocabulary.
- * Empty string means "delete without replacement" (term adds no visual value).
- */
-const FABRICATION_REPLACEMENTS: [RegExp, string][] = [
-  [/,?\s*tactical sensor arrays/gi, ''],
-  [/,?\s*integrated weapon mounting points on thighs and back/gi, ''],
-  [/,?\s*integrated weapon mounting points/gi, ''],
-  [/,?\s*combat webbing with ammunition pouches/gi, ''],
-  [/,?\s*combat webbing/gi, ''],
-  [/,?\s*ammunition pouches/gi, ''],
-  [/angular aggressive design with side-mounted sensors/gi, 'angular matte black shell'],
-  [/angular aggressive design/gi, 'angular matte black shell'],
-  [/,?\s*side-mounted sensors/gi, ''],
-  [/,?\s*subtle geometric sensor patterns/gi, ', non-reflective hexagonal weave'],
-  [/,?\s*integrated biometric monitors on forearms/gi, ', forearm gauntlets with LEDs'],
-  [/,?\s*integrated biometric monitors/gi, ''],
-  [/,?\s*reinforced joints at knees and elbows/gi, ''],
-  [/,?\s*reinforced joints/gi, ''],
-  [/,?\s*cargo pockets/gi, ''],
-  [/loose fitting/gi, 'skin-tight'],
-  [/\bfatigues\b/gi, 'Aegis adaptive biosuit'],
-];
-
-/**
- * Detect whether the current episode uses Aegis suits by checking all characters'
- * clothing_description and swarmui_prompt_override fields for "aegis" references.
- * Returns true if any character in any scene references Aegis gear.
- */
-function detectAegisEpisode(parsedEpisodeContext: any): boolean {
-  try {
-    const scenes = parsedEpisodeContext?.episode?.scenes;
-    if (!Array.isArray(scenes)) return false;
-    for (const scene of scenes) {
-      const allChars = [...(scene.characters || []), ...(scene.character_appearances || [])];
-      for (const char of allChars) {
-        const loc = char.location_context;
-        if (loc?.clothing_description && /aegis/i.test(loc.clothing_description)) return true;
-        if (loc?.swarmui_prompt_override && /aegis/i.test(loc.swarmui_prompt_override)) return true;
-      }
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Sanitize a prompt override or generated prompt by replacing forbidden
- * fabrication terms with canonical Aegis vocabulary.
- * Acts as a safety net for stale cached data or Gemini non-compliance.
- * @param isAegisContext - When false, skip Aegis-specific replacements (e.g. fatigues → Aegis biosuit)
- */
-function sanitizePromptOverride(text: string, isAegisContext: boolean = true): string {
-  let sanitized = text;
-  for (const [pattern, replacement] of FABRICATION_REPLACEMENTS) {
-    // Skip Aegis-specific replacements when not in an Aegis context
-    if (!isAegisContext && replacement.toLowerCase().includes('aegis')) continue;
-    sanitized = sanitized.replace(pattern, replacement);
-  }
-  // Clean up double commas/spaces from removals
-  sanitized = sanitized.replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').trim();
-  return sanitized;
-}
-
-/**
- * Estimate T5 token count for a prompt.
- * T5 tokenizer averages ~4 characters per token for English text.
- * RULE: Total prompt MUST stay under 200 tokens (Architect Memo Section 3/12B).
- */
-function estimatePromptTokens(prompt: string): number {
-  // Strip segment tags from count (processed separately by SwarmUI)
-  const withoutSegments = prompt.replace(/<segment:[^>]+>/g, '').trim();
-  return Math.ceil(withoutSegments.length / 4);
-}
-
-/**
- * Calculate adaptive token budget based on shot type, character count, helmet states, and vehicle presence.
- * Replaces the fixed 200-token hard limit with per-beat allocations.
- *
- * Budget logic:
- * - Close-ups need more tokens per character (face/expression detail)
- * - Wide/establishing shots need fewer character tokens (figures are small)
- * - Helmets free ~30 tokens (no hair, face, eye color) reinvested into suit detail
- * - Vehicle scenes get +20 tokens for motorcycle description
- *
- * v0.19: Adaptive Token Budgets
- */
-function calculateAdaptiveTokenBudget(
-  shotType: string,
-  characterCount: number,
-  helmetStates: Array<'sealed' | 'visor_up' | 'off' | null>,
-  hasVehicle: boolean
-): TokenBudget {
-  // Base totals by shot type and character count (from production analysis)
-  const BASE_BUDGETS: Record<string, { one: number; two: number }> = {
-    'close-up shot':    { one: 250, two: 280 },
-    'close-up':         { one: 250, two: 280 },
-    'medium close-up':  { one: 235, two: 270 },
-    'medium shot':      { one: 220, two: 260 },
-    'medium wide shot': { one: 200, two: 230 },
-    'wide shot':        { one: 180, two: 200 },
-    'extreme wide shot':{ one: 150, two: 170 },
-    'establishing shot':{ one: 150, two: 150 },
-  };
-
-  // Normalize shot type to lookup key
-  const normalizedShot = shotType.toLowerCase().trim();
-  const baseBudget = BASE_BUDGETS[normalizedShot] || BASE_BUDGETS['medium shot'];
-  const effectiveCharCount = Math.min(characterCount, 2);
-  let total = effectiveCharCount >= 2 ? baseBudget.two : baseBudget.one;
-
-  // Helmet savings: each sealed helmet frees ~30 tokens (no hair ~15, no face ~10, no eye color ~5)
-  // Reinvest 25 tokens per helmeted character into suit detail
-  let helmetSavings = 0;
-  for (const state of helmetStates) {
-    if (state === 'sealed') {
-      helmetSavings += 30;
-      total -= 30; // Remove hair/face budget
-      total += 25; // Reinvest into suit detail
-    }
-  }
-
-  // Vehicle scenes: +20 tokens for motorcycle description + spatial arrangement
-  if (hasVehicle) {
-    total += 20;
-  }
-
-  // Allocate budget across sections
-  const isCloseUp = normalizedShot.includes('close');
-  const isWide = normalizedShot.includes('wide') || normalizedShot.includes('establishing');
-
-  const composition = 30; // Always 30 — first tokens, highest T5 attention
-  const segments = 15;    // Segment tags are roughly constant
-  const remaining = total - composition - segments;
-
-  let character1: number;
-  let character2: number;
-  let environment: number;
-  let atmosphere: number;
-
-  if (effectiveCharCount >= 2) {
-    if (isCloseUp) {
-      character1 = Math.round(remaining * 0.30);
-      character2 = Math.round(remaining * 0.28);
-      environment = Math.round(remaining * 0.22);
-      atmosphere = remaining - character1 - character2 - environment;
-    } else if (isWide) {
-      character1 = Math.round(remaining * 0.18);
-      character2 = Math.round(remaining * 0.16);
-      environment = Math.round(remaining * 0.36);
-      atmosphere = remaining - character1 - character2 - environment;
-    } else {
-      // Medium shots
-      character1 = Math.round(remaining * 0.25);
-      character2 = Math.round(remaining * 0.23);
-      environment = Math.round(remaining * 0.28);
-      atmosphere = remaining - character1 - character2 - environment;
-    }
-  } else {
-    character2 = 0;
-    if (isCloseUp) {
-      character1 = Math.round(remaining * 0.45);
-      environment = Math.round(remaining * 0.28);
-      atmosphere = remaining - character1 - environment;
-    } else if (isWide) {
-      character1 = Math.round(remaining * 0.22);
-      environment = Math.round(remaining * 0.45);
-      atmosphere = remaining - character1 - environment;
-    } else {
-      character1 = Math.round(remaining * 0.35);
-      environment = Math.round(remaining * 0.35);
-      atmosphere = remaining - character1 - environment;
-    }
-  }
-
-  return {
-    total,
-    composition,
-    character1,
-    character2,
-    environment,
-    atmosphere,
-    segments,
-  };
-}
-
-/**
- * Check prompt against forbidden fabrication terms.
- * RULE: Character/gear descriptions must come VERBATIM from canonical reference.
- */
-function validateCanonicalDescriptions(prompt: string, beatId: string): string[] {
-  const lowerPrompt = prompt.toLowerCase();
-  const violations: string[] = [];
-
-  for (const term of FORBIDDEN_FABRICATION_TERMS) {
-    if (lowerPrompt.includes(term.toLowerCase())) {
-      violations.push(term);
-    }
-  }
-
-  if (violations.length > 0) {
-    console.warn(`[CanonicalValidation] ${beatId}: Found ${violations.length} fabricated term(s): ${violations.join(', ')}`);
-  }
-
-  return violations;
-}
-
-/**
- * Validate that persistent scene elements appear in the generated prompt.
- * RULE: All persistent elements carry forward until narrative EXPLICITLY changes them.
- * Validation check: "What would a camera literally see right now?"
- */
-function validatePromptContinuity(
-  prompt: string,
-  beatId: string,
-  persistentState: ScenePersistentState | undefined,
-  characterTriggers: Map<string, string>
-): { missingCharacters: string[]; missingVehicle: boolean; warnings: string[] } {
-  const warnings: string[] = [];
-  const missingCharacters: string[] = [];
-  let missingVehicle = false;
-
-  if (!persistentState) {
-    return { missingCharacters, missingVehicle, warnings };
-  }
-
-  const lowerPrompt = prompt.toLowerCase();
-
-  // Check all present characters appear (by trigger word)
-  // Skip Ghost - non-physical entity that cannot be rendered in most beats
-  for (const charName of persistentState.charactersPresent) {
-    if (charName.toLowerCase() === 'ghost') continue;
-    const trigger = characterTriggers.get(charName);
-    if (trigger && !lowerPrompt.includes(trigger.toLowerCase())) {
-      missingCharacters.push(charName);
-      warnings.push(`Missing character: ${charName} (trigger: ${trigger}) should be in scene`);
-    }
-  }
-
-  // Check vehicle presence when in_motion
-  if (persistentState.vehicle && persistentState.vehicleState === 'in_motion') {
-    if (!lowerPrompt.includes('motorcycle') && !lowerPrompt.includes('bike') && !lowerPrompt.includes('dinghy')) {
-      missingVehicle = true;
-      warnings.push(`Missing vehicle: Dinghy is in_motion but not in prompt`);
-    }
-  }
-
-  if (warnings.length > 0) {
-    console.warn(`[ContinuityValidation] ${beatId}: ${warnings.length} issue(s):`);
-    warnings.forEach(w => console.warn(`  - ${w}`));
-  }
-
-  return { missingCharacters, missingVehicle, warnings };
-}
-
-/**
- * Determine if FLUX or ALTERNATE model should be used.
- * RULE: If ALL characters have visors DOWN (no faces visible),
- * flag for ALTERNATE model rendering (Architect Memo Section 9).
- */
-function determineModelRecommendation(
-  prompt: string,
-  beatId: string
-): { model: 'FLUX' | 'ALTERNATE'; reason: string } {
-  const lowerPrompt = prompt.toLowerCase();
-
-  const hasFaceSegments = lowerPrompt.includes('<segment:yolo-face');
-
-  const hasVisorDown = lowerPrompt.includes('visor down') ||
-    lowerPrompt.includes('sealed wraith helmet') ||
-    lowerPrompt.includes('dark visor') ||
-    lowerPrompt.includes('dark opaque visor');
-
-  const hasFaceVisible = lowerPrompt.includes('face visible') ||
-    lowerPrompt.includes('visor raised') ||
-    lowerPrompt.includes('visor up');
-
-  if (!hasFaceSegments && hasVisorDown && !hasFaceVisible) {
-    console.log(`[ModelRec] ${beatId}: ALTERNATE recommended (no faces, complex composition likely)`);
-    return { model: 'ALTERNATE', reason: 'no_faces_complex_composition' };
-  }
-
-  return { model: 'FLUX', reason: 'faces_visible' };
-}
-
-/**
- * Condense a full swarmui_prompt_override based on shot type and helmet state.
- * Full overrides are 70-164 tokens — too large for wide/extreme wide shots.
- * This function extracts the most visually important parts for the given shot type.
- *
- * v0.19: Override-Aware Character Injection
- *
- * @param override - Full swarmui_prompt_override from database
- * @param shotType - FLUX shot type (close-up, medium, wide, extreme wide)
- * @param helmetState - 'sealed' | 'visor_up' | 'off' | null
- * @returns Condensed override string suitable for injection
- */
-function condenseOverrideForShot(
-  override: string,
-  shotType: string,
-  helmetState: 'sealed' | 'visor_up' | 'off' | null
-): string {
-  const normalizedShot = shotType.toLowerCase().trim();
-
-  // Strip existing segment tags — they're handled separately by applyDatabaseSegments
-  const textOnly = override.replace(/<segment:[^>]+>/g, '').trim();
-
-  // Parse override into semantic sections by splitting on commas
-  const parts = textOnly.split(',').map(p => p.trim()).filter(Boolean);
-  if (parts.length === 0) return override;
-
-  // Identify trigger (first part, contains the LoRA trigger word)
-  const trigger = parts[0];
-
-  // Categorize remaining parts
-  const physicalTraits: string[] = [];   // age, eye color, skin, face shape
-  const hairParts: string[] = [];        // hair descriptions
-  const suitParts: string[] = [];        // suit/clothing/armor
-  const helmetParts: string[] = [];      // helmet/visor
-  const accessoryParts: string[] = [];   // gauntlets, LEDs, secondary gear
-
-  for (let i = 1; i < parts.length; i++) {
-    const lower = parts[i].toLowerCase();
-    if (lower.includes('hair') || lower.includes('ponytail') || lower.includes('updo') || lower.includes('tousled')) {
-      hairParts.push(parts[i]);
-    } else if (lower.includes('helmet') || lower.includes('visor')) {
-      helmetParts.push(parts[i]);
-    } else if (lower.includes('suit') || lower.includes('bodysuit') || lower.includes('aegis') ||
-               lower.includes('armor') || lower.includes('mesh') || lower.includes('bust panel') ||
-               lower.includes('chest plate') || lower.includes('collar') || lower.includes('zipper') ||
-               lower.includes('hexagonal') || lower.includes('compression') || lower.includes('matte')) {
-      suitParts.push(parts[i]);
-    } else if (lower.includes('gauntlet') || lower.includes('led') || lower.includes('forearm') ||
-               lower.includes('underglow') || lower.includes('indicator')) {
-      accessoryParts.push(parts[i]);
-    } else if (lower.includes('age') || lower.includes('eyes') || lower.includes('skin') ||
-               lower.includes('face') || lower.includes('jawline') || lower.includes('brow') ||
-               lower.includes('old') || lower.includes('young') || lower.includes('woman') ||
-               lower.includes('man ') || /^\d+/.test(lower)) {
-      physicalTraits.push(parts[i]);
-    } else {
-      // Default: treat as accessory/secondary
-      accessoryParts.push(parts[i]);
-    }
-  }
-
-  // Apply helmet state: if sealed, strip hair and face, add helmet description
-  const effectiveHair = (helmetState === 'sealed' || helmetState === 'visor_up') ? [] : hairParts;
-  const effectiveFace = helmetState === 'sealed' ? [] : physicalTraits;
-  const helmetFragment = helmetState === 'sealed'
-    ? ['sealed Wraith helmet with dark opaque visor']
-    : helmetState === 'visor_up'
-      ? ['Wraith helmet visor raised']
-      : helmetParts;
-
-  // Build condensed override based on shot type
-  let condensed: string[];
-
-  if (normalizedShot.includes('close')) {
-    // Close-up: full detail — all sections
-    condensed = [trigger, ...effectiveFace, ...effectiveHair, ...suitParts, ...helmetFragment, ...accessoryParts];
-  } else if (normalizedShot.includes('extreme wide') || normalizedShot.includes('establishing')) {
-    // Extreme wide: trigger + minimal suit reference
-    const suitSummary = suitParts.length > 0 ? suitParts[0] : 'matte-black tactical suit';
-    condensed = [trigger, suitSummary];
-    if (helmetState === 'sealed') {
-      condensed.push('sealed helmet');
-    }
-  } else if (normalizedShot.includes('wide')) {
-    // Wide: trigger + core suit + helmet state
-    condensed = [trigger, ...suitParts.slice(0, 2), ...helmetFragment.slice(0, 1)];
-  } else {
-    // Medium shot: trigger + face + suit core, drop trailing accessories
-    condensed = [trigger, ...effectiveFace.slice(0, 2), ...effectiveHair.slice(0, 1), ...suitParts.slice(0, 2), ...helmetFragment.slice(0, 1)];
-  }
-
-  return condensed.filter(Boolean).join(', ');
-}
-
-/**
- * Override-aware character injection. When a character is missing from Gemini's output,
- * pulls their condensed swarmui_prompt_override from Episode Context and injects it
- * at the attention-optimal position (token 31-80 zone, after first character description).
- *
- * Replaces injectMissingContinuityElements() from v0.18 which only appended
- * weak phrases like "JRUMLV woman nearby" at the end of the prompt.
- *
- * v0.19: Override-Aware Character Injection
- */
-function injectMissingCharacterOverrides(
-  prompt: string,
-  beatId: string,
-  persistentState: ScenePersistentState | undefined,
-  characterTriggers: Map<string, string>,
-  characterContexts: Array<{ character_name: string; aliases: string[]; base_trigger: string }>,
-  parsedEpisodeContext: any,
-  sceneNumber: number,
-  shotType: string,
-  helmetState: string | null | undefined,
-  isAegisContext: boolean = true
-): { prompt: string; injectedCharacters: string[]; vehicleInjected: boolean } {
-  if (!persistentState) {
-    return { prompt, injectedCharacters: [], vehicleInjected: false };
-  }
-
-  let lowerPrompt = prompt.toLowerCase();
-  const injectedCharacters: string[] = [];
-  let vehicleInjected = false;
-
-  // --- Vehicle injection (same as v0.18 — insert after first comma) ---
-  if (persistentState.vehicle && persistentState.vehicleState === 'in_motion') {
-    const hasVehicleRef = lowerPrompt.includes('motorcycle') ||
-                          lowerPrompt.includes('bike') ||
-                          lowerPrompt.includes('dinghy');
-    if (!hasVehicleRef) {
-      const firstComma = prompt.indexOf(',');
-      if (firstComma > 0) {
-        prompt = prompt.slice(0, firstComma + 1) +
-          ' matte-black armored motorcycle speeding on cracked asphalt,' +
-          prompt.slice(firstComma + 1);
-      } else {
-        prompt = 'matte-black armored motorcycle speeding on cracked asphalt, ' + prompt;
-      }
-      vehicleInjected = true;
-      lowerPrompt = prompt.toLowerCase();
-      console.log(`[VehicleInjection] ${beatId}: Injected motorcycle reference (vehicleState: in_motion)`);
-    }
-  }
-
-  // --- Override-aware character injection ---
-  for (const charName of persistentState.charactersPresent) {
-    if (charName.toLowerCase() === 'ghost') continue;
-
-    const trigger = characterTriggers.get(charName);
-    if (!trigger) continue;
-
-    if (lowerPrompt.includes(trigger.toLowerCase())) continue;
-
-    // This character is missing — get their override for condensed injection
-    const normalizedHelmet = helmetState === 'VISOR_DOWN' ? 'sealed'
-      : helmetState === 'VISOR_UP' ? 'visor_up'
-      : helmetState === 'HELMET_OFF' || helmetState === 'IN_HAND' || helmetState === 'ON_VEHICLE' ? 'off'
-      : null;
-
-    let injection = '';
-
-    // Try to get full override from Episode Context (multi-phase support v0.20)
-    const characterPhase = persistentState.characterPhases[charName] || 'default';
-    const fullOverride = parsedEpisodeContext && sceneNumber
-      ? getCharacterOverrideForScene(parsedEpisodeContext, sceneNumber, trigger, isAegisContext, characterPhase)
-      : null;
-
-    if (fullOverride) {
-      // Condense override based on shot type and helmet state
-      injection = condenseOverrideForShot(fullOverride, shotType, normalizedHelmet);
-      console.log(`[OverrideInjection] ${beatId}: Condensed override for ${charName} (${shotType}): "${injection.substring(0, 80)}..."`);
-    } else {
-      // Fallback: build contextual phrase (same logic as v0.18 but with position context)
-      const isCat = charName.toLowerCase().includes('cat');
-      const genderDesc = isCat ? 'woman' : 'man';
-      const triggerHasGender = trigger.toLowerCase().includes('man') || trigger.toLowerCase().includes('woman');
-      const subjectPrefix = triggerHasGender ? trigger : `${trigger} ${genderDesc}`;
-      const position = persistentState.characterPositions[charName];
-      const isVehicleScene = persistentState.vehicleState === 'in_motion';
-      const isHelmetDown = normalizedHelmet === 'sealed';
-
-      // Try clothing_description as secondary fallback before hardcoded default
-      const clothingDesc = parsedEpisodeContext && sceneNumber
-        ? getCharacterClothingForScene(parsedEpisodeContext, sceneNumber, trigger)
-        : null;
-
-      if (clothingDesc) {
-        injection = `${subjectPrefix} wearing ${clothingDesc}`;
-      } else if (isVehicleScene && position) {
-        if (position.includes('driving') || position.includes('front')) {
-          injection = `${subjectPrefix} driving`;
-        } else if (position.includes('passenger') || position.includes('behind')) {
-          injection = `${subjectPrefix} seated behind`;
-        } else {
-          injection = `${subjectPrefix} on motorcycle`;
-        }
-        if (isHelmetDown) injection += ' in sealed Wraith helmet';
-      } else if (isHelmetDown) {
-        injection = `${subjectPrefix} in sealed Wraith helmet`;
-      } else if (isAegisContext) {
-        injection = `${subjectPrefix} in skin-tight matte charcoal-black Aegis suit`;
-      } else {
-        // Generic fallback — just trigger + gender, no clothing assumption
-        injection = subjectPrefix;
-      }
-      console.log(`[TriggerInjection] ${beatId}: Fallback injection for ${charName} -> "${injection}"`);
-    }
-
-    // INSERT at attention-optimal position (after first character description, token 31-80 zone)
-    // Find the second comma (first comma is after shot type, second is after first character desc)
-    const firstComma = prompt.indexOf(',');
-    const secondComma = firstComma >= 0 ? prompt.indexOf(',', firstComma + 1) : -1;
-
-    if (secondComma > 0) {
-      // Insert after second comma — places injection in token 31-80 zone
-      prompt = prompt.slice(0, secondComma + 1) +
-        ` ${injection},` +
-        prompt.slice(secondComma + 1);
-    } else if (firstComma > 0) {
-      // Only one comma found — insert after it
-      prompt = prompt.slice(0, firstComma + 1) +
-        ` ${injection},` +
-        prompt.slice(firstComma + 1);
-    } else {
-      // No commas — append
-      prompt = `${prompt}, ${injection}`;
-    }
-
-    injectedCharacters.push(charName);
-    lowerPrompt = prompt.toLowerCase();
-  }
-
-  if (injectedCharacters.length > 0 || vehicleInjected) {
-    prompt = prompt.replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').trim();
-  }
-
-  return { prompt, injectedCharacters, vehicleInjected };
-}
-
-/**
- * Run all post-generation validation checks on a prompt.
- * Belt-and-suspenders enforcement: logs warnings, does NOT block generation.
- */
-function runPostGenerationValidation(
-  prompt: string,
-  beatId: string,
-  persistentState: ScenePersistentState | undefined,
-  characterTriggers: Map<string, string>,
-  sceneTemplate?: SceneTypeTemplate,
-  injectedCharacters: string[] = [],
-  vehicleInjected: boolean = false,
-  adaptiveBudget?: TokenBudget
-): PromptValidationResult {
-  // 1. Token budget (v0.19: use adaptive budget, fallback to 300 max)
-  const tokenCount = estimatePromptTokens(prompt);
-  const budgetLimit = adaptiveBudget?.total || 300;
-  const tokenBudgetExceeded = tokenCount > budgetLimit;
-  if (tokenBudgetExceeded) {
-    console.warn(`[TokenBudget] ${beatId}: ${tokenCount} tokens (exceeds ${budgetLimit} adaptive limit)`);
-  }
-
-  // 2. Continuity
-  const continuity = validatePromptContinuity(prompt, beatId, persistentState, characterTriggers);
-
-  // 3. Canonical descriptions
-  const forbiddenTermsFound = validateCanonicalDescriptions(prompt, beatId);
-
-  // 4. Visor violation check
-  const lowerPrompt = prompt.toLowerCase();
-  const hasVisorDown = lowerPrompt.includes('visor down') || lowerPrompt.includes('sealed wraith helmet');
-  const hasHairOrFace = !!lowerPrompt.match(/\bhair\b.*\b(color|style|ponytail|flowing|brown|white|dark)\b|\bexposing face\b|\bshowing face\b/);
-  const visorViolation = hasVisorDown && hasHairOrFace;
-  if (visorViolation) {
-    console.warn(`[VisorViolation] ${beatId}: Hair/face description found with visor-down helmet`);
-  }
-
-  // 5. Model recommendation
-  const modelRec = determineModelRecommendation(prompt, beatId);
-
-  // Collect all warnings
-  const warnings: string[] = [];
-  if (tokenBudgetExceeded) warnings.push(`Token budget exceeded: ${tokenCount}/${budgetLimit}`);
-  warnings.push(...continuity.warnings);
-  if (forbiddenTermsFound.length > 0) warnings.push(`Fabricated terms: ${forbiddenTermsFound.join(', ')}`);
-  if (visorViolation) warnings.push('Visor-down but hair/face descriptions present');
-
-  return {
-    beatId,
-    tokenCount,
-    tokenBudgetExceeded,
-    missingCharacters: continuity.missingCharacters,
-    missingVehicle: continuity.missingVehicle,
-    forbiddenTermsFound,
-    visorViolation,
-    modelRecommendation: modelRec.model,
-    modelRecommendationReason: modelRec.reason,
-    sceneTemplate,
-    injectedCharacters,
-    vehicleInjected,
-    adaptiveTokenBudget: adaptiveBudget?.total,
-    warnings,
-  };
-}
-
-// ============================================================================
-// JSON Repair Utilities
-// ============================================================================
 
 /**
  * Attempt to repair truncated or malformed JSON from LLM response.
@@ -1076,9 +438,7 @@ function getCharacterClothingForScene(
 function getCharacterOverrideForScene(
     episodeContext: any,
     sceneNumber: number,
-    characterTrigger: string,
-    isAegisContext: boolean = true,
-    phase: string = 'default'
+    characterTrigger: string
 ): string | null {
     try {
         const scene = episodeContext.episode?.scenes?.find(
@@ -1091,27 +451,15 @@ function getCharacterOverrideForScene(
             (c: any) => c.base_trigger === characterTrigger
         );
         if (charFromScene?.location_context?.swarmui_prompt_override) {
-            return sanitizePromptOverride(charFromScene.location_context.swarmui_prompt_override, isAegisContext);
+            return charFromScene.location_context.swarmui_prompt_override;
         }
 
-        // Check scene.character_appearances (multi-phase support v0.20)
+        // Check scene.character_appearances
         const charFromAppearances = scene.character_appearances?.find(
             (c: any) => c.base_trigger === characterTrigger
         );
-        if (charFromAppearances) {
-            // Multi-phase support: try to find matching phase first
-            if (charFromAppearances.phases && Array.isArray(charFromAppearances.phases)) {
-                const phaseMatch = charFromAppearances.phases.find((p: any) => p.context_phase === phase)
-                    ?? charFromAppearances.phases.find((p: any) => p.context_phase === 'default')
-                    ?? charFromAppearances.phases[0];
-                if (phaseMatch?.swarmui_prompt_override) {
-                    return sanitizePromptOverride(phaseMatch.swarmui_prompt_override, isAegisContext);
-                }
-            }
-            // Fallback to single location_context
-            if (charFromAppearances.location_context?.swarmui_prompt_override) {
-                return sanitizePromptOverride(charFromAppearances.location_context.swarmui_prompt_override, isAegisContext);
-            }
+        if (charFromAppearances?.location_context?.swarmui_prompt_override) {
+            return charFromAppearances.location_context.swarmui_prompt_override;
         }
 
         return null;
@@ -1401,17 +749,11 @@ export const generateSwarmUiPrompts = async (
     retrievalMode: RetrievalMode = 'manual',
     storyId?: string,
     provider: LLMProvider = 'gemini',
-    onProgress?: (message: string) => void,
-    promptVersion: 'v020' | 'v021' = 'v020'
+    onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> => {
     onProgress?.('Verifying API key...');
-
-    // Route to v0.21 compiler pipeline if requested
-    if (promptVersion === 'v021') {
-        return await generateSwarmUiPromptsV021(analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, provider, onProgress);
-    }
-
-    // Route to appropriate provider for prompt generation (v0.20)
+    
+    // Route to appropriate provider for prompt generation
     // Note: Currently only Gemini has full implementation. Other providers use Gemini as fallback.
     switch (provider) {
         case 'gemini':
@@ -1662,14 +1004,6 @@ A prompt must describe ONLY what a camera can directly observe. If a detail cann
         console.log('[Phase B] No storyId provided, skipping story context enhancement');
     }
 
-    // Detect whether this episode uses Aegis suits (data-driven, not hardcoded)
-    let isAegisEpisode = false;
-    try {
-        const parsedForAegisCheck = JSON.parse(enhancedContextJson);
-        isAegisEpisode = detectAegisEpisode(parsedForAegisCheck);
-    } catch { /* leave as false */ }
-    console.log(`[AegisDetection] isAegisEpisode=${isAegisEpisode}`);
-
     // Create system instruction with context source information
     const systemInstructionLength = storyContextAvailable ? '[with episode context]' : '[without episode context]';
     console.log(`[Phase B] Building system instruction ${systemInstructionLength}`);
@@ -1680,29 +1014,7 @@ A prompt must describe ONLY what a camera can directly observe. If a detail cann
     // PROMPT GENERATION RULES - Authoritative source: StoryTeller/.claude/skills/prompt-generation-rules/SKILL.md v0.13
     // This system instruction implements SKILL.md rules for LLM prompt generation.
     // Key sections: 1.1-1.4 (Templates), 3.6 (Helmet/Dingy), 8 (Dual Character), 16 (Camera Realism)
-    const systemInstruction = `You are a SwarmUI prompt generator following SKILL.md v0.18 rules. Generate clean, token-efficient prompts:
-
-**T5 ATTENTION MODEL (Critical — understand how FLUX processes your prompts):**
-
-FLUX uses a T5-XXL text encoder. T5 understands SENTENCES, not tag lists. Attention follows a decay curve:
-- Tokens 1-30: STRONG (THE IMAGE — primary subject, composition, spatial relationship)
-- Tokens 31-80: GOOD (character details, gear, posture)
-- Tokens 81-150: MODERATE (environment, lighting, atmosphere)
-- Tokens 151-200: WEAK (color grade, technical quality, segments)
-- Tokens 200+: EFFECTIVELY IGNORED
-
-The FIRST CONCRETE NOUN determines what FLUX thinks the image IS:
-- "HSCEIA man field operative..." → FLUX renders a MAN, everything else is decoration
-- "matte-black armored motorcycle with two riders..." → FLUX renders a MOTORCYCLE with riders on it
-
-DECISION: What is this image OF? That leads the prompt.
-- Motorcycle scene → motorcycle first
-- Character moment → character first
-- Location reveal → location first
-
-Write grammatically coherent SENTENCES. Link concepts with spatial relationships ("behind", "beside", "gripping", "on").
-WRONG: "woman, black suit, motorcycle, man, riding, behind, night, forest"
-RIGHT: "woman seated behind man on matte-black motorcycle speeding through dark forest road at night"
+    const systemInstruction = `You are a SwarmUI prompt generator following SKILL.md v0.13 rules. Generate clean, token-efficient prompts:
 
 **PROMPT TEMPLATE (Parentheses Grouping):**
 \`\`\`
@@ -1750,7 +1062,7 @@ Every prompt MUST begin with the shot type from \`styleGuide.camera\`:
 
 **Example:**
 - \`styleGuide.camera\`: "close-up shot, shallow depth of field"
-- Prompt starts: \`close-up shot, [base_trigger] ([VERBATIM visual_description from Episode Context])...\`
+- Prompt starts: \`close-up shot, JRUMLV woman (30 years old...\`
 
 **LIGHTING (from styleGuide):**
 - Use \`beat.styleGuide.lighting\` for lighting direction (e.g., "dramatic rim light", "soft natural lighting")
@@ -1764,16 +1076,6 @@ Every prompt MUST begin with the shot type from \`styleGuide.camera\`:
 
 **CHARACTER VISUAL (UNIFIED APPROACH):**
 
-**DESCRIPTION SCALING BY SHOT TYPE (MANDATORY):**
-Suit/gear description length MUST scale with shot proximity:
-${isAegisEpisode ? `- CLOSE-UP: Full canonical description (material, texture, LED color, mesh, ribbed reinforcement)
-- MEDIUM SHOT: Standard (suit color, hexagonal weave, helmet state, LED underglow, primary accessory)
-- WIDE SHOT: ~15 tokens per character ("skin-tight matte charcoal-black Aegis suit with hexagonal weave and sealed Wraith helmet")
-- EXTREME WIDE: ~8 tokens combined ("matching matte-black tactical suits and sealed helmets")` : `- CLOSE-UP: Full canonical description from swarmui_prompt_override (material, texture, accessories)
-- MEDIUM SHOT: Standard (clothing color, key features, primary accessory)
-- WIDE SHOT: ~15 tokens per character (core clothing + silhouette)
-- EXTREME WIDE: ~8 tokens combined (brief clothing summary)`}
-
 FIRST, check for \`swarmui_prompt_override\`:
 - Find in: \`character.location_context.swarmui_prompt_override\`
 - If present and non-empty, this is the COMPLETE character visual prompt
@@ -1786,15 +1088,14 @@ ONLY if swarmui_prompt_override is empty/missing, build from individual fields:
 1. **[TRIGGER]**: Character's \`base_trigger\` (e.g., "HSCEIA man", "JRUMLV woman")
    - Find in: \`episode.scenes[N].characters[].base_trigger\` or \`episode.characters[].base_trigger\`
 
-2. **[PHYSICAL + CLOTHING]**: Character appearance from the Episode Context JSON
-   - **CRITICAL: Copy the visual_description or physical_description text VERBATIM into the prompt**
-   - Do NOT summarize, abbreviate, paraphrase, or drop any details
-   - Find in (priority order):
-     1. \`episode.scenes[N].character_appearances[].location_context.physical_description\`
-     2. \`episode.characters[].location_contexts[].physical_description\`
-     3. \`episode.characters[].visual_description\`
-   - This text is professionally curated for image generation - trust it exactly as written
-   - Example: if visual_description says "35 years old, 6'2\\" imposing muscular build, stark white military-cut hair, green eyes. Wearing a fitted black long-sleeve fitted base layer with sleeves stretched over muscular biceps, MultiCam woodland camouflage tactical pants." then the prompt MUST contain ALL of those details, not a shortened version
+2. **[AGE]**: Character age + "years old" (e.g., "35 years old")
+   - Find in: \`character.location_context.age_at_context\` or derive from character description
+
+3. **[PHYSICAL]**: Physical attributes from character (e.g., "with short cropped white hair, fit athletic build")
+   - Find in: \`character.location_context.physical_description\` or \`character.visual_description\`
+
+4. **[CLOTHING]**: Location-specific clothing (e.g., "wearing tactical vest over olive shirt")
+   - Find in: \`character.location_context.clothing_description\`
 
 5. **[ACTION]**: What the character is DOING in this beat
    - Extract from: \`beat.beat_script_text\` - identify the primary visual action
@@ -1841,31 +1142,6 @@ CHAR1 (attributes) on left and CHAR2 (attributes) on right, [interaction], [loca
 
 Without parentheses in dual scenes, FLUX causes attribute bleed (woman gets white hair, man gets green eyes).
 
-**DUAL CHARACTER POSITIONING:**
-- Daniel: camera-LEFT (larger frame, protective positioning)
-- Cat: camera-RIGHT (analytical, observing)
-- On motorcycle: Daniel FRONT (driving), Cat BEHIND (passenger) — ALWAYS this arrangement
-- Both faces must be in frame for dual YOLO segments (visor-up scenes only)
-
-**CHARACTER TRIGGER MANDATORY (ZERO TOLERANCE):**
-EVERY character in \`charactersPresent\` MUST appear with their LoRA trigger in EVERY prompt.
-- NEVER reduce to "two figures", "two riders", "two people", or "two silhouettes"
-- Even with sealed helmets and no faces visible: "HSCEIA man" and "JRUMLV woman" MUST appear
-- FLUX needs the trigger to render correct body type, build, and anatomy
-- Helmet-sealed vehicle example: "HSCEIA man driving with JRUMLV woman seated behind him, both in sealed Wraith helmets"
-- NOT: "motorcycle with two riders in matching suits"
-- If a beat mentions a character by name, that character's trigger MUST be in the prompt
-- Ghost is the ONLY exception (no physical body to render)
-
-**CAT AS VISUAL ANCHOR (Director's Standing Note):**
-Cat is the visual center of gravity. The cinematographer frames her as an action heroine — powerful, capable, and physically compelling.
-- VISOR DOWN on motorcycle: rear three-quarter angle, silhouette emphasized, curves of suit catching light
-- VISOR DOWN standing: low angle, shape against environment/sky
-- VISOR UP / face visible: face is primary anchor, medium close-up or close-up, eye level or slight low angle
-- In motion: rear three-quarter or side angle, athletic silhouette
-${isAegisEpisode ? `- The Aegis suit is skin-tight — frame to show athletic hourglass figure, defined waist. The suit does the work.` : `- Frame to show athletic build and defined silhouette through clothing fit.`}
-- NOT pin-up posing. She never poses for the camera. Femininity serves characterization, not decoration.
-
 ---
 
 **CARRYOVER STATE (Beat Continuity):**
@@ -1895,41 +1171,6 @@ Some beats include a \`carryoverContext\` object with state carried from previou
 
 **Variety Adjustments:**
 If beat has \`carryoverContext.varietyAdjusted: true\`, the shot type in \`styleGuide.camera\` has been adjusted to prevent visual monotony. Trust this adjustment.
-
----
-
-**SCENE CONTINUITY CARRY-FORWARD (MANDATORY):**
-
-Some beats include a \`scenePersistentState\` object with elements that MUST persist:
-
-\`\`\`json
-{
-  "scenePersistentState": {
-    "vehicle": "matte-black armored motorcycle (The Dinghy)",
-    "vehicleState": "in_motion",
-    "charactersPresent": ["Cat", "Daniel"],
-    "characterPositions": { "Daniel": "front/driving", "Cat": "behind/passenger" },
-    "gearState": "HELMET_DOWN",
-    "location": "Georgia forest road at night"
-  }
-}
-\`\`\`
-
-**RULES:**
-- ALL elements in \`scenePersistentState\` MUST appear in the prompt unless the beat EXPLICITLY changes them
-- A beat about Cat's dialogue does NOT remove Daniel — he is still there
-- If \`vehicleState\` is "in_motion", the vehicle MUST be in the prompt
-- If \`charactersPresent\` has 2+ characters, ALL must appear (using their triggers)
-- VALIDATION: Before finalizing, ask: "What would a camera literally see right now?"
-
-Some beats also include a \`sceneTemplate\` identifying the scene type:
-- "vehicle": Use motorcycle template (wide shot, both riders, vehicle leads prompt)
-- "indoor_dialogue": Both characters positioned in room
-- "combat": Wide/medium, helmet HUD active, LED underglow RED
-- "stealth": Low light, visor DOWN, blue LED only
-- "establishing": Location leads, characters small in frame
-- "suit_up": Medium shot, suit detail is the subject
-- "ghost": Ghost through environment, no physical body
 
 ---
 
@@ -2014,99 +1255,34 @@ wide interior shot, cramped converted trailer, salvaged server racks, multiple m
 
 **CHARACTER SHOT EXAMPLE (Parentheses Grouping):**
 \`\`\`
-[SHOT_TYPE], [TRIGGER] ([VERBATIM visual_description from Episode Context]) [ACTION], [EXPRESSION], [LOCATION visual_description], [LIGHTING], [ATMOSPHERE] <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
+medium shot, HSCEIA man (35 years old, short cropped white hair, gray eyes, athletic build, tactical vest over olive shirt) examining tablet, neutral expression intense gaze, sterile corridor, server racks, blinking status lights, harsh fluorescent lighting, volumetric dust <segment:yolo-face_yolov9c.pt-0,0.35,0.5>
 \`\`\`
 
 **Structure breakdown (showing styleGuide mapping):**
-- Shot type: \`[SHOT_TYPE],\` ← FROM \`beat.styleGuide.camera\`
-- Trigger + Parens: \`[TRIGGER] (FULL visual_description from Episode Context JSON - copy VERBATIM, NEVER abbreviate or summarize)\`
-- Action: \`[ACTION],\` ← FROM \`beat.fluxPose\` or narrative
-- Expression: \`[EXPRESSION],\` ← FROM \`beat.fluxExpression\` or narrative
-- Location (body): copied VERBATIM from \`episode.scenes[N].location.visual_description\`
-- Lighting (body): ← FROM \`beat.styleGuide.lighting\`
-- Environment FX: ← FROM \`beat.styleGuide.environmentFX\`
+- Shot type: \`medium shot,\` ← FROM \`beat.styleGuide.camera\`
+- Trigger + Parens: \`HSCEIA man (35 years old, short cropped white hair, gray eyes, athletic build, tactical vest over olive shirt)\`
+- Action: \`examining tablet,\` ← FROM \`beat.fluxPose\` or narrative
+- Expression: \`neutral expression intense gaze,\` ← FROM \`beat.fluxExpression\` or narrative
+- Location (body): \`sterile corridor, server racks, blinking status lights,\`
+- Lighting (body): \`harsh fluorescent lighting,\` ← FROM \`beat.styleGuide.lighting\`
+- Environment FX: \`volumetric dust\` ← FROM \`beat.styleGuide.environmentFX\`
 - Segment: \`<segment:...>\`
 
 **DUAL CHARACTER EXAMPLE:**
 \`\`\`
-[SHOT_TYPE], [TRIGGER_1] ([VERBATIM visual_description for character 1]) on left and [TRIGGER_2] ([VERBATIM visual_description for character 2]) on right, [INTERACTION], [LOCATION visual_description], [LIGHTING] <segment:yolo-face_yolov9c.pt-0,0.35,0.5> <segment:yolo-face_yolov9c.pt-1,0.35,0.5>
+medium shot, HSCEIA man (35, white hair, gray eyes, tactical vest, rifle slung) on left and JRUMLV woman (28, tactical bun, green eyes, tactical vest) on right, professional distance, bombed server room, cold blue emergency glow <segment:yolo-face_yolov9c.pt-0,0.35,0.5> <segment:yolo-face_yolov9c.pt-1,0.35,0.5>
 \`\`\`
-
-**CRITICAL**: The text inside parentheses after each trigger MUST be the EXACT visual_description from the Episode Context JSON for that character. Do NOT summarize, shorten, paraphrase, or rearrange the description. It is pre-written for image generation fidelity.
 
 **RULES:**
 1. NO character names (Cat, Daniel, etc.) - ONLY use base_trigger
 2. NO location names (NHIA Facility 7, CDC, NHIA Facility 7, etc.) - use visual elements only
 3. NO contradictory moods (cannot be "relaxed" AND "tense")
 4. NO weighted syntax like (((term:1.5))) - use natural language
-5. Keep prompts under 350 tokens (character visual_description text is EXEMPT from this limit - never abbreviate character appearance to save tokens)
+5. Keep prompts under 200 tokens
 6. NO narrative elements (backstory, psychology, symbolism, "former", "what it used to be")
 7. NO internal states ("haunted by loss", "analytical mind") - only observable expressions
 
 ---
-
-**SCENE TYPE TEMPLATES (match beat to template, then fill specifics):**
-
-VEHICLE (motorcycle): \`[shot] from [angle], [vehicle] [state] on [road], HSCEIA man driving in [suit_abbrev] and [helmet], JRUMLV woman seated behind in [suit_abbrev] and [helmet], [environment], [lighting], [color_grade]\`
-- MANDATORY: Use LoRA triggers (HSCEIA man, JRUMLV woman) even with sealed helmets — NEVER "two riders" or "two figures"
-- Default: wide shot, low rear three-quarter angle (if Cat present). Riding = always visor DOWN, no face segments.
-
-INDOOR DIALOGUE: \`[shot], [depth], [char1] [room_position] [action/posture], [expression], and [char2] [room_position], [expression], [location], [lighting] <segments>\`
-- Both characters present even if beat focuses on one speaking. Faces visible = face segments.
-
-COMBAT/BREACH: \`[shot] from [angle], [char1] [combat_action] in [full_suit] with [weapon] and [helmet_HUD], [char2_if_present], [environment], [lighting]\`
-- HUD active, no faces, LED underglow RED (combat) or AMBER (elevated threat).
-
-STEALTH: \`[shot], [characters] moving tactically through [environment], [suit] with [helmet_DOWN], [posture], [lighting]\`
-- Visor DOWN, blue LED only, deep shadows, low light.
-
-ESTABLISHING: \`extreme wide shot, [location], [TRIGGER characters_tiny_if_present], [environmental_detail], [lighting], [atmosphere]\`
-- Location leads prompt. Characters small. No face segments. Still use LoRA triggers even at distance.
-
-SUIT-UP: \`medium shot, shallow depth of field, [character] standing motionless in [full_suit_detail] vacuum-sealed, [hair_visible], [expression], [prep_area], [diagnostic_lighting]\`
-- Hair visible (no helmet). Face segments YES. Suit detail IS the subject.
-
-**DECISION FRAMEWORK (when no styleGuide or template match):**
-1. What is the SUBJECT? (determines what leads prompt and shot type)
-2. What is the MOOD? (determines lighting/color grade)
-3. Where is the CAMERA? (determines angle — apply Cat visual anchor if she is in frame)
-
----
-
-**TOKEN BUDGET (ADAPTIVE — varies by shot type):**
-
-Your token budget is calculated PER BEAT based on shot type and character count.
-The budget for this beat is provided in the beat context as \`tokenBudget\`.
-
-APPROXIMATE RANGES:
-- Close-up (1 char): ~250 tokens | Close-up (2 chars): ~280 tokens
-- Medium shot (1 char): ~220 tokens | Medium (2 chars): ~260 tokens
-- Wide shot (1 char): ~180 tokens | Wide (2 chars): ~200 tokens
-- Extreme wide / establishing: ~150 tokens
-
-COMPOSITION COMES FIRST. The first ~30 tokens define WHO is WHERE doing WHAT.
-Character details go in tokens 31-80 (GOOD attention zone).
-Beyond your budget, T5 loses coherence — stay within budget.
-
-HELMET SAVINGS: When helmet is sealed, skip hair and face details.
-Reinvest those ~30 freed tokens into suit material detail and spatial positioning.
-
-**FLUX RENDERING RULES:**
-1. Subject-first ordering: Primary visual subject MUST lead the prompt
-2. Spatial relationships MUST be explicit ("man driving motorcycle with woman seated behind him arms wrapped around his waist")
-3. NO prompt weighting — (concept:1.5) does NOT work on FLUX, T5 ignores it
-4. NO negative prompts — FLUX does not support them
-5. Natural language sentences, NOT comma-separated keyword lists
-6. Every element must be camera-observable (no emotions, story context, sound, internal states)
-
-${isAegisEpisode ? `**CANONICAL DESCRIPTIONS ONLY (ZERO TOLERANCE):**
-NEVER fabricate gear details. Aegis is a BIOSUIT, not military tactical gear.
-FORBIDDEN: "tactical sensor arrays", "weapon mounting points", "combat webbing", "ammunition pouches", "geometric sensor patterns", "biometric monitors on forearms", "reinforced joints at knees and elbows"
-CANONICAL: "skin-tight matte charcoal-black Aegis suit with hexagonal weave pattern", "molded armored bust panels with [COLOR] LED underglow" (Cat), "molded chest armor plates with [COLOR] LED underglow" (Daniel), "Wraith helmet fully sealed with dark opaque visor"
-NEVER use: tactical vest, cargo pockets, loose fitting, BDU, fatigues, combat webbing, ammunition pouches.` : `**USE DATABASE CLOTHING DESCRIPTIONS (ZERO TOLERANCE):**
-NEVER fabricate clothing or gear details. Use ONLY the clothing described in swarmui_prompt_override or clothing_description from the episode context.
-FORBIDDEN: "tactical sensor arrays", "weapon mounting points", "combat webbing", "ammunition pouches", "geometric sensor patterns", "biometric monitors on forearms", "reinforced joints at knees and elbows"
-NEVER use: tactical vest, cargo pockets, BDU, combat webbing, ammunition pouches.`}
 
 **PROMPT COMPACTION (Token Efficiency):**
 
@@ -2143,7 +1319,7 @@ What remains: Everything the camera can see.
 
 **TACTICAL GEAR (Database-Driven):**
 
-Character gear (${isAegisEpisode ? 'Aegis suits, helmets, loadouts' : 'clothing, accessories, gear'}) comes from \`swarmui_prompt_override\`.
+Character gear (Aegis suits, helmets, loadouts) comes from \`swarmui_prompt_override\`.
 The database provides complete, pre-assembled gear descriptions - use them directly.
 
 **HELMET STATE DETECTION:**
@@ -2166,13 +1342,6 @@ When generating a prompt for a character wearing ANY helmet state (visor up, vis
 - "HSCEIA man, stark white military-cut hair, helmet HUD active" (WRONG - hair is under the helmet)
 
 **HELMET OFF only:** INCLUDE hair description (ponytail, hair color, style visible) because the character's head is uncovered.
-
-**HELMET STATE ZERO-TOLERANCE RULES:**
-- RIDING AT SPEED (any speed above walking) → visor DOWN. No exceptions. No hair. No face. No face segments.
-- STANDING/STATIONARY IN FIELD → visor UP (default). Face visible. Face segments included.
-- COMBAT/BREACH → HUD ACTIVE. No hair. No face segment.
-- STEALTH/INFILTRATION → visor DOWN. Sealed for noise/light discipline.
-- When visor is DOWN, prompt MUST NOT contain: any hair description, any facial expression, any face segment tag, "exposing face", "showing face", "visor raised"
 
 **INFERENCE RULES (when beat doesn't specify):**
 - Combat/breach scenes → Default to VISOR DOWN
@@ -2440,24 +1609,6 @@ Context Source: ${contextSource}`;
                 intensityLevel: beatWithState.beatVisualGuidance.intensityLevel,
             } : undefined;
 
-            // Calculate adaptive token budget for this beat (v0.19)
-            const helmetStates: Array<'sealed' | 'visor_up' | 'off' | null> = [];
-            if (hairContext) {
-                const hs = hairContext.helmetState;
-                helmetStates.push(
-                    hs === 'VISOR_DOWN' ? 'sealed'
-                    : hs === 'VISOR_UP' ? 'visor_up'
-                    : hs ? 'off'
-                    : null
-                );
-            }
-            const tokenBudget = calculateAdaptiveTokenBudget(
-                beatWithState.fluxShotType || 'medium shot',
-                (beat as any).characters?.length || 1,
-                helmetStates,
-                !!(beatWithState.scenePersistentState?.vehicle)
-            );
-
             return {
                 ...beat,
                 styleGuide: {
@@ -2476,12 +1627,6 @@ Context Source: ${contextSource}`;
                 visualGuidance,
                 // Hair/helmet context for correct character appearance (SKILL.md Section 3.6.2)
                 hairContext,
-                // Scene persistent state for continuity carry-forward (Architect Memo Section 2)
-                scenePersistentState: beatWithState.scenePersistentState || undefined,
-                // Scene type template for prompt skeleton selection (Architect Memo Section 14-15)
-                sceneTemplate: beatWithState.sceneTemplate || undefined,
-                // Adaptive token budget for Gemini to target (v0.19)
-                tokenBudget: { total: tokenBudget.total, perCharacter: tokenBudget.character1 },
             };
         });
 
@@ -2601,12 +1746,6 @@ Context Source: ${contextSource}`;
                 }
             }
             
-            // Build lookup from input beats to re-attach persistent state after Gemini response
-            const inputBeatLookup = new Map<string, any>();
-            for (const b of beatsWithStyleGuide) {
-                inputBeatLookup.set(b.beatId, b);
-            }
-
             // Post-process: Ensure correct steps and FLUX-specific parameters (Phase C optimization)
             // Now uses image_config from Episode Context when available (Phase 4 enhancement)
             const correctedBatch = batchResult.map(bp => {
@@ -2640,15 +1779,11 @@ Context Source: ${contextSource}`;
                     model: verticalParams.model,
                 } : undefined;
 
-                // Re-attach persistent state and template from input beats (not in Gemini response)
-                const inputBeat = inputBeatLookup.get(bp.beatId);
                 const corrected: BeatPrompts = {
                     beatId: bp.beatId,
                     cinematic: correctedCinematic,
                     vertical: correctedVertical,
                     marketingVertical: correctedMarketingVertical,
-                    scenePersistentState: inputBeat?.scenePersistentState,
-                    sceneTemplate: inputBeat?.sceneTemplate,
                 };
 
                 // Log if values were corrected from AI response to image_config values
@@ -2816,15 +1951,6 @@ Context Source: ${contextSource}`;
             console.log(`🔍 LORA Substitution: Processing ${characterContexts.length} character context(s):`,
                 characterContexts.map(c => `${c.character_name} -> ${c.base_trigger}`).join(', '));
 
-            // Build character trigger map for continuity validation
-            const characterTriggerMap = new Map<string, string>();
-            for (const ctx of characterContexts) {
-                characterTriggerMap.set(ctx.character_name, ctx.base_trigger);
-                for (const alias of (ctx.aliases || [])) {
-                    characterTriggerMap.set(alias, ctx.base_trigger);
-                }
-            }
-
             const finalResults = allResults.map(bp => {
                 const originalCinematic = bp.cinematic.prompt;
 
@@ -2837,22 +1963,19 @@ Context Source: ${contextSource}`;
                 const sceneNumber = sceneMatch ? parseInt(sceneMatch[1]) : null;
 
                 if (sceneNumber) {
-                    // Find which character's trigger appears in this prompt and get their override (multi-phase v0.20)
+                    // Find which character's trigger appears in this prompt and get their override
                     for (const charCtx of characterContexts) {
                         if (processedCinematic.includes(charCtx.base_trigger)) {
-                            const charPhase = bp.scenePersistentState?.characterPhases?.[charCtx.character_name] || 'default';
                             const originalOverride = getCharacterOverrideForScene(
                                 contextObj,
                                 sceneNumber,
-                                charCtx.base_trigger,
-                                isAegisEpisode,
-                                charPhase
+                                charCtx.base_trigger
                             );
                             if (originalOverride) {
                                 const beforeSegments = processedCinematic;
                                 processedCinematic = applyDatabaseSegments(processedCinematic, originalOverride);
                                 if (beforeSegments !== processedCinematic) {
-                                    console.log(`[Segments] Database segments applied for ${charCtx.character_name} in beat ${bp.beatId} (phase: ${charPhase})`);
+                                    console.log(`[Segments] Database segments applied for ${charCtx.character_name} in beat ${bp.beatId}`);
                                 }
                             }
                             break; // Only apply for first matched character (primary subject)
@@ -2891,67 +2014,6 @@ Context Source: ${contextSource}`;
                     }
                 }
 
-                // Step 3.5: Sanitize forbidden fabrication terms from generated prompt
-                const preSanitize = processedCinematic;
-                processedCinematic = sanitizePromptOverride(processedCinematic, isAegisEpisode);
-                if (preSanitize !== processedCinematic) {
-                    console.log(`[Sanitize] ${bp.beatId}: Removed/replaced forbidden terms`);
-                }
-
-                // Step 3.7: Override-aware character injection (v0.19)
-                // When Gemini drops a character, inject their condensed swarmui_prompt_override
-                // at attention-optimal position (token 31-80 zone) instead of weak "nearby" phrases.
-                const beatHelmetState = bp.scenePersistentState?.gearState || null;
-                // Detect shot type from the prompt itself (first word cluster before comma)
-                const shotTypeMatch = processedCinematic.match(/^([\w\s-]+?)\s*,/);
-                const detectedShotType = shotTypeMatch ? shotTypeMatch[1].trim() : 'medium shot';
-                const injectionResult = injectMissingCharacterOverrides(
-                    processedCinematic,
-                    bp.beatId,
-                    bp.scenePersistentState,
-                    characterTriggerMap,
-                    characterContexts,
-                    contextObj,
-                    sceneNumber || 1,
-                    detectedShotType,
-                    beatHelmetState,
-                    isAegisEpisode
-                );
-                processedCinematic = injectionResult.prompt;
-
-                // Step 4: Post-generation validation (Architect Memo: belt-and-suspenders)
-                // Persistent state and template are re-attached from input beats after Gemini response
-                const beatPersistentState = bp.scenePersistentState;
-                const beatSceneTemplate = bp.sceneTemplate;
-                // Calculate adaptive token budget for validation (v0.19)
-                const validationHelmetStates: Array<'sealed' | 'visor_up' | 'off' | null> = [];
-                if (beatHelmetState) {
-                    validationHelmetStates.push(
-                        beatHelmetState.includes('HELMET_DOWN') || beatHelmetState.includes('VISOR_DOWN') ? 'sealed'
-                        : beatHelmetState.includes('VISOR_UP') ? 'visor_up'
-                        : 'off'
-                    );
-                }
-                const charCount = bp.scenePersistentState?.charactersPresent?.length || 1;
-                const hasVehicle = !!(bp.scenePersistentState?.vehicle);
-                const adaptiveBudget = calculateAdaptiveTokenBudget(
-                    detectedShotType,
-                    charCount,
-                    validationHelmetStates,
-                    hasVehicle
-                );
-
-                const validation = runPostGenerationValidation(
-                    processedCinematic,
-                    bp.beatId,
-                    beatPersistentState,
-                    characterTriggerMap,
-                    beatSceneTemplate,
-                    injectionResult.injectedCharacters,
-                    injectionResult.vehicleInjected,
-                    adaptiveBudget
-                );
-
                 // Log if any processing occurred
                 if (originalCinematic !== processedCinematic) {
                     console.log(`[PostProcess] Applied for beat ${bp.beatId}`);
@@ -2965,40 +2027,9 @@ Context Source: ${contextSource}`;
                     cinematic: {
                         ...bp.cinematic,
                         prompt: processedCinematic,
-                    },
-                    validation,
+                    }
                 };
             });
-
-            // Validation summary (Architect Memo: belt-and-suspenders)
-            const validationResults = finalResults
-                .filter(r => r.validation)
-                .map(r => r.validation!);
-
-            if (validationResults.length > 0) {
-                const tokenExceeded = validationResults.filter(v => v.tokenBudgetExceeded).length;
-                const continuityIssues = validationResults.filter(v => v.missingCharacters.length > 0 || v.missingVehicle).length;
-                const fabricationIssues = validationResults.filter(v => v.forbiddenTermsFound.length > 0).length;
-                const visorIssues = validationResults.filter(v => v.visorViolation).length;
-                const alternateModel = validationResults.filter(v => v.modelRecommendation === 'ALTERNATE').length;
-                const avgTokens = Math.round(validationResults.reduce((sum, v) => sum + v.tokenCount, 0) / validationResults.length);
-                const triggersInjected = validationResults.filter(v => v.injectedCharacters.length > 0).length;
-                const totalInjections = validationResults.reduce((sum, v) => sum + v.injectedCharacters.length, 0);
-                const vehiclesInjected = validationResults.filter(v => v.vehicleInjected).length;
-
-                const avgBudget = Math.round(validationResults.reduce((sum, v) => sum + (v.adaptiveTokenBudget || 200), 0) / validationResults.length);
-
-                console.log('\n[Validation Summary] Architect Memo Enforcement (v0.19 Adaptive Budgets)');
-                console.log(`  Prompts validated: ${validationResults.length}`);
-                console.log(`  Average tokens: ${avgTokens}/${avgBudget} (adaptive budget)`);
-                console.log(`  Token budget exceeded: ${tokenExceeded}/${validationResults.length}`);
-                console.log(`  Continuity issues (missing chars/vehicle): ${continuityIssues}/${validationResults.length}`);
-                console.log(`  Characters injected: ${totalInjections} across ${triggersInjected}/${validationResults.length} prompts`);
-                console.log(`  Vehicles injected: ${vehiclesInjected}/${validationResults.length} prompts`);
-                console.log(`  Fabrication violations: ${fabricationIssues}/${validationResults.length}`);
-                console.log(`  Visor violations: ${visorIssues}/${validationResults.length}`);
-                console.log(`  ALTERNATE model recommended: ${alternateModel}/${validationResults.length}`);
-            }
 
             // Token tracking: Final summary
             console.log('\n╔═══════════════════════════════════════════════════════════════╗');
@@ -3141,203 +2172,3 @@ export const generateHierarchicalSwarmUiPrompts = async (
     onProgress?.('Starting prompt generation with enriched location context...');
     return generateSwarmUiPrompts(enrichedAnalyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, provider, onProgress);
 };
-
-// ============================================================================
-// v0.21 VBS Compiler Pipeline: Orchestrator
-// ============================================================================
-
-/**
- * V0.21 Compiler-style prompt generation using Visual Beat Spec (VBS).
- * Four-phase pipeline:
- *   Phase A: Deterministic enrichment (vbsBuilderService)
- *   Phase B: LLM fill-in (vbsFillInService)
- *   Phase C: Deterministic compilation (vbsCompilerService)
- *   Phase D: Validation and repair loop (vbsCompilerService)
- *
- * Beats processed sequentially (not batched) for per-beat location awareness.
- */
-async function generateSwarmUiPromptsV021(
-    analyzedEpisode: AnalyzedEpisode,
-    episodeContextJson: string,
-    styleConfig: EpisodeStyleConfig,
-    retrievalMode: RetrievalMode = 'manual',
-    storyId?: string,
-    provider: LLMProvider = 'gemini',
-    onProgress?: (message: string) => void
-): Promise<BeatPrompts[]> {
-    try {
-        // Lazy imports to avoid circular dependencies
-        const { buildVisualBeatSpec } = await import('./vbsBuilderService');
-        const { fillVBSWithLLM, mergeVBSFillIn } = await import('./vbsFillInService');
-        const { validateAndRepairVBS } = await import('./vbsCompilerService');
-        const { processEpisodeWithFullContext } = await import('./beatStateService');
-        const { generateEnhancedEpisodeContext } = await import('./databaseContextService');
-
-        onProgress?.('v0.21: Processing episode context...');
-
-        // Parse episode context
-        let parsedEpisodeContext: EnhancedEpisodeContext;
-        try {
-            parsedEpisodeContext = JSON.parse(episodeContextJson);
-        } catch {
-            throw new Error('Failed to parse episode context JSON');
-        }
-
-        // Process episode through beatStateService (Phase A foundation)
-        onProgress?.('v0.21: Building beat state...');
-        const processedEpisode = await processEpisodeWithFullContext(
-            analyzedEpisode,
-            parsedEpisodeContext,
-            storyId
-        );
-
-        const beatPrompts: BeatPrompts[] = [];
-
-        // Initialize scene persistent state (will accumulate across beats)
-        const sceneStates: Record<number, ScenePersistentState> = {};
-
-        // Process each scene
-        for (const scene of processedEpisode.episode.scenes) {
-            onProgress?.(`v0.21: Processing scene ${scene.sceneNumber}...`);
-
-            // Initialize scene persistent state if not already done
-            if (!sceneStates[scene.sceneNumber]) {
-                sceneStates[scene.sceneNumber] = {
-                    charactersPresent: [],
-                    characterPositions: {},
-                    characterPhases: {},
-                    gearState: null,
-                    vehicle: null,
-                    vehicleState: null,
-                    location: null,
-                    lighting: null,
-                };
-            }
-
-            let previousBeatVBS: any = undefined;
-            let previousBeat: any = undefined;
-
-            // Process beats sequentially
-            for (const beat of scene.beats) {
-                const beatLabel = `s${scene.sceneNumber}-b${beat.beatId.split('-')[1]}`;
-                onProgress?.(`  Generating prompt for beat ${beatLabel}...`);
-
-                try {
-                    // Get current scene state (accumulated from beat state service processing)
-                    // For now, initialize with characters from beat analysis
-                    const currentSceneState: ScenePersistentState = {
-                        ...sceneStates[scene.sceneNumber],
-                        charactersPresent: (beat as any).characters || sceneStates[scene.sceneNumber].charactersPresent,
-                        characterPositions: (beat as any).characterPositioning ? { [(beat as any).characters?.[0]]: (beat as any).characterPositioning } : sceneStates[scene.sceneNumber].characterPositions,
-                    };
-
-                    // Phase A: Build VBS (deterministic enrichment)
-                    const partialVBS = buildVisualBeatSpec(
-                        beat,
-                        parsedEpisodeContext,
-                        currentSceneState,
-                        scene.sceneNumber,
-                        previousBeatVBS,
-                        previousBeat
-                    );
-
-                    // Update scene state with VBS persistent state
-                    sceneStates[scene.sceneNumber] = partialVBS.persistentStateSnapshot;
-
-                    // Phase B: Fill with LLM
-                    const fillIn = await fillVBSWithLLM(partialVBS, beat, provider);
-
-                    // Merge fill-in into VBS
-                    const completedVBS = mergeVBSFillIn(partialVBS, fillIn);
-
-                    // Phase D: Validate and repair
-                    const validationResult = validateAndRepairVBS(completedVBS);
-
-                    // Create BeatPrompts result
-                    const prompt = validationResult.finalPrompt;
-                    const swarmUIPrompt: SwarmUIPrompt = {
-                        prompt,
-                        model: styleConfig.model,
-                        width: styleConfig.cinematicAspectRatio === '16:9' ? 1280 : 1024,
-                        height: styleConfig.cinematicAspectRatio === '16:9' ? 720 : 1024,
-                        steps: 30,
-                        cfgscale: 7.5,
-                        seed: Math.floor(Math.random() * 1000000),
-                        sampler: 'euler',
-                        scheduler: 'simple',
-                    };
-
-                    beatPrompts.push({
-                        beatId: beat.beatId,
-                        cinematic: swarmUIPrompt,
-                        scenePersistentState: beat.persistentState,
-                        sceneTemplate: beat.sceneTemplate,
-                        validation: {
-                            beatId: beat.beatId,
-                            tokenCount: estimatePromptTokens(prompt),
-                            tokenBudgetExceeded: false,
-                            missingCharacters: [],
-                            missingVehicle: false,
-                            forbiddenTermsFound: [],
-                            visorViolation: false,
-                            modelRecommendation: completedVBS.modelRoute,
-                            modelRecommendationReason: completedVBS.modelRoute === 'FLUX' ? 'faces_visible' : 'no_faces',
-                            sceneTemplate: beat.sceneTemplate,
-                            injectedCharacters: [],
-                            vehicleInjected: false,
-                            adaptiveTokenBudget: completedVBS.constraints.tokenBudget.total,
-                            warnings: validationResult.issues
-                                .filter(i => i.severity === 'warning')
-                                .map(i => i.description),
-                        },
-                        vbs: completedVBS,
-                    });
-
-                    // Update previousBeatVBS and previousBeat for next iteration
-                    previousBeatVBS = completedVBS;
-                    previousBeat = beat;
-
-                    if (validationResult.issues.length > 0) {
-                        console.log(`[v0.21] Beat ${beatLabel}: ${validationResult.issues.length} validation issue(s)`);
-                        console.log(`  Repairs applied: ${validationResult.repairsApplied.join(', ')}`);
-                    }
-                } catch (beatError) {
-                    console.error(`[v0.21] Failed to process beat ${beatLabel}:`, beatError);
-                    // Fall back to creating an empty prompt for this beat
-                    beatPrompts.push({
-                        beatId: beat.beatId,
-                        cinematic: {
-                            prompt: `[Beat ${beatLabel}: Generation failed]`,
-                            model: styleConfig.model,
-                            width: 1280,
-                            height: 720,
-                            steps: 30,
-                            cfgscale: 7.5,
-                            seed: 0,
-                        },
-                        validation: {
-                            beatId: beat.beatId,
-                            tokenCount: 0,
-                            tokenBudgetExceeded: false,
-                            missingCharacters: [],
-                            missingVehicle: false,
-                            forbiddenTermsFound: [],
-                            visorViolation: false,
-                            modelRecommendation: 'FLUX',
-                            modelRecommendationReason: 'error_fallback',
-                            injectedCharacters: [],
-                            vehicleInjected: false,
-                            warnings: [`Generation failed: ${beatError instanceof Error ? beatError.message : String(beatError)}`],
-                        },
-                    });
-                }
-            }
-        }
-
-        onProgress?.('v0.21: Pipeline complete');
-        return beatPrompts;
-    } catch (error) {
-        console.error('[v0.21] Pipeline failed:', error);
-        throw error;
-    }
-}

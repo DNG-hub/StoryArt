@@ -1,0 +1,110 @@
+{
+  "episode": {
+    "episode_number": 3,
+    "episode_title": "The Shepherd's Past",
+    "episode_summary": "The investigation leads Cat and Daniel to discover Colonel Marcus Webb's connection to the pre-collapse fraud, forcing Daniel to reveal his personal history and taking them to his fortified subterranean safehouse. As they uncover the depth of Webb's conspiracy and Daniel's trauma, a critical vulnerability emerges when the biometric scanner inadvertently exposes their location to Webb's network.",
+    "story_context": "Post-collapse near-future thriller following field medic Cat Mitchell and former Delta operator Daniel O'Brien investigating a healthcare conspiracy in the ruins of Atlanta.",
+    "narrative_tone": "Tense, clinical prose with medical and military precision. Slow-burn emotional tension between leads. Dark atmosphere with moments of human connection.",
+    "core_themes": "Institutional betrayal, moral injury, the cost of survival, trust between damaged people, conspiracy and systemic corruption.",
+    "characters": [
+      {
+        "character_name": "Catherine 'Cat' Mitchell",
+        "aliases": ["Catherine", "Cat Mitchell", "Catherine Mitchell"],
+        "base_trigger": "JRUMLV woman",
+        "visual_description": "30 years old, brown hair in loose practical ponytail, green eyes with gold flecks, lean athletic build with toned midriff visible. Wearing a fitted grey ribbed tank top and tactical pants falling loosely over combat boots.",
+        "location_contexts": [
+          {
+            "location_name": "The Silo - Interior",
+            "physical_description": "30 years old, brown hair in loose practical ponytail, green eyes with gold flecks, lean athletic build with toned midriff visible. Wearing a fitted grey ribbed tank top and tactical pants falling loosely over combat boots.",
+            "clothing_description": "Fitted grey ribbed tank top with toned midriff visible, tactical pants falling loosely over combat boots",
+            "demeanor_description": "Alert, analytical, clinically observant, systematically mapping the room with her eyes, probing Daniel with sharp questions, maintaining emotional distance through data focus",
+            "swarmui_prompt_override": "",
+            "temporal_context": "POST_COLLAPSE",
+            "lora_weight_adjustment": 0,
+            "face_segment_rule": "ALWAYS"
+          }
+        ]
+      },
+      {
+        "character_name": "Daniel O'Brien",
+        "aliases": ["Daniel O'Brien", "Dan", "Shepherd"],
+        "base_trigger": "HSCEIA man",
+        "visual_description": "35 years old, 6'2\" imposing muscular build, stark white military-cut hair, green eyes. Wearing a black long-sleeve fitted base layer with sleeves stretched over muscular biceps and MultiCam woodland camouflage tactical pants.",
+        "location_contexts": [
+          {
+            "location_name": "The Silo - Interior",
+            "physical_description": "35 years old, 6'2\" imposing muscular build, stark white military-cut hair, green eyes. Wearing a black long-sleeve fitted base layer with sleeves stretched over muscular biceps and MultiCam woodland camouflage tactical pants. Bear visible scars including burn scar on chest and healed fracture on left clavicle.",
+            "clothing_description": "Black long-sleeve fitted base layer with sleeves stretched over muscular biceps, MultiCam woodland camouflage tactical pants",
+            "demeanor_description": "Controlled tension, tactical awareness, guarded, affective shutdown masked by routine protocol, emotional vulnerability emerging beneath professional composure",
+            "swarmui_prompt_override": "",
+            "temporal_context": "POST_COLLAPSE",
+            "lora_weight_adjustment": 0,
+            "face_segment_rule": "ALWAYS"
+          }
+        ]
+      }
+    ],
+    "scenes": [
+      {
+        "scene_number": 2,
+        "scene_title": "The Safehouse",
+        "scene_summary": "Cat and Daniel drive the MMB through rain to Daniel's hardened subterranean FOB beneath an abandoned industrial park. Inside the Silo, Daniel reveals the depth of his preparation: an automated surgical suite, surveillance network, and advanced technology. Cat discovers he's tapped into a buried micro-reactor power grid controlled by Chen's pharmaceutical backers. When Cat reveals that the Shepherd-Actual designation pinged on the network for eleven seconds during biometric authentication, Daniel severs external communications, creating an urgent tactical vulnerability.",
+        "roadmap_location": "Dan's Safehouse",
+        "location": {
+          "id": "loc_silo_interior",
+          "name": "The Silo - Interior",
+          "description": "Daniel's subterranean forward operating base hidden beneath an abandoned industrial park. Built secretly over three years using funds siphoned from Webb's billing fraud. Powered by a parasitic tap on Chen's backers' buried micro-reactor grid. Contains an automated surgical suite, server farm, surveillance network monitoring the city above, and minimal personal living quarters.",
+          "visual_description": "Underground bunker, industrial concrete walls, exposed conduit piping, warm amber work lights mixed with cold fluorescent strips, weapons racks, communications equipment, maps pinned to walls, military cots, generator hum, thick blast doors, server towers humming in corner, surveillance monitors displaying thermal feeds and compromised traffic cameras, medical bay with automated surgical suite",
+          "atmosphere": "Fortress solitude. The deep underground quiet broken only by generator hum and dripping condensation. A space built by paranoia and competence in equal measure. Sterile, meticulous, revealing the psychological isolation of its creator.",
+          "atmosphere_category": "BUNKER_REFUGE",
+          "geographical_location": "Beneath abandoned industrial park, Atlanta",
+          "time_period": "POST_COLLAPSE",
+          "cultural_context": "Off-grid military survival architecture repurposed for covert operations",
+          "key_features": [
+            "bank of surveillance monitors",
+            "medical bay with automated surgical suite",
+            "racks of medical supplies organized by utility",
+            "living quarters resembling a cell",
+            "weapons workbench with components by caliber",
+            "server farm with spectral analyzer",
+            "biometric palm scanner on bulkhead door",
+            "master breaker for external comms array",
+            "independent power grid tapping buried micro-reactors",
+            "kitchenette with stainless steel counter"
+          ],
+          "visual_reference_url": "",
+          "significance_level": "PRIMARY",
+          "artifacts": []
+        },
+        "character_appearances": [
+          {
+            "character_name": "Catherine 'Cat' Mitchell",
+            "location_context": {
+              "location_name": "The Silo - Interior",
+              "physical_description": "30 years old, brown hair in loose practical ponytail, green eyes with gold flecks, lean athletic build with toned midriff visible. Wearing a fitted grey ribbed tank top and tactical pants falling loosely over combat boots.",
+              "clothing_description": "Fitted grey ribbed tank top with toned midriff visible, tactical pants falling loosely over combat boots",
+              "demeanor_description": "Alert, analytical, clinically observant, systematically mapping the room with her eyes, probing Daniel with sharp questions, maintaining emotional distance through data focus",
+              "swarmui_prompt_override": "",
+              "temporal_context": "POST_COLLAPSE",
+              "lora_weight_adjustment": 0,
+              "face_segment_rule": "ALWAYS"
+            }
+          },
+          {
+            "character_name": "Daniel O'Brien",
+            "location_context": {
+              "location_name": "The Silo - Interior",
+              "physical_description": "35 years old, 6'2\" imposing muscular build, stark white military-cut hair, green eyes. Wearing a black long-sleeve fitted base layer with sleeves stretched over muscular biceps and MultiCam woodland camouflage tactical pants. Bears visible scars including burn scar on chest and healed fracture on left clavicle.",
+              "clothing_description": "Black long-sleeve fitted base layer with sleeves stretched over muscular biceps, MultiCam woodland camouflage tactical pants",
+              "demeanor_description": "Controlled tension, tactical awareness, guarded, affective shutdown masked by routine protocol, emotional vulnerability emerging beneath professional composure",
+              "swarmui_prompt_override": "",
+              "temporal_context": "POST_COLLAPSE",
+              "lora_weight_adjustment": 0,
+              "face_segment_rule": "ALWAYS"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

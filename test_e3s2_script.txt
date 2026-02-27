@@ -1,0 +1,231 @@
+# Episode 3, Scene 2: The Safehouse
+## Punched Up from Production Narrative
+Word count: ~2900
+
+---
+
+## Episode 3, Scene 2: The Safehouse
+
+The MMB shouldered through the dead streets of Atlanta like a vessel navigating a reef of concrete and rust. Daniel drove without headlights, navigating by the green-phosphor wireframe of the night-vision display bolted above the dash. The HUD painted the road in spectral geometry, potholes rendered as depth contours, heat signatures of scavengers huddled in the ruins of a strip mall blooming orange and fading as the heavy transport passed.
+
+Behind them, the Dinghy rode on its rear cradle, lashed with the heavy-duty tie-downs Daniel had cinched with a precision that bordered on ritual. Cat had watched him check each strap twice, his hands moving with the same meticulous care he applied to his weapons. Not paranoia. Protocol.
+
+*Three hours.* That was what he had said. They were two hours in.
+
+Cat sat in the passenger seat, knees drawn up, the glow of her datapad washing her face in pale blue. She wasn't watching the road. She was re-reading the Webb file, letting the data scroll through her bloodstream like a slow-drip toxin.
+
+"Store the pad," Daniel said, his voice low and flat. "Light signature is a beacon."
+
+She tapped a final command, bookmarking the Ghost anomaly log, and killed the screen. The cab plunged into green monochrome.
+
+They drove in silence. The rain drummed against the armored plating, hostile and rhythmic, filling the space between them with white noise. Cat studied Daniel's profile in the green wash, the rigid set of his jaw, the controlled sweep of his eyes across the HUD. His hands on the wheel were steady. The tremor from earlier was gone, replaced by something worse: the absolute stillness of a man who had decided to stop feeling.
+
+*Affective shutdown. Complete. Functional but unsustainable.* She noted the signs without commenting on them.
+
+"The encryption on the Webb file," she said, her voice steady but tight. "It's military grade. Pre-Collapse logic. The deeper tiers are locked behind a heartbeat handshake, biometric authentication tied to a specific person's vitals." She let that sit for a beat. "The file doesn't just know who's reading it, Daniel. It knows who's *holding* it."
+
+"Drop it, Cat."
+
+"Whose heartbeat is it looking for?"
+
+His jaw tightened, a fraction of a degree. That was all the answer she needed.
+
+He swung the MMB off the main arterial and into the skeletal remains of an industrial park. Half-finished distribution centers loomed like the ribcages of leviathans. He killed the electric motors, letting the diesel-electric hybrid coast on momentum alone, silent except for the hiss of tires on wet asphalt and the creak of the Dinghy's lashings.
+
+"Keep your hands visible when we enter," he said. "Automated sentries are active."
+
+He tapped a sequence into the dash console. Ahead, behind a wall of corrugated steel and rusted shipping containers, a hydraulic mechanism engaged. A section of loading dock floor ramped downward, exhaling a breath of recycled air.
+
+He drove them into the earth.
+
+***
+
+The transition from the weeping surface to the subterranean airlock hit Cat's eardrums like a change in cabin pressure. Humidity vanished. The air tasted metallic, scrubbed, recycled, ozone and high-grade antiseptic layered over solvent and steel.
+
+The blast doors groaned shut behind the MMB. Silence. Absolute.
+
+Cat stepped out of the cab. The garage was stark: motion-activated LED strips casting harsh, shadowless light across sealed epoxy floors. No dust. No debris. The cleanliness wasn't incidental. It was pathological.
+
+*Not shelter. A clean room.* She registered the distinction and moved on.
+
+Daniel was already moving. He circled the MMB, checking the undercarriage with a mirror on a telescoping pole, trackers, tampering, anything that shouldn't be there. Then he moved to the Dinghy, running his hands along the lashing points, confirming nothing had shifted during transit. His movements were fluid, economical, an animal mapping its territory by instinct, but there was a rigidity in his shoulders that hadn't been there before the clinic. Before the name *Webb*.
+
+"Welcome to the Silo," he said without looking at her. His sidearm was holstered but the retention strap was undone. Ready condition.
+
+Cat walked toward the inner bulkhead door. To the left, a workbench laid out with surgical precision: weapons components arranged by caliber, a soldering station beside a half-disassembled surveillance drone.
+
+"You built this," she said.
+
+"Repurposed." He moved past her to the keypad, blocking her view of the code with his body, not an insult, she realized. Muscle memory. "Old telecom exchange. Hard-line connections to the dormant fiber trunk. Shielded against EMP and localized radiation."
+
+"It's a bunker, Daniel."
+
+"It's a Forward Operating Base."
+
+He placed his palm on a biometric scanner. Red light traced his hand. Heavy magnetic locks disengaged, a series of mechanical thuds that vibrated through the floor.
+
+The door swung open. Cat stepped through, expecting a cot and a hot plate.
+
+She stopped.
+
+The main room was a cavern. The far wall: a bank of monitors, half dark, the others displaying live thermal feeds of the city above, intersections, compromised traffic cameras, satellite weather patterns. To the right: a medical bay that rivaled the one she had lost in the first riots. Automated surgical suite, dormant but pristine. Racks of saline, antibiotics, coagulants, organized by utility, normal saline first, then lactated Ringer's, then the hard-to-find hemostatics and broad-spectrum antibiotics.
+
+To the left: living quarters that looked more like a cell. A perfectly made rack. A footlocker. Nothing personal. No photographs. No books. Just the architecture of survival.
+
+Cat's pulse spiked, not fear, but the sympathetic response to overwhelming evidence of isolation. Her analyst mind was already running the inventory.
+
+*Hardened structure, minimum three feet of reinforced concrete based on acoustic dampening. Independent power grid. Medical suite worth six figures pre-collapse. Server farm humming in the corner. Spectral analyzer on the far desk.*
+
+She thought of the MMB. The filtration system that turned toxic air into something breathable. The Aegis suits sealed in their equipment bay, technology she'd never seen in any military catalog. The Dinghy, purpose-built for urban extraction with a hull design that didn't match any manufacturer she could identify.
+
+*None of this is standard military surplus. A disgraced Delta operator doesn't acquire an automated surgical suite and a hardened subterranean FOB on a soldier's severance. Someone built this infrastructure for him. Or someone built him for this infrastructure.*
+
+And the power. She could hear it now that the surface noise was gone, a low, constant hum beneath the floor, too steady for diesel generators, too clean. The lights didn't flicker. The servers didn't cycle. Whatever fed this place had the signature of something engineered to run for decades without maintenance.
+
+*Nuclear. Small-scale. Shielded. The kind of micro-reactor that pharmaceutical companies were licensing for remote research stations before the Collapse. The kind that costs more than a hospital.* The word sat wrong in her chest.
+
+Daniel hadn't built a bunker. He'd tapped into someone else's power grid, someone who could afford to bury a reactor under an industrial park and forget about it. The same someone whose supply chains moved vaccines and surgical equipment through GHL subsidiaries like they were shipping office furniture.
+
+She filed the thought. It joined a growing folder in her mind labeled with Daniel's name and a question mark. The folder was getting thick.
+
+"How long have you been preparing for this?" she asked, barely above a whisper.
+
+Daniel walked past her to the console, his fingers moving across the keyboard. Startup sequence. "Since the day I met Colonel Webb."
+
+"And the power?" She gestured at the ceiling, the walls, the humming floor. "This isn't a generator, Daniel. This is tapped infrastructure. Whose grid are you siphoning?"
+
+He didn't look up from the console. "The same people who built Black Ridge. Chen's backers. Old pharmaceutical money, the kind that survived the Collapse because it caused the Collapse." His voice was flat, clinical. "They buried micro-reactors at six sites across the metro as backup power for their research facilities. This industrial park sits on the conduit line between two of them. I spliced in three years ago. They've never noticed the draw because they've never had to audit it. When you own the infrastructure, you don't count the watts."
+
+"You're running your entire operation off the enemy's power grid."
+
+"They're not the enemy. They're the supply chain. Webb is the enemy. Chen is the product. Klepstein is the money." He pulled up a schematic on the center monitor, a network map of conduit lines running beneath the city like a second nervous system. "The reactors power Chen's labs, Klepstein's secure communications, the executive wellness facilities where they keep their clients compliant. I just happen to live in the walls."
+
+Cat stared at the schematic. Six nodes. Six buried reactors. A parallel infrastructure hidden beneath the ruins of the old one, powering a shadow economy she was only beginning to see the edges of.
+
+*The MMB charges from the Silo. The Dinghy charges from the MMB. He's a parasite on their parasite. And if they ever trace the draw...* She let the thought finish itself.
+
+"They'll find you," she said.
+
+"They'll find this room," Daniel corrected. "I'll be somewhere else."
+
+***
+
+He could feel her mapping the room. Her eyes moved the way they moved over a patient, systematic, thorough, missing nothing. The power question had been sharper than he'd expected. Most operators would have missed it. Cat wasn't most operators.
+
+It made the skin between his shoulder blades itch.
+
+He focused on the startup diagnostics. *Reactor tap stable at 94%. Air filtration nominal. Perimeter sensors green.* The logic of the machine was safe. The logic of Cat Mitchell was anything but.
+
+He stripped off his plate carrier and hung it on its designated hook, aligning it with the spare magazines. The weight leaving his chest should have been relief. It felt like exposure.
+
+"The medical bay is fully stocked," he said, keeping his voice flat. "If you need to run labs on the clinic samples, the centrifuge is calibrated."
+
+He turned. She was standing in the center of the room, small against the backdrop of the surveillance grid, her dark hair still damp from the rain where it escaped her ponytail, her eyes wide and dark and relentlessly analytical.
+
+"You have a spectral analyzer," she said, pointing to the far desk.
+
+"Yes."
+
+"And a localized server farm." She gestured to the humming black towers.
+
+"Yes."
+
+"This isn't a soldier's hideout, Daniel." She gestured at the monitors, the servers, the medical bay. "This is a command post for a war that hasn't started yet." Her gaze settled on him. "Or a war you already lost."
+
+His jaw tightened. "The war didn't end. The battlefield changed shape."
+
+He walked to the kitchenette, stainless steel counter, sink, hot plate. He filled a kettle. The domestic gesture felt absurd in the high-tech tomb.
+
+"Webb," he said, the word landing hard between them. "He built the playbook. Medical logistics as cover for covert insertion. The billing codes you found, they're his architecture. His signature on everything." He poured water into the kettle, watching it rather than her. "I studied that architecture for two years before I started siphoning from it. Skimmed funding through the same billing fraud he designed, redirected medical equipment through the same supply chains he controlled. Built all of this," he gestured at the room without looking up, "using his own methods against him. He doesn't know this place exists because it was built with money he never knew was missing."
+
+He heard her move closer. The soft scuff of her boots on the epoxy. He didn't turn. If he looked at her now, with the adrenaline fading and the Silo's walls sealing them in together, he wasn't sure he could maintain the partition.
+
+"So the fraud wasn't just about money," she said softly. "You turned his own supply chain into a weapon."
+
+"Money is fuel," Daniel said. "Webb didn't care about wealth. He cared about reach. Controlling the supply chain meant controlling who received insulin. Who received antibiotics. Who lived. I just skimmed enough fuel to build a fire he can't see."
+
+"Strategic triage," she whispered. "On a societal scale."
+
+"Yes."
+
+He turned. She was three feet away. Close enough to smell the rain still clinging to her skin beneath the room's scrubbed antiseptic air. Close enough to see the dilation of her pupils.
+
+"You were his instrument," she said. Not an accusation. A diagnosis.
+
+"I was his scalpel," Daniel corrected. "Until I realized what I was cutting out wasn't the cancer. It was the patient."
+
+The metaphor settled between them, heavy and precise.
+
+***
+
+Cat studied him. Without the plate carrier, the black long-sleeve clung to his torso, pulling tight across his shoulders and chest, the fabric mapping a body built for violence. Beneath the cotton she could read the topography of old damage, the raised ridge of a burn scar disappearing beneath his collar, the subtle deformation of a healed fracture in his left clavicle. History written on the dermis.
+
+But it was his eyes that held her. Usually cold, scanning, assessing threats. Here, in the sanctuary he had built against the world, something had cracked in the ice. A fatigue so profound it resembled pain.
+
+She needed to keep them in the data. It was the only language they could speak without detonating the thing building between them.
+
+"The Ghost pattern in the clinic data," Cat said, moving to the console. "It flagged Webb's authorization signature. But it also flagged a secondary user with override privileges."
+
+Daniel's posture shifted. Weight forward, stance widening. "What user?"
+
+"No name. A designation." She watched his face. "Shepherd-Actual."
+
+The flinch was microscopic, a twitch of the orbicularis oculi, but to Cat, it was a scream.
+
+He turned away, walking to the weapons bench. He picked up a cleaning cloth though she knew his weapon was already immaculate. Something to occupy his hands.
+
+"That designation doesn't exist anymore," he said.
+
+"It's active in the network, Daniel. It authorized a data transfer from the clinic two minutes before we arrived."
+
+He stopped. Perfectly still. "That's impossible."
+
+"Unless someone stole it." She stepped closer, entering his space. "This Silo. The biometrics. The encryption. You're not hiding from the collapse, Daniel. You're hiding from *him*."
+
+"He *is* coming." Daniel turned, and the intensity in his face pinned her in place. "Webb doesn't leave loose ends. I am the loose end."
+
+He set the cloth down carefully. "You want to know about Shepherd?" He gestured around the room, the monitors, the maps, the weapons rack. "This isn't a command post. It's a penance. I built this because I knew that when the grid collapsed, people like Webb would rise. And I would be the only thing standing between them and,"
+
+He stopped. His eyes locked on hers.
+
+"And what?" Cat asked, barely breathing.
+
+"And people worth protecting," Daniel said. The correction was deliberate, clinical. But his eyes had said something else before his mouth caught up.
+
+Cat filed that too.
+
+***
+
+The silence stretched until the hum of the servers filled it. Daniel turned back to the console, putting the workbench between them like a barricade.
+
+"The biometric scanner," Cat said, her mind snapping to a new threat vector. "When you palmed in, the system authenticated against the fiber trunk?"
+
+"Encrypted. Isolated."
+
+"But the Shepherd-Actual designation is active on that same network." Her eyes widened. She spun toward the server rack. "Daniel. The heartbeat handshake protocol. If your biometrics are part of the authentication chain, by scanning your palm, you just confirmed to anyone monitoring that Shepherd-Actual's biometric key is active. At these coordinates."
+
+Daniel moved instantly. He crossed the room in two strides, reaching for the master breaker on the external comms array.
+
+"How long was the connection live?" he asked, his hand on the lever.
+
+Cat was already at the console, pulling the connection log. "The handshake pinged outbound for eleven seconds before the Silo's shielding throttled it. Depending on propagation speed through the dormant fiber trunk..."
+
+"Hours," Daniel said. "Maybe less."
+
+He yanked the lever. The acrid spike of ozone from the severed connection. The monitors displaying external feeds flickered and died, their screens going black one by one. The overhead LEDs stayed on, steady and clean, fed by the reactor tap that didn't care what happened to the comms array.
+
+Silence. Heavy as the blast doors.
+
+Daniel stood in the red gloom, breathing controlled. He looked at the dead screens, then at Cat.
+
+"The Silo's shielded," he said, more to himself than to her. "The ping gave them a bearing, but the structure is hardened. They can't see inside. They can't hear us."
+
+"How much time do we have?" Cat asked.
+
+Daniel looked at the blast doors. The overhead LEDs cast his face into a geometry of angles and shadow.
+
+"Enough," he said. It wasn't confidence. It was a decision. "Everything we have on Webb goes on the wall. We analyze here, we plan here. And when we move, we move with a target."
+
+Cat nodded. She pulled the isolated drive from her jacket, the Webb file backup, and slotted it into the local terminal.
+
+The Silo hummed around them, a concrete heart beating in the dark beneath Atlanta. The sanctuary was bruised but not breached. Not yet.

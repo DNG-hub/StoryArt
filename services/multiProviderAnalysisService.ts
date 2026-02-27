@@ -1,11 +1,41 @@
-// Multi-Provider Analysis Service
-// Provides unified analysis function that routes to appropriate provider
+/**
+ * Multi-Provider Analysis Service (OpenRouter Edition)
+ *
+ * Unified interface for script analysis using OpenRouter.
+ * Replaces individual API key management for Claude, OpenAI, Qwen, DeepSeek, xAI, GLM.
+ *
+ * Single source of truth: VITE_OPENROUTER_API_KEY in .env
+ */
 
+import 'dotenv/config';
 import type { AnalyzedEpisode } from '../types';
 import { compactEpisodeContext } from '../utils';
-import { analyzeScript } from './geminiService';
-import { analyzeScriptWithQwen } from './qwenService';
+import { callOpenRouter, OPENROUTER_MODELS } from './openrouterService';
 import type { LLMProvider } from '../types';
+
+/**
+ * Map LLM provider names to OpenRouter model IDs
+ * Note: Claude 3.5 Sonnet removed per user preference
+ */
+const PROVIDER_TO_MODEL: Record<LLMProvider, string> = {
+  // Primary options
+  openai: OPENROUTER_MODELS.GPT_4O,
+
+  // Remapped (Sonnet removed)
+  claude: OPENROUTER_MODELS.LLAMA_3_1_405B, // Llama (best value)
+
+  // Alternative providers
+  qwen: OPENROUTER_MODELS.QWEN_TURBO,
+  deepseek: OPENROUTER_MODELS.DEEPSEEK_CHAT,
+
+  // Fallbacks (unavailable models)
+  xai: OPENROUTER_MODELS.MISTRAL_LARGE, // xAI unavailable → Mistral
+  glm: OPENROUTER_MODELS.GPT_4_TURBO, // GLM unavailable → GPT-4 Turbo
+
+  // Gemini: Still uses direct Gemini API (not OpenRouter)
+  // Kept separate for VBS Phase B compatibility
+  gemini: OPENROUTER_MODELS.GPT_4O, // Fallback if somehow called
+};
 
 // Shared system instruction for all providers
 const getSystemInstruction = () => `You are an expert AI **Narrative Pacing Architect** and **Continuity Supervisor** for episodic visual storytelling, optimized for platforms like YouTube. Your primary goal is to structure a script into a rhythm of engaging narrative beats to maintain viewer attention, while also minimizing redundant image creation.
@@ -34,7 +64,7 @@ const getSystemInstruction = () => `You are an expert AI **Narrative Pacing Arch
         *   \`beat_title\`: Create a short, descriptive title (e.g., "The Reinforced Door").
         *   \`core_action\`: Write a **detailed 2-3 sentence summary** of what happens in the beat. Include specific actions, dialogue exchanges, character movements, and plot developments. This should be comprehensive enough to understand exactly what is being visualized.
         *   \`beat_script_text\`: Copy the **COMPLETE, VERBATIM block of script text** (action lines AND dialogue) that constitutes this entire beat. This must include ALL dialogue, action descriptions, and stage directions. Do NOT summarize or abbreviate - include the full text exactly as it appears in the script.
-        *   \`source_paragraph\`: Copy the **BROADER NARRATIVE PARAGRAPH or section** from the original script that this beat was extracted from. This should include the surrounding context and any additional narrative text that provides fuller understanding of the scene flow. This gives refinement context beyond just the individual beat text.
+        *   \`source_paragraph\`: Copy the **BROADER NARRATIVE PARAGRAPH or section** from the original script that this beat was extracted from. This should include the surrounding context and any additional narrative text that provides fuller understanding of the scene flow.
     c.  **Narrative Analysis:**
         *   \`beat_type\`: Classify the beat's primary purpose ('Revelation', 'Action', 'Escalation', 'Pivot', 'Resolution', 'Other').
         *   \`narrative_function\`: Describe its role in the story (e.g., "Inciting Incident," "Rising Action").
@@ -44,98 +74,22 @@ const getSystemInstruction = () => `You are an expert AI **Narrative Pacing Arch
         *   \`characters\`: List the characters present.
         *   \`visual_anchor\`: Describe the single most powerful image that represents this beat.
         *   \`transition_trigger\`: What event in this beat leads to the next one?
-        *   \`locationAttributes\`: From the Episode Context's 'artifacts' for the current scene's location, you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's action and populate the array. This is mandatory for visual consistency. **USE THE RICH LOCATION DATA:** Include atmosphere descriptions, environmental details, key features, and artifact prompt fragments from the detailed location context provided. Pay special attention to 'atmosphere', 'atmosphere_category', 'geographical_location', 'time_period', and rich artifact descriptions with their 'prompt_fragment' values.
+        *   \`locationAttributes\`: From the Episode Context's 'artifacts' for the current scene's location, you MUST select the 1-3 most relevant 'prompt_fragment' strings that best match the beat's action.
     e.  **Image Decision (Continuity Task):**
         i.  **Look Back:** Review all *previous* beats in the script.
         ii. **Decide the Type:**
             - **'NEW_IMAGE':** Choose this if the beat represents a distinct visual moment: a new location, a character's first appearance, a significant change in composition, a key action, an emotional revelation, etc.
             - **'REUSE_IMAGE':** Choose this if the visual scene is substantially identical to a previous beat. The same characters, same location, same general framing—but perhaps a continuation of dialogue or subtle action. This saves image generation costs. Target: 28-36 NEW_IMAGE beats per scene, with 7-12 REUSE_IMAGE beats for efficiency.
-            - **'NO_IMAGE':** Rarely used. For beats with no visual component at all (e.g., pure internal monologue with no character shown).
+            - **'NO_IMAGE':** Rarely used. For beats with no visual component at all.
         iii. **Provide Justification:** Write a concise 'reason' for your decision.
-        iv. **Create the Link (CRITICAL):** If your 'type' is 'REUSE_IMAGE', you MUST populate 'reuseSourceBeatId' with the 'beatId' from the earlier beat whose image you are reusing. This is not optional.
+        iv. **Create the Link (CRITICAL):** If your 'type' is 'REUSE_IMAGE', you MUST populate 'reuseSourceBeatId' with the 'beatId' from the earlier beat whose image you are reusing.
 
 **Output:**
-- Your entire response MUST be a single JSON object that strictly adheres to the provided schema. The integrity of the beat segmentation and linking is paramount.
-- **VALIDATION CHECK:** Before submitting your response, count the beats in each scene. Each scene MUST have 35-45 beats (target 40). Ensure each beat contains complete narrative content with 1-3 sentences of script text.`;
-
-// Response schema (same for all providers)
-const getResponseSchema = () => ({
-  type: "object",
-  properties: {
-    episodeNumber: { type: "number", description: "The episode number parsed from the script." },
-    title: { type: "string", description: "The episode title parsed from the script." },
-    scenes: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          sceneNumber: { type: "number" },
-          title: { type: "string" },
-          metadata: {
-            type: "object",
-            properties: {
-              targetDuration: { type: "string" },
-              sceneRole: { type: "string" },
-              timing: { type: "string" },
-              adBreak: { type: "boolean" },
-            },
-            required: ['targetDuration', 'sceneRole', 'timing', 'adBreak']
-          },
-          beats: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                beatId: { type: "string", description: "A unique identifier for this beat, in the format 'sX-bY' where X is scene number and Y is beat number (e.g., 's1-b2')." },
-                beat_number: { type: "number", description: "The sequential number of the beat within the scene, starting from 1." },
-                beat_title: { type: "string", description: "A short, descriptive title for the beat (e.g., 'The Ruins')." },
-                beat_type: { type: "string", description: "Classification of the beat's primary narrative purpose. Must be one of: 'Revelation', 'Action', 'Escalation', 'Pivot', 'Resolution', or 'Other'." },
-                narrative_function: { type: "string", description: "The beat's role in the story structure (e.g., 'Inciting Incident', 'Rising Action')." },
-                setting: { type: "string", description: "The setting of the beat, including location and time of day." },
-                characters: { type: "array", items: { type: "string" }, description: "A list of characters present in the beat." },
-                core_action: { type: "string", description: "A concise, one-sentence summary of the beat's main action or event." },
-                beat_script_text: { type: "string", description: "The full, verbatim script text (including action lines and dialogue) that constitutes this entire beat." },
-                emotional_tone: { type: "string", description: "The dominant emotion or mood of the beat (e.g., 'Tense', 'Hopeful')." },
-                visual_anchor: { type: "string", description: "A description of the single, most powerful image that could represent this beat." },
-                transition_trigger: { type: "string", description: "The event or discovery that leads into the next beat." },
-                beat_duration_estimate_sec: { type: "number", description: "An estimated duration for this beat in seconds, typically between 15 and 30." },
-                visualSignificance: { type: "string", description: "How important this beat is to visualize: 'High', 'Medium', or 'Low'." },
-                imageDecision: {
-                  type: "object",
-                  description: "The final decision on image creation for this beat, including reuse logic.",
-                  properties: {
-                    type: { type: "string", description: "The decision type: 'NEW_IMAGE', 'REUSE_IMAGE', or 'NO_IMAGE'." },
-                    reason: { type: "string", description: "The justification for the decision." },
-                    reuseSourceBeatId: { type: "string", description: "If type is 'REUSE_IMAGE', this is the 'beatId' of the beat whose image should be reused." },
-                    reuseSourceBeatLabel: { type: "string", description: "A human-readable label for the source beat. THIS WILL BE POPULATED BY a post-processing step; you can leave it blank." },
-                  },
-                  required: ['type', 'reason'],
-                },
-                cameraAngleSuggestion: { type: "string", description: "Optional suggestion for camera framing or perspective." },
-                characterPositioning: { type: "string", description: "Optional description of character positions and interactions." },
-                locationAttributes: {
-                  type: "array",
-                  description: "An array of \`prompt_fragment\` strings extracted from the most relevant \`artifacts\` in the Episode Context JSON that apply to this specific beat.",
-                  items: { type: "string" }
-                },
-              },
-              required: [
-                'beatId', 'beat_number', 'beat_title', 'beat_type', 'narrative_function', 'setting',
-                'characters', 'core_action', 'beat_script_text', 'emotional_tone', 'visual_anchor',
-                'transition_trigger', 'beat_duration_estimate_sec', 'visualSignificance', 'imageDecision'
-              ]
-            }
-          }
-        },
-        required: ['sceneNumber', 'title', 'metadata', 'beats']
-      }
-    }
-  },
-  required: ['episodeNumber', 'title', 'scenes']
-});
+- Your entire response MUST be a single JSON object that strictly adheres to the provided schema.
+- **VALIDATION CHECK:** Before submitting your response, count the beats in each scene. Each scene MUST have 35-45 beats (target 40).`;
 
 /**
- * Unified analysis function that routes to the appropriate provider
+ * Unified analysis function that routes through OpenRouter
  */
 export const analyzeScriptWithProvider = async (
   provider: LLMProvider,
@@ -143,340 +97,90 @@ export const analyzeScriptWithProvider = async (
   episodeContextJson: string,
   onProgress?: (message: string) => void
 ): Promise<AnalyzedEpisode> => {
-  onProgress?.(`Analyzing script with ${provider.toUpperCase()}...`);
-  
-  switch (provider) {
-    case 'gemini':
-      return await analyzeScript(scriptText, episodeContextJson, onProgress);
-    
-    case 'qwen':
-      return await analyzeScriptWithQwen(scriptText, episodeContextJson, onProgress);
-    
-    case 'claude':
-      return await analyzeScriptWithClaude(scriptText, episodeContextJson, onProgress);
-    
-    case 'openai':
-      return await analyzeScriptWithOpenAI(scriptText, episodeContextJson, onProgress);
-    
-    case 'xai':
-      return await analyzeScriptWithXAI(scriptText, episodeContextJson, onProgress);
-    
-    case 'deepseek':
-      return await analyzeScriptWithDeepSeek(scriptText, episodeContextJson, onProgress);
-    
-    case 'glm':
-      return await analyzeScriptWithGLM(scriptText, episodeContextJson, onProgress);
-    
-    default:
-      throw new Error(`Unsupported provider: ${provider}`);
+  // Special handling for Gemini (uses direct API, not OpenRouter)
+  if (provider === 'gemini') {
+    onProgress?.('Note: Gemini analysis uses direct API (not OpenRouter)');
+    const { analyzeScript } = await import('./geminiService');
+    return await analyzeScript(scriptText, episodeContextJson, onProgress);
+  }
+
+  const modelId = PROVIDER_TO_MODEL[provider];
+  if (!modelId) {
+    throw new Error(`Unsupported provider: ${provider}`);
+  }
+
+  onProgress?.(`Analyzing script with ${provider} via OpenRouter...`);
+
+  const systemInstruction = getSystemInstruction();
+  const compactedContext = compactEpisodeContext(episodeContextJson);
+
+  const userPrompt = `Analyze the following script using the provided visually-focused Episode Context as your guide.
+
+---SCRIPT---
+${scriptText}
+
+---EPISODE CONTEXT JSON---
+${compactedContext}
+
+You MUST respond with valid JSON.`;
+
+  try {
+    onProgress?.(`Sending request to OpenRouter (model: ${provider})...`);
+
+    const response = await callOpenRouter(
+      modelId,
+      systemInstruction,
+      userPrompt,
+      0.1, // Low temperature for deterministic beat analysis
+      16000 // Max tokens for response
+    );
+
+    if (!response.success) {
+      throw new Error(`OpenRouter API error: ${response.error}`);
+    }
+
+    onProgress?.(`Parsing response from ${provider}...`);
+
+    // Parse response
+    const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Could not find JSON in response');
+    }
+
+    let result: AnalyzedEpisode;
+    try {
+      result = JSON.parse(jsonMatch[0]) as AnalyzedEpisode;
+    } catch (parseError) {
+      throw new Error(`Failed to parse response as JSON: ${parseError}`);
+    }
+
+    onProgress?.(`✅ Analysis complete using ${provider}`);
+    return result;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    onProgress?.(`❌ Analysis failed: ${errorMessage}`);
+    throw new Error(`Script analysis failed with ${provider}: ${errorMessage}`);
   }
 };
 
-// Claude Analysis Implementation
-async function analyzeScriptWithClaude(
-  scriptText: string,
-  episodeContextJson: string,
-  onProgress?: (message: string) => void
-): Promise<AnalyzedEpisode> {
-  const apiKey = import.meta.env.VITE_CLAUDE_API_KEY || import.meta.env.CLAUDE_API_KEY;
-  if (!apiKey) {
-    throw new Error("VITE_CLAUDE_API_KEY is not configured in .env file.");
-  }
-
-  onProgress?.('Connecting to Claude API...');
-  const compactedContextJson = compactEpisodeContext(episodeContextJson);
-  onProgress?.('Compacting episode context...');
-
-  const systemInstruction = getSystemInstruction();
-  const responseSchema = getResponseSchema();
-
-  onProgress?.('Sending script to Claude for analysis...');
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: import.meta.env.VITE_CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
-      max_tokens: parseInt(import.meta.env.VITE_CLAUDE_MAX_TOKENS || '200000'),
-      temperature: parseFloat(import.meta.env.VITE_CLAUDE_TEMPERATURE || '0.1'),
-      messages: [{
-        role: 'user',
-        content: `Analyze the following script using the provided visually-focused Episode Context as your guide.\n\n---SCRIPT---\n${scriptText}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`
-      }],
-      system: systemInstruction
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
-  }
-
-  onProgress?.('Processing Claude response...');
-  const data = await response.json();
-  const content = data.content[0].text;
-
-  // Claude returns JSON in text, need to parse it
-  try {
-    const result = JSON.parse(content);
-    onProgress?.('Analysis complete!');
-    return result as AnalyzedEpisode;
-  } catch (error) {
-    throw new Error(`Failed to parse Claude response as JSON: ${error.message}`);
-  }
+/**
+ * Get available models for script analysis
+ */
+export async function getAvailableModelsForScriptAnalysis() {
+  return {
+    providers: Object.entries(PROVIDER_TO_MODEL).map(([name, modelId]) => ({
+      name: name as LLMProvider,
+      modelId,
+      displayName: {
+        openai: 'GPT-4o',
+        claude: 'Llama 3.1 405B (Claude requests)',
+        qwen: 'Qwen Turbo',
+        deepseek: 'DeepSeek Chat',
+        xai: 'Mistral Large (xAI fallback)',
+        glm: 'GPT-4 Turbo (GLM fallback)',
+        gemini: 'Gemini (Direct API)',
+      }[name as LLMProvider] || name,
+    })),
+    message: 'All non-Gemini providers available via OpenRouter API. Gemini uses direct API.'
+  };
 }
-
-// OpenAI Analysis Implementation
-async function analyzeScriptWithOpenAI(
-  scriptText: string,
-  episodeContextJson: string,
-  onProgress?: (message: string) => void
-): Promise<AnalyzedEpisode> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("VITE_OPENAI_API_KEY is not configured in .env file.");
-  }
-
-  onProgress?.('Connecting to OpenAI API...');
-  const compactedContextJson = compactEpisodeContext(episodeContextJson);
-  onProgress?.('Compacting episode context...');
-
-  const systemInstruction = getSystemInstruction();
-  const responseSchema = getResponseSchema();
-
-  onProgress?.('Sending script to OpenAI for analysis...');
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: systemInstruction
-        },
-        {
-          role: 'user',
-          content: `Analyze the following script using the provided visually-focused Episode Context as your guide. You MUST respond with valid JSON matching this schema: ${JSON.stringify(responseSchema)}\n\n---SCRIPT---\n${scriptText}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`
-        }
-      ],
-      max_tokens: parseInt(import.meta.env.VITE_OPENAI_MAX_TOKENS || '16384'),
-      temperature: parseFloat(import.meta.env.VITE_OPENAI_TEMPERATURE || '0.1'),
-      response_format: { type: 'json_object' }
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
-  }
-
-  onProgress?.('Processing OpenAI response...');
-  const data = await response.json();
-  const content = data.choices[0].message.content;
-
-  try {
-    const result = typeof content === 'string' ? JSON.parse(content) : content;
-    onProgress?.('Analysis complete!');
-    return result as AnalyzedEpisode;
-  } catch (error) {
-    throw new Error(`Failed to parse OpenAI response as JSON: ${error.message}`);
-  }
-}
-
-// XAI Analysis Implementation
-async function analyzeScriptWithXAI(
-  scriptText: string,
-  episodeContextJson: string,
-  onProgress?: (message: string) => void
-): Promise<AnalyzedEpisode> {
-  const apiKey = import.meta.env.VITE_XAI_API_KEY || import.meta.env.XAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("VITE_XAI_API_KEY is not configured in .env file.");
-  }
-
-  onProgress?.('Connecting to XAI API...');
-  const compactedContextJson = compactEpisodeContext(episodeContextJson);
-  onProgress?.('Compacting episode context...');
-
-  const systemInstruction = getSystemInstruction();
-  const responseSchema = getResponseSchema();
-
-  onProgress?.('Sending script to XAI for analysis...');
-
-  const response = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: import.meta.env.VITE_XAI_MODEL || 'grok-3',
-      messages: [
-        {
-          role: 'system',
-          content: systemInstruction
-        },
-        {
-          role: 'user',
-          content: `Analyze the following script using the provided visually-focused Episode Context as your guide. You MUST respond with valid JSON matching this schema: ${JSON.stringify(responseSchema)}\n\n---SCRIPT---\n${scriptText}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`
-        }
-      ],
-      max_tokens: parseInt(import.meta.env.VITE_XAI_MAX_TOKENS || '8192'),
-      temperature: parseFloat(import.meta.env.VITE_XAI_TEMPERATURE || '0.1'),
-      response_format: { type: 'json_object' }
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`XAI API error: ${response.status} - ${errorText}`);
-  }
-
-  onProgress?.('Processing XAI response...');
-  const data = await response.json();
-  const content = data.choices[0].message.content;
-
-  try {
-    const result = typeof content === 'string' ? JSON.parse(content) : content;
-    onProgress?.('Analysis complete!');
-    return result as AnalyzedEpisode;
-  } catch (error) {
-    throw new Error(`Failed to parse XAI response as JSON: ${error.message}`);
-  }
-}
-
-// DeepSeek Analysis Implementation
-async function analyzeScriptWithDeepSeek(
-  scriptText: string,
-  episodeContextJson: string,
-  onProgress?: (message: string) => void
-): Promise<AnalyzedEpisode> {
-  const apiKey = import.meta.env.VITE_DEEPSEEK_API_KEY || import.meta.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    throw new Error("VITE_DEEPSEEK_API_KEY is not configured in .env file.");
-  }
-
-  onProgress?.('Connecting to DeepSeek API...');
-  const compactedContextJson = compactEpisodeContext(episodeContextJson);
-  onProgress?.('Compacting episode context...');
-
-  const systemInstruction = getSystemInstruction();
-  const responseSchema = getResponseSchema();
-
-  onProgress?.('Sending script to DeepSeek for analysis...');
-
-  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: import.meta.env.VITE_DEEPSEEK_MODEL || 'deepseek-chat',
-      messages: [
-        {
-          role: 'system',
-          content: systemInstruction
-        },
-        {
-          role: 'user',
-          content: `Analyze the following script using the provided visually-focused Episode Context as your guide. You MUST respond with valid JSON matching this schema: ${JSON.stringify(responseSchema)}\n\n---SCRIPT---\n${scriptText}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`
-        }
-      ],
-      max_tokens: parseInt(import.meta.env.VITE_DEEPSEEK_MAX_TOKENS || '8192'),
-      temperature: parseFloat(import.meta.env.VITE_DEEPSEEK_TEMPERATURE || '0.1'),
-      response_format: { type: 'json_object' }
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`DeepSeek API error: ${response.status} - ${errorText}`);
-  }
-
-  onProgress?.('Processing DeepSeek response...');
-  const data = await response.json();
-  const content = data.choices[0].message.content;
-
-  try {
-    const result = typeof content === 'string' ? JSON.parse(content) : content;
-    onProgress?.('Analysis complete!');
-    return result as AnalyzedEpisode;
-  } catch (error) {
-    throw new Error(`Failed to parse DeepSeek response as JSON: ${error.message}`);
-  }
-}
-
-// GLM Analysis Implementation
-async function analyzeScriptWithGLM(
-  scriptText: string,
-  episodeContextJson: string,
-  onProgress?: (message: string) => void
-): Promise<AnalyzedEpisode> {
-  const apiKey = import.meta.env.VITE_ZHIPU_API_KEY || import.meta.env.ZHIPU_API_KEY;
-  if (!apiKey) {
-    throw new Error("VITE_ZHIPU_API_KEY is not configured in .env file.");
-  }
-
-  onProgress?.('Connecting to GLM (Zhipu AI) API...');
-  const compactedContextJson = compactEpisodeContext(episodeContextJson);
-  onProgress?.('Compacting episode context...');
-
-  const systemInstruction = getSystemInstruction();
-  const responseSchema = getResponseSchema();
-
-  const baseUrl = import.meta.env.VITE_ZHIPU_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-
-  onProgress?.('Sending script to GLM for analysis...');
-
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: import.meta.env.VITE_ZHIPU_MODEL || 'glm-4',
-      messages: [
-        {
-          role: 'system',
-          content: systemInstruction
-        },
-        {
-          role: 'user',
-          content: `Analyze the following script using the provided visually-focused Episode Context as your guide. You MUST respond with valid JSON matching this schema: ${JSON.stringify(responseSchema)}\n\n---SCRIPT---\n${scriptText}\n\n---EPISODE CONTEXT JSON---\n${compactedContextJson}`
-        }
-      ],
-      max_tokens: parseInt(import.meta.env.VITE_ZHIPU_MAX_TOKENS || '8192'),
-      temperature: parseFloat(import.meta.env.VITE_ZHIPU_TEMPERATURE || '0.1'),
-      response_format: { type: 'json_object' }
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`GLM API error: ${response.status} - ${errorText}`);
-  }
-
-  onProgress?.('Processing GLM response...');
-  const data = await response.json();
-  const content = data.choices[0].message.content;
-
-  try {
-    const result = typeof content === 'string' ? JSON.parse(content) : content;
-    onProgress?.('Analysis complete!');
-    return result as AnalyzedEpisode;
-  } catch (error) {
-    throw new Error(`Failed to parse GLM response as JSON: ${error.message}`);
-  }
-}
-

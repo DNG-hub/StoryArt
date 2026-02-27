@@ -127,20 +127,35 @@ function buildSubjects(
 ): VBSSubject[] {
   const subjects: VBSSubject[] = [];
 
+  console.log(`[VBS Phase A] Building subjects for beat ${beat.beatId}:`);
+  console.log(`  Characters present: ${persistentState.charactersPresent.join(', ')}`);
+  console.log(`  Episode has ${episodeContext.episode.characters.length} characters`);
+  console.log(`  Scene ${sceneNumber} found: ${episodeContext.episode.scenes.find(s => s.scene_number === sceneNumber) ? 'yes' : 'no'}`);
+
   for (const charName of persistentState.charactersPresent) {
     // Skip Ghost — non-physical entity
     if (charName.toLowerCase() === 'ghost') continue;
 
     // Find character in episode context
     const charContext = episodeContext.episode.characters.find(c => c.character_name === charName);
-    if (!charContext) continue;
+    if (!charContext) {
+      console.log(`  ⚠️  ${charName}: not found in episode.characters (available: ${episodeContext.episode.characters.map(c => c.character_name).join(', ')})`);
+      continue;
+    }
 
     // Get the scene-specific appearance
     const sceneContext = episodeContext.episode.scenes.find(s => s.scene_number === sceneNumber);
-    if (!sceneContext) continue;
+    if (!sceneContext) {
+      console.log(`  ⚠️  Scene ${sceneNumber} not found in episode.scenes`);
+      continue;
+    }
 
     const charAppearance = sceneContext.character_appearances.find(ca => ca.character_name === charName);
-    if (!charAppearance) continue;
+    if (!charAppearance) {
+      console.log(`  ⚠️  ${charName}: not in scene ${sceneNumber} character_appearances (available: ${sceneContext.character_appearances?.map(ca => ca.character_name).join(', ') || 'none'})`);
+      continue;
+    }
+    console.log(`  ✓ ${charName}: found and matched`);
 
     // Determine location context: use beat-level if available, fall back to scene-level
     let locationContext = selectLocationContext(

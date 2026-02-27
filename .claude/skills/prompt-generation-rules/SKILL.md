@@ -3311,6 +3311,275 @@ FLAG FORMAT:
 **Implementation:** `promptGenerationService.ts:determineModelRecommendation()`
 
 
+## Section 24: v0.21 Compiler-Style Prompt Generation (VBS Architecture)
+
+### Overview
+
+v0.21 moves from the LLM-centric v0.20 approach ("ask Gemini to write the prompt") to a **compiler-style pipeline** where the LLM fills only specific slots that cannot be set deterministically from the database.
+
+**Core insight:** The current approach asks the LLM to write full FLUX prompt strings from beat data, which fails because:
+- Gemini invents character appearance details instead of using database overrides
+- Post-processing injection fights the generated output (regex "second comma" insertion, hair suppression wars)
+- Batching 12 beats together breaks intra-scene continuity (visual anchors and beat transitions are lost)
+- `visual_anchor` — the director's intent — is completely unused
+- Story-specific names (Cat, Daniel, Ghost, Dinghy) are hardcoded throughout the 2300-line system instruction
+- Validation only logs warnings; no repair — failures are invisible to users
+
+### Architecture: Four-Phase Pipeline
+
+```
+Phase A: Deterministic Enrichment     → Build VBS from DB + beatStateService
+Phase B: LLM Fill-In (restricted)     → Fill only action/expression/composition
+Phase C: Deterministic Compilation    → Assemble final prompt from completed VBS
+Phase D: Validate + Repair Loop       → Run validators; repair VBS and recompile if needed
+```
+
+All four phases are **completely deterministic in structure**. Only Phase B calls an LLM, and it receives a pre-built VBS with schema constraints.
+
+### The Visual Beat Spec (VBS)
+
+The VBS is the central intermediate representation — a single inspectable object containing all visual information for one beat.
+
+**Phase A builds:** Character LoRA triggers, appearances (helmet-adjusted), location, artifacts, shot type, camera angle, vehicle state, token budget, segment policies.
+
+**Phase B fills:** Action, expression, composition (from visual_anchor), atmosphere enrichment, vehicle spatial note.
+
+**Phase C compiles:** Deterministic assembly into final FLUX prompt string.
+
+**Phase D repairs:** Validates for missing LoRA triggers, helmet violations, face segments, token budget; auto-repairs VBS and recompiles.
+
+```typescript
+interface VisualBeatSpec {
+  beatId: string;
+  templateType: 'vehicle' | 'indoor_dialogue' | 'combat' | ... ;
+  modelRoute: 'FLUX' | 'ALTERNATE'; // Decision: any face visible?
+
+  shot: { shotType, cameraAngle, composition }; // composition filled by LLM
+
+  subjects: [{ // All characters
+    characterName, loraTrigger, description, // From DB
+    action, expression, position, // action/expr filled by LLM
+    faceVisible, helmetState, segments
+  }],
+
+  environment: { anchors, lighting, atmosphere, props, fx }, // From DB
+
+  vehicle?: { description, spatialNote }, // spatialNote filled by LLM
+
+  constraints: { tokenBudget, segmentPolicy, compactionDropOrder },
+  previousBeatSummary, persistentStateSnapshot
+}
+```
+
+### Files Involved
+
+| File | Phase | Purpose |
+|------|-------|---------|
+| `vbsBuilderService.ts` | A | `buildVisualBeatSpec()` — deterministic enrichment from DB context |
+| `vbsFillInService.ts` | B | `fillVBSWithLLM()` — multi-provider LLM call with focused system instruction |
+| `vbsCompilerService.ts` | C+D | `compileVBSToPrompt()`, `validateAndRepairVBS()` — compilation and validation/repair |
+| `promptGenerationService.ts` | Orchestrator | `generateSwarmUiPromptsV021()` — routes to v0.21 when `promptVersion: 'v021'` |
+| `CINEMATOGRAPHER_RULES.md` | B Reference | LLM system instruction — focuses on translating visual_anchor, writing camera-observable action/expression |
+
+### Phase A: Deterministic Enrichment
+
+**Function:** `buildVisualBeatSpec(beat, episodeContext, persistentState, sceneNumber, previousBeatVBS)`
+
+1. Look up character in scene context; get current phase (v0.20 multi-phase support)
+2. Apply helmet state to description (swap in `helmet_fragment_off/visor_up/visor_down`)
+3. Extract segment tags from description
+4. Determine `faceVisible` from helmet state
+5. Map location artifacts by type (STRUCTURAL/LIGHTING/ATMOSPHERIC/PROP)
+6. Determine `modelRoute`: FLUX if any `faceVisible: true`, else ALTERNATE
+7. Calculate adaptive token budget (reuses v0.19 logic)
+8. Build `previousBeatSummary` from prior VBS for continuity
+9. Return completed VBS with all deterministic fields populated; action/expression/composition slots empty
+
+**Result:** A complete VBS object with ~8 of 10 slots filled; 3 slots await Phase B LLM.
+
+### Phase B: LLM Fill-In
+
+**Function:** `fillVBSWithLLM(partialVBS, beatAnalysis, selectedLLM)`
+
+**System instruction:** ~400 tokens from `CINEMATOGRAPHER_RULES.md`
+- Focus: Translate `visual_anchor` to FLUX spatial composition language
+- Write camera-observable action (pose/movement, no psychology)
+- Write camera-observable expression (facial features only, null if face hidden)
+- Write beat-specific atmosphere detail (not generic location)
+- Strict rules: Never invent appearance, never invent location, zero story names
+
+**LLM input:** Partial VBS serialized as JSON + beat_script_text + visual_anchor + emotional_tone
+
+**LLM output schema:** VBSFillIn with 5 fields
+```typescript
+interface VBSFillIn {
+  shotComposition: string; // From visual_anchor
+  subjectFillIns: [{
+    characterName: string;
+    action: string;
+    expression: string | null;
+    dualPositioning?: 'camera-left' | 'camera-right';
+  }];
+  vehicleSpatialNote?: string;
+  atmosphereEnrichment?: string;
+}
+```
+
+**Multi-provider:** Uses `multiProviderAnalysisService.callMultiProviderLLM()` — supports Gemini, Qwen, GLM, DeepSeek, xAI, OpenAI, OpenRouter. Falls back to deterministic `buildFallbackFillIn()` if LLM fails.
+
+**Result:** Completed VBS with all 10 slots filled.
+
+### Phase C: Deterministic Compilation
+
+**Function:** `compileVBSToPrompt(vbs)`
+
+Pure TypeScript, no API calls. Assembles prompt in fixed order:
+1. Shot type, camera angle, composition
+2. For each subject: `[loraTrigger] (description) action, expression, position,`
+3. Environment anchors, lighting, atmosphere, FX, props
+4. Vehicle description and spatial note
+5. All segment tags (collected from all subjects)
+
+Example output:
+```
+medium shot, over-the-shoulder, close on face with motion blur,
+JRUMLV (23-year-old woman, dark hair, visor up, Aegis suit) vaulting over crate with body rotating,
+brow furrowed determined expression,
+concrete warehouse pillars, harsh overhead fluorescents with shadows,
+dust particles swirling in light shaft, desaturated color grade,
+<segment:clothes-aegis>, <segment:yolo-face>
+```
+
+**Result:** Final FLUX prompt string, ready for image generation.
+
+### Phase D: Validate + Repair Loop
+
+**Function:** `validateAndRepairVBS(vbs)`
+
+Runs 2 validation + repair iterations max:
+
+**Checks:**
+1. All LoRA triggers present for all subjects
+2. Hair text + VISOR_DOWN violation (impossible: can't see hair if visor sealed)
+3. Face segments present when `faceVisible: true`
+4. Token count within budget
+5. Expression text + VISOR_DOWN violation (impossible: can't see expression if visor sealed)
+
+**Repairs** (if issues found):
+1. Missing LoRA trigger → Prepend to subject description
+2. Hair + sealed helmet → Strip hair phrases
+3. Missing face segment → Inject segment tag
+4. Expression + sealed helmet → Null the expression
+5. Token budget exceeded → Apply compaction strategy (priority-aware drop order)
+
+**Compaction strategy** (when budget exceeded):
+1. Drop `vehicle.spatialNote`
+2. Drop `environment.props`
+3. Drop `environment.fx`
+4. Truncate `environment.atmosphere`
+5. Further condense `subjects[1].description`
+
+**Result:** VBSValidationResult with repairsApplied list, final prompt, and validation status.
+
+### Continuity: Sequential Beat Processing
+
+Beats are processed **one at a time** (not batched like v0.20's 12-beat chunks):
+- Each beat has access to `previousBeatSummary` from the prior compiled VBS
+- ScenePersistentState carries forward character phases, vehicle state, gear state
+- No information is lost between beats; continuity is maintained by design
+
+### Routing: v0.20 vs v0.21
+
+In `promptGenerationService.ts`:
+
+```typescript
+export const generateSwarmUiPrompts = async (
+    analyzedEpisode, episodeContextJson, styleConfig,
+    retrievalMode, storyId, provider, onProgress,
+    promptVersion: 'v020' | 'v021' = 'v020'  // ← NEW PARAM
+);
+```
+
+- `promptVersion: 'v020'` → Uses existing `generateSwarmUiPromptsWithGemini()` (default)
+- `promptVersion: 'v021'` → Uses new `generateSwarmUiPromptsV021()` orchestrator
+
+Existing v0.20 code paths are **completely unchanged**; v0.21 is parallel implementation.
+
+### Key Improvements Over v0.20
+
+| Problem | v0.20 | v0.21 |
+|---------|-------|-------|
+| LLM invents appearance | Full prompt generation → LLM hallucinates | VBS schema → structurally impossible |
+| Post-processing fights output | Regex injection for missing LoRA | No post-processing; compilation complete by construction |
+| Batching breaks continuity | 12 beats together → loss of visual_anchor per beat | Sequential processing → every beat aware of prior |
+| visual_anchor unused | Brief input, ignored by LLM | Primary input → drives `shotComposition` |
+| System instruction bloat | 2300 lines, story-specific | ~400 lines, fully story-agnostic |
+| Story names hardcoded | System instruction full of "Cat", "Daniel" | Zero story names in instruction or code |
+| Single-character segment bug | Only last character gets segments | All subjects processed in compiler loop |
+| Hair suppression regex wars | Post-processing battles LLM output | `helmet_fragment_*` applied deterministically in Phase A |
+| Validation only logs | "Log warnings, never block" | "Repair first, then log if repair fails" |
+| No per-beat artifact mapping | Generic location artifacts | Typed mapping: STRUCTURAL/LIGHTING/ATMOSPHERIC/PROP |
+
+### Example: One Beat (v0.21 Flow)
+
+**Input beat:** `s2-b5: "Cat vaults over crate, spinning to face Daniel."`
+
+**Phase A: Build VBS**
+- Template: combat
+- Model route: FLUX (both characters face visible)
+- Shot: medium shot, over-shoulder, (composition: empty for LLM)
+- Subjects: Cat (JRUMLV, visor up, face visible), Daniel (HSCEIA, visor up, face visible)
+- Environment: warehouse, concrete pillars, harsh fluorescents, dust shadows
+- Constraints: tokenBudget 260, segmentPolicy IF_FACE_VISIBLE
+
+**Phase B: LLM Fill-In**
+- Input: visual_anchor "explosive movement, close on Cat's face"
+- LLM returns: composition "close on Cat's face with motion blur, over-shoulder shows Daniel", Cat.action "vaulting, body rotating", Cat.expression "brow furrowed, intense eyes", Daniel.action "standing alert", atmosphereEnrichment "dust swirling"
+
+**Phase C: Compile**
+```
+medium shot, over-the-shoulder, close on Cat's face with motion blur over-shoulder shows Daniel,
+JRUMLV (Cat description) vaulting body rotating, brow furrowed intense eyes,
+HSCEIA (Daniel description) standing alert,
+concrete pillars, harsh overhead fluorescents, dust swirling,
+<segment:yolo-face>, <segment:clothes>
+```
+
+**Phase D: Validate & Repair**
+- ✓ All LoRA triggers present
+- ✓ No helmet violations
+- ✓ Token count 185 < budget 260
+- ✓ Result: valid
+
+**Output:** BeatPrompts with cinematic SwarmUIPrompt, vbs attached for debugging, validation result.
+
+### Testing & Verification
+
+See plan document "Verification" section for test cases:
+- Unit test `vbsCompilerService` with mock VBS
+- Baseline comparison against Redis-cached v0.20 e3s2 results
+- Segment completeness for dual-character beats
+- visual_anchor fidelity (shotComposition reflects beat's visual_anchor)
+- Helmet state regression (sealed helmet → no hair, proper fragment, no expression)
+- Repair loop test (manually corrupt VBS, verify repair)
+- LLM fallback test (simulate failure, verify deterministic fallback)
+
+### Configuration & Deployment
+
+**No configuration required.** v0.21 is opt-in via `promptVersion` parameter:
+
+```typescript
+// Use v0.21
+const prompts = await generateSwarmUiPrompts(
+    episode, context, style, 'manual', storyId, 'gemini',
+    onProgress, 'v021'  // ← Opt into v0.21
+);
+```
+
+Default remains v0.20 for backward compatibility.
+
+---
+
 ## TODO / FUTURE WORK
 
 | Item | Priority | Notes |
@@ -3328,6 +3597,7 @@ FLAG FORMAT:
 
 | Version | Date | Change |
 |---------|------|--------|
+| 0.21 | 2026-02-27 | **Compiler-Style Prompt Generation (VBS Architecture).** New four-phase pipeline: (A) Deterministic enrichment builds VBS from DB context, (B) LLM fills only action/expression/composition slots (focused ~400-token system instruction, zero story names), (C) Deterministic compilation assembles prompt, (D) Validate+repair loop with max 2 iterations. Central Visual Beat Spec type carries all beat visual data. Beats processed sequentially (not batched) for per-beat location awareness. `buildVisualBeatSpec()` applies helmet state, maps artifacts by type, sets all appearance data. `fillVBSWithLLM()` translates visual_anchor to composition, uses multi-provider support. `compileVBSToPrompt()` deterministic assembly, no post-processing. `validateAndRepairVBS()` auto-fixes missing LoRA triggers, helmet violations, face segments, token budget. New services: `vbsBuilderService.ts`, `vbsFillInService.ts`, `vbsCompilerService.ts`. New documentation: `CINEMATOGRAPHER_RULES.md`. New param `promptVersion: 'v020' | 'v021' = 'v020'` to `generateSwarmUiPrompts()`. v0.20 path unchanged; v0.21 parallel implementation. Section 24 (this document). |
 | 0.19 | 2026-02-08 | **Adaptive Token Budgets & Override-Aware Character Injection.** Replaced fixed 200-token hard limit with per-beat adaptive budgets based on shot type, character count, helmet state, and vehicle presence (Section 17 rewritten). New functions: `calculateAdaptiveTokenBudget()`, `condenseOverrideForShot()`, `injectMissingCharacterOverrides()`. Character injection now uses condensed `swarmui_prompt_override` content inserted at attention-optimal position (token 31-80 zone) instead of weak "nearby" phrases appended at end. Gemini system instruction updated with adaptive budget ranges. `TokenBudget` type added. Validation uses adaptive limits. |
 | 0.18 | 2026-02-07 | **FLUX Prompt Engine Architect Memo integration.** Added: T5 Attention Model (5A), Scene Persistent State (10.4), Token Budget (17), Canonical Descriptions (18), FLUX Rendering Rules (19), Decision Frameworks (20), Scene Type Templates (21), Template Selection Logic (22), Model Recommendation (23). Strengthened: Helmet zero-tolerance (3.6.4), Dual character rules with Cat as Visual Anchor (8.4-8.5), Camera Realism with FLUX-incompatible language (16.9). |
 | 0.17 | 2026-02-06 | **Visual Moment Rewrite.** Beat definition changed from "narrative unit" (45-90 sec, 2-5 sentences) to "visual moment" (15-30 sec, one camera composition). Target 45-60 beats per scene (was 15-20). NEW_IMAGE target 37-50/scene (was 11-15). YouTube format changed: each scene is standalone 15-20 min video (was 8-4-4-3 model). Ad break applies to ALL scenes at ~46% (8 min mark). Added cinematographic direction requirement (FLUX-validated shot type + angle + depth + lighting in `cameraAngleSuggestion`). Added Section 14.6 (Transition Rules for Static-Image Video), Section 14.7 (Visual Moment Split Rules). Updated Section 11A.1 (standalone scene model + tension arc phases), 11A.4 (ad break all scenes), 14.2 (beat duration), 14.5 (image decision targets). Updated `geminiService.ts`, `multiProviderAnalysisService.ts`, `qwenService.ts` system instructions and schemas. Updated `fluxVocabularyService.ts` SCENE_ROLE_TREATMENT.beatCountRange to [45,60]. Updated `sceneContextService.ts` isAdBreakScene (always true), estimateAdBreakBeat (0.46). |
