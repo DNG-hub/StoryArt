@@ -56,6 +56,8 @@ export interface BeatPrompts {
   sceneTemplate?: SceneTypeTemplate;
   /** Post-generation validation results (belt-and-suspenders enforcement) */
   validation?: PromptValidationResult;
+  /** v0.21: Visual Beat Spec for debugging/inspection */
+  vbs?: VisualBeatSpec;
 }
 
 export interface BeatAnalysis {
@@ -595,4 +597,145 @@ export interface BeatAnalysisWithState extends BeatAnalysis {
   varietyApplied?: boolean;
   /** Suggested alternative shot type if original would violate monotony rules */
   suggestedShotType?: string;
+}
+
+// ============================================================================
+// Visual Beat Spec (VBS) Types — v0.21 Compiler-Style Pipeline
+// ============================================================================
+
+/**
+ * Per-subject (character) within a VBS.
+ * All appearance data is deterministically set in Phase A.
+ * LLM fills only action/expression in Phase B.
+ */
+export interface VBSSubject {
+  characterName: string;
+  /** LoRA trigger from database — NEVER from LLM */
+  loraTrigger: string;
+  /** Character description (swarmui_prompt_override with helmet state applied) */
+  description: string;
+  /** Camera-observable action (filled by LLM in Phase B) */
+  action?: string;
+  /** Camera-observable expression (filled by LLM, null if helmet sealed) */
+  expression?: string | null;
+  /** Spatial position in frame (e.g., "camera-left", "background") */
+  position?: string;
+  /** Whether face is visible to camera */
+  faceVisible: boolean;
+  /** Helmet state: OFF | IN_HAND | VISOR_UP | VISOR_DOWN */
+  helmetState: 'OFF' | 'IN_HAND' | 'VISOR_UP' | 'VISOR_DOWN';
+  /** Segment tag fragments */
+  segments: {
+    face?: string;       // Face segment tag if faceVisible
+    clothing?: string;   // Clothing segment tags from swarmui_prompt_override
+  };
+}
+
+/**
+ * Environment section of VBS: location, lighting, atmosphere, artifacts.
+ * All structured per artifact type for clarity.
+ */
+export interface VBSEnvironment {
+  /** Location name/shorthand (e.g., "vault corridor", "motorcycle cabin") */
+  locationShorthand: string;
+  /** Structural artifacts: walls, furniture, terrain (STRUCTURAL type) */
+  anchors: string[];
+  /** Lighting artifacts and conditions (LIGHTING type + fluxLighting) */
+  lighting: string;
+  /** Atmospheric conditions: fog, dust, color grade (ATMOSPHERIC type) */
+  atmosphere: string;
+  /** Prop artifacts: items, objects (PROP type) */
+  props?: string[];
+  /** Environmental effects: dust, color grade, environmental FX */
+  fx?: string;
+}
+
+/**
+ * Visual Beat Spec: The central intermediate representation.
+ * Built in Phase A (deterministic enrichment).
+ * Completed in Phase B (LLM fill-in).
+ * Compiled in Phase C (prompt assembly).
+ * Validated/repaired in Phase D.
+ */
+export interface VisualBeatSpec {
+  beatId: string;
+  sceneNumber: number;
+  /** Template type for skeleton selection */
+  templateType: 'vehicle' | 'indoor_dialogue' | 'combat' | 'stealth' | 'establishing' | 'suit_up' | 'ghost' | 'generic';
+  /** Routing decision: FLUX if any face visible, ALTERNATE if all visors down */
+  modelRoute: 'FLUX' | 'ALTERNATE';
+
+  shot: {
+    shotType: string;
+    cameraAngle?: string;
+    depthOfField?: string;
+    /** Filled by LLM from visual_anchor */
+    composition?: string;
+  };
+
+  /** Array of subjects (characters) in this beat */
+  subjects: VBSSubject[];
+
+  environment: VBSEnvironment;
+
+  /** Vehicle information if present */
+  vehicle?: {
+    description: string;
+    /** Spatial note filled by LLM (e.g., "motorcycle roaring into frame") */
+    spatialNote?: string;
+  };
+
+  constraints: {
+    tokenBudget: TokenBudget;
+    segmentPolicy: 'ALWAYS' | 'IF_FACE_VISIBLE' | 'NEVER';
+    /** Priority order for dropping fields if over budget */
+    compactionDropOrder: string[];
+  };
+
+  // For continuity and debugging
+  previousBeatSummary?: string;
+  persistentStateSnapshot: ScenePersistentState;
+}
+
+/**
+ * LLM output for Phase B fill-in.
+ * Only fields that cannot be deterministically set from database.
+ */
+export interface VBSFillIn {
+  beatId: string;
+  /** Composition translation from visual_anchor */
+  shotComposition: string;
+  /** Per-subject fill-ins */
+  subjectFillIns: Array<{
+    characterName: string;
+    action: string;
+    expression: string | null;
+    dualPositioning?: 'camera-left' | 'camera-right';
+  }>;
+  vehicleSpatialNote?: string;
+  /** Beat-specific atmospheric detail from LLM */
+  atmosphereEnrichment?: string;
+}
+
+/**
+ * VBS validation result with actionable repair suggestions.
+ */
+export interface VBSValidationResult {
+  beatId: string;
+  /** Validation passed without repair */
+  valid: boolean;
+  /** Issues found */
+  issues: Array<{
+    type: string;
+    description: string;
+    severity: 'error' | 'warning';
+  }>;
+  /** Repairs applied (if any) */
+  repairsApplied: string[];
+  /** Current iteration count */
+  iterationCount: number;
+  /** Max iterations reached (may still have issues) */
+  maxIterationsReached: boolean;
+  /** Final compiled prompt */
+  finalPrompt: string;
 }

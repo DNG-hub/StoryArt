@@ -1401,11 +1401,17 @@ export const generateSwarmUiPrompts = async (
     retrievalMode: RetrievalMode = 'manual',
     storyId?: string,
     provider: LLMProvider = 'gemini',
-    onProgress?: (message: string) => void
+    onProgress?: (message: string) => void,
+    promptVersion: 'v020' | 'v021' = 'v020'
 ): Promise<BeatPrompts[]> => {
     onProgress?.('Verifying API key...');
-    
-    // Route to appropriate provider for prompt generation
+
+    // Route to v0.21 compiler pipeline if requested
+    if (promptVersion === 'v021') {
+        return await generateSwarmUiPromptsV021(analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, provider, onProgress);
+    }
+
+    // Route to appropriate provider for prompt generation (v0.20)
     // Note: Currently only Gemini has full implementation. Other providers use Gemini as fallback.
     switch (provider) {
         case 'gemini':
@@ -3135,3 +3141,175 @@ export const generateHierarchicalSwarmUiPrompts = async (
     onProgress?.('Starting prompt generation with enriched location context...');
     return generateSwarmUiPrompts(enrichedAnalyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, provider, onProgress);
 };
+
+// ============================================================================
+// v0.21 VBS Compiler Pipeline: Orchestrator
+// ============================================================================
+
+/**
+ * V0.21 Compiler-style prompt generation using Visual Beat Spec (VBS).
+ * Four-phase pipeline:
+ *   Phase A: Deterministic enrichment (vbsBuilderService)
+ *   Phase B: LLM fill-in (vbsFillInService)
+ *   Phase C: Deterministic compilation (vbsCompilerService)
+ *   Phase D: Validation and repair loop (vbsCompilerService)
+ *
+ * Beats processed sequentially (not batched) for per-beat location awareness.
+ */
+async function generateSwarmUiPromptsV021(
+    analyzedEpisode: AnalyzedEpisode,
+    episodeContextJson: string,
+    styleConfig: EpisodeStyleConfig,
+    retrievalMode: RetrievalMode = 'manual',
+    storyId?: string,
+    provider: LLMProvider = 'gemini',
+    onProgress?: (message: string) => void
+): Promise<BeatPrompts[]> {
+    try {
+        // Lazy imports to avoid circular dependencies
+        const { buildVisualBeatSpec } = await import('./vbsBuilderService');
+        const { fillVBSWithLLM, mergeVBSFillIn } = await import('./vbsFillInService');
+        const { validateAndRepairVBS } = await import('./vbsCompilerService');
+        const { processEpisodeWithFullContext } = await import('./beatStateService');
+        const { generateEnhancedEpisodeContext } = await import('./databaseContextService');
+
+        onProgress?.('v0.21: Processing episode context...');
+
+        // Parse episode context
+        let parsedEpisodeContext: EnhancedEpisodeContext;
+        try {
+            parsedEpisodeContext = JSON.parse(episodeContextJson);
+        } catch {
+            throw new Error('Failed to parse episode context JSON');
+        }
+
+        // Process episode through beatStateService (Phase A foundation)
+        onProgress?.('v0.21: Building beat state...');
+        const processedEpisode = await processEpisodeWithFullContext(
+            analyzedEpisode,
+            parsedEpisodeContext,
+            storyId
+        );
+
+        const beatPrompts: BeatPrompts[] = [];
+
+        // Process each scene
+        for (const scene of processedEpisode.episode.scenes) {
+            onProgress?.(`v0.21: Processing scene ${scene.sceneNumber}...`);
+
+            let previousBeatVBS: any = undefined;
+            let previousBeat: any = undefined;
+
+            // Process beats sequentially
+            for (const beat of scene.beats) {
+                const beatLabel = `s${scene.sceneNumber}-b${beat.beatId.split('-')[1]}`;
+                onProgress?.(`  Generating prompt for beat ${beatLabel}...`);
+
+                try {
+                    // Phase A: Build VBS (deterministic enrichment)
+                    const partialVBS = buildVisualBeatSpec(
+                        beat,
+                        parsedEpisodeContext,
+                        beat.persistentState || { charactersPresent: [], characterPositions: {}, characterPhases: {}, gearState: null, vehicle: null, vehicleState: null, location: null, lighting: null },
+                        scene.sceneNumber,
+                        previousBeatVBS,
+                        previousBeat
+                    );
+
+                    // Phase B: Fill with LLM
+                    const fillIn = await fillVBSWithLLM(partialVBS, beat, provider);
+
+                    // Merge fill-in into VBS
+                    const completedVBS = mergeVBSFillIn(partialVBS, fillIn);
+
+                    // Phase D: Validate and repair
+                    const validationResult = validateAndRepairVBS(completedVBS);
+
+                    // Create BeatPrompts result
+                    const prompt = validationResult.finalPrompt;
+                    const swarmUIPrompt: SwarmUIPrompt = {
+                        prompt,
+                        model: styleConfig.model,
+                        width: styleConfig.cinematicAspectRatio === '16:9' ? 1280 : 1024,
+                        height: styleConfig.cinematicAspectRatio === '16:9' ? 720 : 1024,
+                        steps: 30,
+                        cfgscale: 7.5,
+                        seed: Math.floor(Math.random() * 1000000),
+                        sampler: 'euler',
+                        scheduler: 'simple',
+                    };
+
+                    beatPrompts.push({
+                        beatId: beat.beatId,
+                        cinematic: swarmUIPrompt,
+                        scenePersistentState: beat.persistentState,
+                        sceneTemplate: beat.sceneTemplate,
+                        validation: {
+                            beatId: beat.beatId,
+                            tokenCount: estimatePromptTokens(prompt),
+                            tokenBudgetExceeded: false,
+                            missingCharacters: [],
+                            missingVehicle: false,
+                            forbiddenTermsFound: [],
+                            visorViolation: false,
+                            modelRecommendation: completedVBS.modelRoute,
+                            modelRecommendationReason: completedVBS.modelRoute === 'FLUX' ? 'faces_visible' : 'no_faces',
+                            sceneTemplate: beat.sceneTemplate,
+                            injectedCharacters: [],
+                            vehicleInjected: false,
+                            adaptiveTokenBudget: completedVBS.constraints.tokenBudget.total,
+                            warnings: validationResult.issues
+                                .filter(i => i.severity === 'warning')
+                                .map(i => i.description),
+                        },
+                        vbs: completedVBS,
+                    });
+
+                    // Update previousBeatVBS and previousBeat for next iteration
+                    previousBeatVBS = completedVBS;
+                    previousBeat = beat;
+
+                    if (validationResult.issues.length > 0) {
+                        console.log(`[v0.21] Beat ${beatLabel}: ${validationResult.issues.length} validation issue(s)`);
+                        console.log(`  Repairs applied: ${validationResult.repairsApplied.join(', ')}`);
+                    }
+                } catch (beatError) {
+                    console.error(`[v0.21] Failed to process beat ${beatLabel}:`, beatError);
+                    // Fall back to creating an empty prompt for this beat
+                    beatPrompts.push({
+                        beatId: beat.beatId,
+                        cinematic: {
+                            prompt: `[Beat ${beatLabel}: Generation failed]`,
+                            model: styleConfig.model,
+                            width: 1280,
+                            height: 720,
+                            steps: 30,
+                            cfgscale: 7.5,
+                            seed: 0,
+                        },
+                        validation: {
+                            beatId: beat.beatId,
+                            tokenCount: 0,
+                            tokenBudgetExceeded: false,
+                            missingCharacters: [],
+                            missingVehicle: false,
+                            forbiddenTermsFound: [],
+                            visorViolation: false,
+                            modelRecommendation: 'FLUX',
+                            modelRecommendationReason: 'error_fallback',
+                            injectedCharacters: [],
+                            vehicleInjected: false,
+                            warnings: [`Generation failed: ${beatError instanceof Error ? beatError.message : String(beatError)}`],
+                        },
+                    });
+                }
+            }
+        }
+
+        onProgress?.('v0.21: Pipeline complete');
+        return beatPrompts;
+    } catch (error) {
+        console.error('[v0.21] Pipeline failed:', error);
+        throw error;
+    }
+}
