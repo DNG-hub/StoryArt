@@ -240,12 +240,12 @@ function createMockPersistentState(overrides?: Partial<ScenePersistentState>): S
 
 describe('VBS Builder Service', () => {
   describe('buildVisualBeatSpec', () => {
-    it('builds a complete VBS from beat data and episode context', () => {
+    it('builds a complete VBS from beat data and episode context', async () => {
       const beat = createMockFullyProcessedBeat();
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState();
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
 
       expect(vbs).toBeDefined();
       expect(vbs.beatId).toBe('s1-b1');
@@ -256,12 +256,12 @@ describe('VBS Builder Service', () => {
       expect(vbs.environment).toBeDefined();
     });
 
-    it('populates all subject fields deterministically', () => {
+    it('populates all subject fields deterministically', async () => {
       const beat = createMockFullyProcessedBeat();
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState();
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
       const catSubject = vbs.subjects.find(s => s.characterName === 'Cat');
 
       expect(catSubject).toBeDefined();
@@ -275,65 +275,65 @@ describe('VBS Builder Service', () => {
       expect(catSubject!.expression).toBeUndefined(); // Filled by LLM
     });
 
-    it('sets modelRoute to FLUX when any face is visible', () => {
+    it('sets modelRoute to FLUX when any face is visible', async () => {
       const beat = createMockFullyProcessedBeat();
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState({
         gearState: 'HELMET_OFF', // Faces visible
       });
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
       expect(vbs.modelRoute).toBe('FLUX');
     });
 
-    it('sets modelRoute to ALTERNATE when all visors down', () => {
+    it('sets modelRoute to ALTERNATE when all visors down', async () => {
       const beat = createMockFullyProcessedBeat();
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState({
         gearState: 'VISOR_DOWN', // All helmets sealed
       });
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
       expect(vbs.modelRoute).toBe('ALTERNATE');
     });
 
-    it('maps location artifacts by type', () => {
+    it('maps location artifacts by type', async () => {
       const beat = createMockFullyProcessedBeat();
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState();
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
 
       expect(vbs.environment.anchors.length).toBeGreaterThan(0); // STRUCTURAL artifacts
       expect(vbs.environment.lighting).toBeTruthy(); // LIGHTING artifacts
       // ATMOSPHERIC and PROP artifacts may or may not be present depending on scene
     });
 
-    it('includes previous beat summary when provided', () => {
+    it('includes previous beat summary when provided', async () => {
       const beat = createMockFullyProcessedBeat();
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState();
 
       // Create a prior VBS for context
-      const priorVBS = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const priorVBS = await buildVisualBeatSpec(beat, context, persistentState, 1);
 
       // Build a new beat with prior VBS reference
       const beat2 = createMockFullyProcessedBeat({ beatId: 's1-b2' });
-      const vbs2 = buildVisualBeatSpec(beat2, context, persistentState, 1, priorVBS);
+      const vbs2 = await buildVisualBeatSpec(beat2, context, persistentState, 1, priorVBS);
 
       expect(vbs2.previousBeatSummary).toBeTruthy();
       expect(vbs2.previousBeatSummary).toContain('Cat');
       expect(vbs2.previousBeatSummary).toContain('warehouse');
     });
 
-    it('calculates adaptive token budget', () => {
+    it('calculates adaptive token budget', async () => {
       const beat = createMockFullyProcessedBeat({
         fluxShotType: 'close-up shot',
       });
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState();
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
 
       expect(vbs.constraints.tokenBudget).toBeDefined();
       expect(vbs.constraints.tokenBudget.total).toBeGreaterThan(200);
@@ -341,7 +341,7 @@ describe('VBS Builder Service', () => {
       expect(vbs.constraints.tokenBudget.segments).toBe(15); // Always 15
     });
 
-    it('skips Ghost character (non-physical)', () => {
+    it('skips Ghost character (non-physical)', async () => {
       const beat = createMockFullyProcessedBeat({
         scenePersistentState: {
           ...createMockPersistentState(),
@@ -353,7 +353,7 @@ describe('VBS Builder Service', () => {
         charactersPresent: ['Cat', 'Daniel', 'Ghost'],
       });
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
 
       expect(vbs.subjects.find(s => s.characterName === 'Ghost')).toBeUndefined();
       expect(vbs.subjects).toHaveLength(2); // Only Cat and Daniel
@@ -363,7 +363,7 @@ describe('VBS Builder Service', () => {
   describe('applyHelmetStateToDescription', () => {
     const baseDescription = 'JRUMLV, 23-year-old woman, dark hair, ponytail, visor up, Aegis suit';
 
-    it('applies HELMET_OFF state (face visible, hair visible)', () => {
+    it('applies HELMET_OFF state (face visible, hair visible)', async () => {
       const result = applyHelmetStateToDescription(
         baseDescription,
         'OFF',
@@ -377,7 +377,7 @@ describe('VBS Builder Service', () => {
       expect(result).not.toContain('visor');
     });
 
-    it('applies VISOR_UP state (face visible, hair hidden when visor up)', () => {
+    it('applies VISOR_UP state (face visible, hair hidden when visor up)', async () => {
       const result = applyHelmetStateToDescription(
         baseDescription,
         'VISOR_UP',
@@ -393,7 +393,7 @@ describe('VBS Builder Service', () => {
       expect(result).not.toContain('visor up');
     });
 
-    it('applies VISOR_DOWN state (face hidden, hair hidden)', () => {
+    it('applies VISOR_DOWN state (face hidden, hair hidden)', async () => {
       const result = applyHelmetStateToDescription(
         baseDescription,
         'VISOR_DOWN',
@@ -409,7 +409,7 @@ describe('VBS Builder Service', () => {
       expect(result).not.toContain('visor up');
     });
 
-    it('removes existing helmet references before applying new ones', () => {
+    it('removes existing helmet references before applying new ones', async () => {
       const withExistingHelmet = 'JRUMLV, woman, helmet visor up, dark hair, Aegis suit';
       const result = applyHelmetStateToDescription(
         withExistingHelmet,
@@ -423,7 +423,7 @@ describe('VBS Builder Service', () => {
       expect(result).toContain('sealed helmet');
     });
 
-    it('cleans up formatting (double commas, spaces)', () => {
+    it('cleans up formatting (double commas, spaces)', async () => {
       const messyDescription = 'JRUMLV,,  woman,  dark hair,   Aegis suit';
       const result = applyHelmetStateToDescription(
         messyDescription,
@@ -474,7 +474,7 @@ describe('VBS Builder Service', () => {
       },
     ];
 
-    it('maps artifacts by type', () => {
+    it('maps artifacts by type', async () => {
       const mapped = mapArtifactsByType(artifacts);
 
       expect(mapped.structural).toHaveLength(1);
@@ -490,7 +490,7 @@ describe('VBS Builder Service', () => {
       expect(mapped.prop[0]).toContain('shelving');
     });
 
-    it('handles empty artifact lists', () => {
+    it('handles empty artifact lists', async () => {
       const mapped = mapArtifactsByType([]);
 
       expect(mapped.structural).toEqual([]);
@@ -499,7 +499,7 @@ describe('VBS Builder Service', () => {
       expect(mapped.prop).toEqual([]);
     });
 
-    it('defaults unknown types to PROP', () => {
+    it('defaults unknown types to PROP', async () => {
       const unknownArtifacts: ArtifactContext[] = [
         {
           artifact_name: 'unknown',
@@ -519,7 +519,7 @@ describe('VBS Builder Service', () => {
   });
 
   describe('Beat-level Location Context', () => {
-    it('uses beat location when resolvedLocationId is set', () => {
+    it('uses beat location when resolvedLocationId is set', async () => {
       const beat1 = createMockFullyProcessedBeat({ resolvedLocationId: 'loc-1' });
       const beat2 = createMockFullyProcessedBeat({
         beatId: 's1-b2',
@@ -572,15 +572,15 @@ describe('VBS Builder Service', () => {
       const persistentState = createMockPersistentState({ charactersPresent: ['Cat'] });
 
       // Beat 1 with location loc-1
-      const vbs1 = buildVisualBeatSpec(beat1, context, persistentState, 1);
+      const vbs1 = await buildVisualBeatSpec(beat1, context, persistentState, 1);
       expect(vbs1.environment.locationShorthand).toBe('warehouse');
 
       // Beat 2 with location loc-2 (location changed)
-      const vbs2 = buildVisualBeatSpec(beat2, context, persistentState, 1, vbs1, beat1);
+      const vbs2 = await buildVisualBeatSpec(beat2, context, persistentState, 1, vbs1, beat1);
       expect(vbs2).toBeDefined();
     });
 
-    it('detects location changes between beats', () => {
+    it('detects location changes between beats', async () => {
       const beat1 = createMockFullyProcessedBeat({
         beatId: 's1-b1',
         resolvedLocationId: 'loc-1',
@@ -594,9 +594,9 @@ describe('VBS Builder Service', () => {
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState();
 
-      const vbs1 = buildVisualBeatSpec(beat1, context, persistentState, 1);
+      const vbs1 = await buildVisualBeatSpec(beat1, context, persistentState, 1);
       // Location changed: beat1.resolvedLocationId (loc-1) !== beat2.resolvedLocationId (loc-2)
-      const vbs2 = buildVisualBeatSpec(beat2, context, persistentState, 1, vbs1, beat1);
+      const vbs2 = await buildVisualBeatSpec(beat2, context, persistentState, 1, vbs1, beat1);
 
       expect(vbs2).toBeDefined();
       // Both VBS should exist (no errors on location change)
@@ -604,19 +604,19 @@ describe('VBS Builder Service', () => {
       expect(vbs2.beatId).toBe('s1-b2');
     });
 
-    it('falls back to scene-level location when resolvedLocationId is undefined', () => {
+    it('falls back to scene-level location when resolvedLocationId is undefined', async () => {
       const beat = createMockFullyProcessedBeat({ resolvedLocationId: undefined });
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState();
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
 
       // Should use scene-level location
       expect(vbs.environment.locationShorthand).toBe('warehouse');
       expect(vbs.subjects.length).toBeGreaterThan(0);
     });
 
-    it('applies multi-phase character appearance at beat location', () => {
+    it('applies multi-phase character appearance at beat location', async () => {
       const beat = createMockFullyProcessedBeat({ resolvedLocationId: 'loc-1' });
 
       const context = createMockEpisodeContext({
@@ -664,13 +664,13 @@ describe('VBS Builder Service', () => {
         characterPhases: { Cat: 'default' },
       });
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
 
       expect(vbs.subjects[0].characterName).toBe('Cat');
       expect(vbs.subjects[0].description).toContain('standing ready');
     });
 
-    it('respects phase_trigger_text when selecting character phase', () => {
+    it('respects phase_trigger_text when selecting character phase', async () => {
       const beat = createMockFullyProcessedBeat({ resolvedLocationId: 'loc-1' });
 
       // Create context with multiple phases at same location
@@ -720,13 +720,13 @@ describe('VBS Builder Service', () => {
         characterPhases: { Cat: 'arrival' },
       });
 
-      const vbs = buildVisualBeatSpec(beat, context, persistentState, 1);
+      const vbs = await await buildVisualBeatSpec(beat, context, persistentState, 1);
 
       // Should use arrival phase appearance
       expect(vbs.subjects[0].description).toContain('casual clothes');
     });
 
-    it('maintains character appearance when no location change', () => {
+    it('maintains character appearance when no location change', async () => {
       const beat1 = createMockFullyProcessedBeat({
         beatId: 's1-b1',
         resolvedLocationId: 'loc-1',
@@ -740,15 +740,15 @@ describe('VBS Builder Service', () => {
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState();
 
-      const vbs1 = buildVisualBeatSpec(beat1, context, persistentState, 1);
-      const vbs2 = buildVisualBeatSpec(beat2, context, persistentState, 1, vbs1, beat1);
+      const vbs1 = await buildVisualBeatSpec(beat1, context, persistentState, 1);
+      const vbs2 = await buildVisualBeatSpec(beat2, context, persistentState, 1, vbs1, beat1);
 
       // Character appearance should be consistent for same location
       expect(vbs1.subjects[0].characterName).toBe(vbs2.subjects[0].characterName);
       expect(vbs1.subjects[0].loraTrigger).toBe(vbs2.subjects[0].loraTrigger);
     });
 
-    it('includes previousBeatSummary for continuity across location changes', () => {
+    it('includes previousBeatSummary for continuity across location changes', async () => {
       const beat1 = createMockFullyProcessedBeat({
         beatId: 's1-b1',
         resolvedLocationId: 'loc-1',
@@ -762,8 +762,8 @@ describe('VBS Builder Service', () => {
       const context = createMockEpisodeContext();
       const persistentState = createMockPersistentState();
 
-      const vbs1 = buildVisualBeatSpec(beat1, context, persistentState, 1);
-      const vbs2 = buildVisualBeatSpec(
+      const vbs1 = await buildVisualBeatSpec(beat1, context, persistentState, 1);
+      const vbs2 = await buildVisualBeatSpec(
         beat2,
         context,
         persistentState,
@@ -777,7 +777,7 @@ describe('VBS Builder Service', () => {
       expect(vbs2.previousBeatSummary).toContain('warehouse'); // From vbs1 location
     });
 
-    it('transitions character appearance when location changes', () => {
+    it('transitions character appearance when location changes', async () => {
       const beat1 = createMockFullyProcessedBeat({
         beatId: 's1-b1',
         resolvedLocationId: 'loc-warehouse',
@@ -833,11 +833,11 @@ describe('VBS Builder Service', () => {
         location: 'warehouse',
       });
 
-      const vbs1 = buildVisualBeatSpec(beat1, context, persistentState, 1);
+      const vbs1 = await buildVisualBeatSpec(beat1, context, persistentState, 1);
       expect(vbs1.subjects[0].description).toContain('tactical suit');
 
       // Transition to bedroom with location change flag
-      const vbs2 = buildVisualBeatSpec(
+      const vbs2 = await buildVisualBeatSpec(
         beat2,
         context,
         persistentState,

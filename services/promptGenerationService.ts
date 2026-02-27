@@ -3232,13 +3232,14 @@ async function generateSwarmUiPromptsV021(
                     };
 
                     // Phase A: Build VBS (deterministic enrichment)
-                    const partialVBS = buildVisualBeatSpec(
-                        beat,
+                    // Now async with runtime skill integration
+                    const partialVBS = await buildVisualBeatSpec(
+                        beat as any as FullyProcessedBeat,
                         parsedEpisodeContext,
                         currentSceneState,
                         scene.sceneNumber,
                         previousBeatVBS,
-                        previousBeat
+                        previousBeat as any as FullyProcessedBeat
                     );
 
                     // Update scene state with VBS persistent state
@@ -3250,8 +3251,8 @@ async function generateSwarmUiPromptsV021(
                     // Merge fill-in into VBS
                     const completedVBS = mergeVBSFillIn(partialVBS, fillIn);
 
-                    // Phase D: Validate and repair
-                    const validationResult = validateAndRepairVBS(completedVBS);
+                    // Phase D: Validate and repair (now async with skill integration)
+                    const validationResult = await validateAndRepairVBS(completedVBS);
 
                     // Create BeatPrompts result
                     const prompt = validationResult.finalPrompt;

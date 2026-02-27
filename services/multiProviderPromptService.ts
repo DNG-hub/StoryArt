@@ -2,7 +2,7 @@
 // Provides provider-specific implementations for prompt generation
 
 import type { AnalyzedEpisode, BeatPrompts, EpisodeStyleConfig, RetrievalMode, LLMProvider } from '../types';
-import { generateSwarmUiPromptsWithGemini } from './promptGenerationService';
+import { generateSwarmUiPrompts } from './promptGenerationService';
 
 /**
  * Unified prompt generation function that routes to the appropriate provider
@@ -19,35 +19,35 @@ export const generatePromptsWithProvider = async (
 ): Promise<BeatPrompts[]> => {
   switch (provider) {
     case 'gemini':
-      return await generateSwarmUiPromptsWithGemini(
-        analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
+      return await generateSwarmUiPrompts(
+        analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, provider, onProgress
       );
     
     case 'qwen':
       return await generatePromptsWithQwen(
         analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
       );
-    
+
     case 'claude':
       return await generatePromptsWithClaude(
         analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
       );
-    
+
     case 'openai':
       return await generatePromptsWithOpenAI(
         analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
       );
-    
+
     case 'xai':
       return await generatePromptsWithXAI(
         analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
       );
-    
+
     case 'deepseek':
       return await generatePromptsWithDeepSeek(
         analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
       );
-    
+
     case 'glm':
       return await generatePromptsWithGLM(
         analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
@@ -70,8 +70,8 @@ async function generatePromptsWithQwen(
   onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> {
   onProgress?.('Qwen prompt generation not yet implemented. Using Gemini as fallback.');
-  return await generateSwarmUiPromptsWithGemini(
-    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
+  return await generateSwarmUiPrompts(
+    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, 'gemini', onProgress
   );
 }
 
@@ -84,8 +84,8 @@ async function generatePromptsWithClaude(
   onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> {
   onProgress?.('Claude prompt generation not yet implemented. Using Gemini as fallback.');
-  return await generateSwarmUiPromptsWithGemini(
-    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
+  return await generateSwarmUiPrompts(
+    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, 'gemini', onProgress
   );
 }
 
@@ -98,8 +98,8 @@ async function generatePromptsWithOpenAI(
   onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> {
   onProgress?.('OpenAI prompt generation not yet implemented. Using Gemini as fallback.');
-  return await generateSwarmUiPromptsWithGemini(
-    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
+  return await generateSwarmUiPrompts(
+    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, 'gemini', onProgress
   );
 }
 
@@ -112,8 +112,8 @@ async function generatePromptsWithXAI(
   onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> {
   onProgress?.('XAI prompt generation not yet implemented. Using Gemini as fallback.');
-  return await generateSwarmUiPromptsWithGemini(
-    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
+  return await generateSwarmUiPrompts(
+    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, 'gemini', onProgress
   );
 }
 
@@ -126,8 +126,8 @@ async function generatePromptsWithDeepSeek(
   onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> {
   onProgress?.('DeepSeek prompt generation not yet implemented. Using Gemini as fallback.');
-  return await generateSwarmUiPromptsWithGemini(
-    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
+  return await generateSwarmUiPrompts(
+    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, 'gemini', onProgress
   );
 }
 
@@ -140,8 +140,8 @@ async function generatePromptsWithGLM(
   onProgress?: (message: string) => void
 ): Promise<BeatPrompts[]> {
   onProgress?.('GLM prompt generation not yet implemented. Using Gemini as fallback.');
-  return await generateSwarmUiPromptsWithGemini(
-    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, onProgress
+  return await generateSwarmUiPrompts(
+    analyzedEpisode, episodeContextJson, styleConfig, retrievalMode, storyId, 'gemini', onProgress
   );
 }
 

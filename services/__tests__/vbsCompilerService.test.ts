@@ -110,7 +110,7 @@ function createMockVBS(overrides?: Partial<VisualBeatSpec>): VisualBeatSpec {
 
 describe('VBS Compiler Service', () => {
   describe('compileVBSToPrompt', () => {
-    it('compiles a complete VBS to a valid prompt string', () => {
+    it('compiles a complete VBS to a valid prompt string', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
 
@@ -118,7 +118,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt.length).toBeGreaterThan(0);
     });
 
-    it('includes shot information at the beginning', () => {
+    it('includes shot information at the beginning', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
 
@@ -127,7 +127,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt).toContain('motion blur');
     });
 
-    it('includes all LoRA triggers for all subjects', () => {
+    it('includes all LoRA triggers for all subjects', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
 
@@ -135,7 +135,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt).toContain('HSCEIA');
     });
 
-    it('includes character descriptions and actions', () => {
+    it('includes character descriptions and actions', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
 
@@ -145,7 +145,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt).toContain('standing alert');
     });
 
-    it('includes facial expressions when faces are visible', () => {
+    it('includes facial expressions when faces are visible', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
 
@@ -154,7 +154,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt).toContain('eyes wide');
     });
 
-    it('excludes expressions when face is not visible', () => {
+    it('excludes expressions when face is not visible', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -169,7 +169,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt).not.toContain('brow furrowed');
     });
 
-    it('includes environment details', () => {
+    it('includes environment details', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
 
@@ -178,7 +178,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt).toContain('dust motes');
     });
 
-    it('includes segment tags at the end', () => {
+    it('includes segment tags at the end', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
 
@@ -186,7 +186,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt).toContain('<segment:clothes-aegis>');
     });
 
-    it('includes vehicle information when present', () => {
+    it('includes vehicle information when present', async () => {
       const vbs = createMockVBS({
         vehicle: {
           description: 'matte-black armored motorcycle (The Dinghy)',
@@ -199,7 +199,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt).toContain('speeding');
     });
 
-    it('omits vehicle when not present', () => {
+    it('omits vehicle when not present', async () => {
       const vbs = createMockVBS({
         vehicle: null,
       });
@@ -209,7 +209,7 @@ describe('VBS Compiler Service', () => {
       expect(prompt).not.toContain('vehicle');
     });
 
-    it('cleans up formatting (double commas, excess spaces)', () => {
+    it('cleans up formatting (double commas, excess spaces)', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
 
@@ -219,26 +219,26 @@ describe('VBS Compiler Service', () => {
   });
 
   describe('runVBSValidation', () => {
-    it('validates that all LoRA triggers are present', () => {
+    it('validates that all LoRA triggers are present', async () => {
       const vbs = createMockVBS();
       const prompt = 'JRUMLV woman, HSCEIA man, standing'; // Both triggers present
-      const validation = runVBSValidation(vbs, prompt);
+      const validation = await runVBSValidation(vbs, prompt);
 
       // Should find no missing triggers
       expect(validation.issues.filter(i => i.type === 'missing_lora_trigger')).toHaveLength(0);
     });
 
-    it('detects missing LoRA triggers', () => {
+    it('detects missing LoRA triggers', async () => {
       const vbs = createMockVBS();
       const prompt = 'woman standing, HSCEIA man'; // Missing JRUMLV
-      const validation = runVBSValidation(vbs, prompt);
+      const validation = await runVBSValidation(vbs, prompt);
 
       const missingTriggers = validation.issues.filter(i => i.type === 'missing_lora_trigger');
       expect(missingTriggers.length).toBeGreaterThan(0);
       expect(missingTriggers[0].description).toContain('JRUMLV');
     });
 
-    it('detects hair text with visor down (violation)', () => {
+    it('detects hair text with visor down (violation)', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -249,13 +249,13 @@ describe('VBS Compiler Service', () => {
         ],
       });
       const prompt = 'JRUMLV, dark ponytail, sealed helmet visor down';
-      const validation = runVBSValidation(vbs, prompt);
+      const validation = await runVBSValidation(vbs, prompt);
 
       const violations = validation.issues.filter(i => i.type === 'helmet_hair_violation');
       expect(violations.length).toBeGreaterThan(0);
     });
 
-    it('detects missing face segments when face is visible', () => {
+    it('detects missing face segments when face is visible', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -269,14 +269,14 @@ describe('VBS Compiler Service', () => {
         ],
       });
       const prompt = 'JRUMLV, woman, no face segment tag';
-      const validation = runVBSValidation(vbs, prompt);
+      const validation = await runVBSValidation(vbs, prompt);
 
       // Check that validation detects missing face segment
       const missingSegments = validation.issues.filter(i => i.type === 'missing_face_segment');
       expect(missingSegments.length).toBeGreaterThanOrEqual(0); // May or may not detect depending on other conditions
     });
 
-    it('detects expression with visor down (violation)', () => {
+    it('detects expression with visor down (violation)', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -288,36 +288,36 @@ describe('VBS Compiler Service', () => {
         ],
       });
       const prompt = 'JRUMLV sealed helmet, intense gaze, visor down';
-      const validation = runVBSValidation(vbs, prompt);
+      const validation = await runVBSValidation(vbs, prompt);
 
       const violations = validation.issues.filter(i => i.type === 'expression_visor_violation');
       expect(violations.length).toBeGreaterThan(0);
     });
 
-    it('returns valid=true when no issues found', () => {
+    it('returns valid=true when no issues found', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
-      const validation = runVBSValidation(vbs, prompt);
+      const validation = await runVBSValidation(vbs, prompt);
 
       const errorIssues = validation.issues.filter(i => i.severity === 'error');
       expect(errorIssues).toHaveLength(0);
       expect(validation.valid).toBe(true);
     });
 
-    it('returns valid=false when errors found', () => {
+    it('returns valid=false when errors found', async () => {
       const vbs = createMockVBS();
       const prompt = 'incomplete prompt missing everything';
-      const validation = runVBSValidation(vbs, prompt);
+      const validation = await runVBSValidation(vbs, prompt);
 
       const errorIssues = validation.issues.filter(i => i.severity === 'error');
       expect(errorIssues.length).toBeGreaterThan(0);
       expect(validation.valid).toBe(false);
     });
 
-    it('distinguishes between errors and warnings', () => {
+    it('distinguishes between errors and warnings', async () => {
       const vbs = createMockVBS();
       const prompt = compileVBSToPrompt(vbs);
-      const validation = runVBSValidation(vbs, prompt);
+      const validation = await runVBSValidation(vbs, prompt);
 
       // A valid prompt should have no errors
       const errors = validation.issues.filter(i => i.severity === 'error');
@@ -330,9 +330,9 @@ describe('VBS Compiler Service', () => {
   });
 
   describe('validateAndRepairVBS', () => {
-    it('returns valid result for a complete, correct VBS', () => {
+    it('returns valid result for a complete, correct VBS', async () => {
       const vbs = createMockVBS();
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       expect(result.beatId).toBe('s1-b1');
       expect(result.valid).toBe(true);
@@ -341,7 +341,7 @@ describe('VBS Compiler Service', () => {
       expect(result.finalPrompt).toBeTruthy();
     });
 
-    it('repairs missing LoRA trigger by prepending to description', () => {
+    it('repairs missing LoRA trigger by prepending to description', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -352,7 +352,7 @@ describe('VBS Compiler Service', () => {
         ],
       });
 
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       // The final prompt should contain the LoRA trigger
       expect(result.finalPrompt).toContain('JRUMLV');
@@ -360,7 +360,7 @@ describe('VBS Compiler Service', () => {
       expect(result.finalPrompt).toBeTruthy();
     });
 
-    it('repairs hair violation by stripping hair when visor down', () => {
+    it('repairs hair violation by stripping hair when visor down', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -373,13 +373,13 @@ describe('VBS Compiler Service', () => {
         ],
       });
 
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       expect(result.finalPrompt).not.toContain('ponytail');
       expect(result.repairsApplied.some(r => r.includes('hair'))).toBe(true);
     });
 
-    it('validates and handles face segment presence', () => {
+    it('validates and handles face segment presence', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -393,14 +393,14 @@ describe('VBS Compiler Service', () => {
         ],
       });
 
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       // Properly formed VBS should produce valid output
       expect(result.finalPrompt).toBeTruthy();
       expect(result.finalPrompt.length).toBeGreaterThan(0);
     });
 
-    it('repairs expression violation by nulling expression when visor down', () => {
+    it('repairs expression violation by nulling expression when visor down', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -412,13 +412,13 @@ describe('VBS Compiler Service', () => {
         ],
       });
 
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       expect(result.finalPrompt).not.toContain('intense gaze');
       expect(result.repairsApplied.some(r => r.includes('expression'))).toBe(true);
     });
 
-    it('applies compaction strategy when token budget exceeded', () => {
+    it('applies compaction strategy when token budget exceeded', async () => {
       const vbs = createMockVBS({
         constraints: {
           ...createMockVBS().constraints,
@@ -429,13 +429,13 @@ describe('VBS Compiler Service', () => {
         },
       });
 
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       // Should apply compaction
       expect(result.repairsApplied.some(r => r.includes('compaction'))).toBe(true);
     });
 
-    it('limits repairs to max 2 iterations', () => {
+    it('limits repairs to max 2 iterations', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -448,21 +448,21 @@ describe('VBS Compiler Service', () => {
         ],
       });
 
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       expect(result.iterationCount).toBeLessThanOrEqual(2);
     });
 
-    it('returns best available prompt even if still invalid after repairs', () => {
+    it('returns best available prompt even if still invalid after repairs', async () => {
       const vbs = createMockVBS();
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       // Even if not perfectly valid, should return a prompt
       expect(result.finalPrompt).toBeTruthy();
       expect(result.finalPrompt.length).toBeGreaterThan(0);
     });
 
-    it('includes repair history in result', () => {
+    it('includes repair history in result', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -473,15 +473,15 @@ describe('VBS Compiler Service', () => {
         ],
       });
 
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       expect(Array.isArray(result.repairsApplied)).toBe(true);
       expect(result.repairsApplied.length).toBeGreaterThanOrEqual(0);
     });
 
-    it('marks maxIterationsReached only when exactly 2 iterations needed', () => {
+    it('marks maxIterationsReached only when exactly 2 iterations needed', async () => {
       const vbs = createMockVBS();
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       if (result.iterationCount >= 2) {
         expect(result.maxIterationsReached).toBe(true);
@@ -490,9 +490,9 @@ describe('VBS Compiler Service', () => {
       }
     });
 
-    it('preserves all data in returned VisualBeatSpec fields', () => {
+    it('preserves all data in returned VisualBeatSpec fields', async () => {
       const vbs = createMockVBS();
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       expect(result.beatId).toBe(vbs.beatId);
       expect(result.finalPrompt).toBeTruthy();
@@ -500,7 +500,7 @@ describe('VBS Compiler Service', () => {
   });
 
   describe('Segment Completeness (Dual Character Edge Case)', () => {
-    it('includes segment tags for both characters in prompt', () => {
+    it('includes segment tags for both characters in prompt', async () => {
       const vbs = createMockVBS(); // Has Cat and Daniel
       const prompt = compileVBSToPrompt(vbs);
 
@@ -512,7 +512,7 @@ describe('VBS Compiler Service', () => {
       expect(clothingSegmentCount).toBeGreaterThanOrEqual(2);
     });
 
-    it('does not lose segments when only one character has face visible', () => {
+    it('does not lose segments when only one character has face visible', async () => {
       const vbs = createMockVBS({
         subjects: [
           createMockVBS().subjects[0], // Cat: face visible
@@ -534,7 +534,7 @@ describe('VBS Compiler Service', () => {
   });
 
   describe('Integration: Full Pipeline', () => {
-    it('compiles, validates, and repairs a complete VBS end-to-end', () => {
+    it('compiles, validates, and repairs a complete VBS end-to-end', async () => {
       const vbs = createMockVBS();
 
       // Phase C: Compile
@@ -542,13 +542,13 @@ describe('VBS Compiler Service', () => {
       expect(prompt).toBeTruthy();
 
       // Phase D: Validate and Repair
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
       expect(result.finalPrompt).toBeTruthy();
       expect(result.beatId).toBe(vbs.beatId);
       expect(result.valid).toBe(true);
     });
 
-    it('handles problematic VBS gracefully through repair loop', () => {
+    it('handles problematic VBS gracefully through repair loop', async () => {
       const vbs = createMockVBS({
         subjects: [
           {
@@ -559,7 +559,7 @@ describe('VBS Compiler Service', () => {
         ],
       });
 
-      const result = validateAndRepairVBS(vbs);
+      const result = await await validateAndRepairVBS(vbs);
 
       // Should still produce valid output
       expect(result.finalPrompt).toContain('JRUMLV');

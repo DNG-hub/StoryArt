@@ -7,13 +7,17 @@
  * Assembly is complete by construction — no post-processing injection.
  * Validation/repair loop with max 2 iterations.
  *
- * v0.21 Compiler-Style Prompt Generation
+ * Integrates runtime skill validation to ensure prompt compliance with
+ * FLUX vocabulary, SKILL.md rules, and CINEMATOGRAPHER constraints.
+ *
+ * v0.21 Compiler-Style Prompt Generation + Runtime Skill Integration
  */
 
 import type {
   VisualBeatSpec,
   VBSValidationResult,
 } from '../types';
+import { skillApplicatorService } from './skillApplicatorService';
 
 /**
  * Compile a completed VisualBeatSpec into a final FLUX prompt.
@@ -150,13 +154,53 @@ export function compileVBSToPrompt(vbs: VisualBeatSpec): string {
 
 /**
  * Run validation on a compiled prompt.
+ * Includes both internal checks and runtime skill validation against FLUX/SKILL rules.
  * Returns actionable diagnostics and determines if repairs are needed.
  */
-export function runVBSValidation(
+export async function runVBSValidation(
   vbs: VisualBeatSpec,
   prompt: string
-): { valid: boolean; issues: Array<{ type: string; description: string; severity: 'error' | 'warning' }> } {
+): Promise<{ valid: boolean; issues: Array<{ type: string; description: string; severity: 'error' | 'warning' }> }> {
   const issues: Array<{ type: string; description: string; severity: 'error' | 'warning' }> = [];
+
+  // SKILL INTEGRATION: Apply runtime skill validation
+  try {
+    console.log(`[VBS Phase C] Running skill validation for beat ${vbs.beatId}...`);
+
+    // Validate against SKILL.md rules
+    const skillValidation = await skillApplicatorService.applySkillRules(vbs);
+    if (!skillValidation.valid) {
+      console.warn(`[VBS Phase C] ⚠️  SKILL.md validation warnings:`);
+      skillValidation.warnings.forEach(w => {
+        console.warn(`  [${w.severity}] ${w.type}: ${w.message}`);
+        issues.push({
+          type: w.type,
+          description: w.message,
+          severity: w.severity,
+        });
+      });
+    } else {
+      console.log(`[VBS Phase C] ✅ SKILL.md validation passed`);
+    }
+
+    // Validate prompt against all skill constraints
+    const promptValidation = await skillApplicatorService.validatePromptAgainstSkills(prompt, vbs);
+    if (!promptValidation.valid) {
+      console.warn(`[VBS Phase C] ⚠️  Prompt skill validation warnings:`);
+      promptValidation.warnings.forEach(w => {
+        console.warn(`  [${w.severity}] ${w.type}: ${w.message}`);
+        issues.push({
+          type: w.type,
+          description: w.message,
+          severity: w.severity,
+        });
+      });
+    } else {
+      console.log(`[VBS Phase C] ✅ Prompt skill validation passed`);
+    }
+  } catch (error) {
+    console.warn(`[VBS Phase C] ⚠️  Skill validation failed, continuing with internal checks:`, error);
+  }
 
   const lowerPrompt = prompt.toLowerCase();
 
@@ -226,13 +270,14 @@ export function runVBSValidation(
 
 /**
  * Repair and recompile a VBS based on validation issues.
+ * Uses skill validation results to guide repair strategy prioritization.
  * Max 2 iterations; returns best available prompt after repairs.
  */
-export function repairAndRecompile(
+export async function repairAndRecompile(
   vbs: VisualBeatSpec,
   initialValidation: { valid: boolean; issues: Array<{ type: string; description: string; severity: 'error' | 'warning' }> },
   maxIterations: number = 2
-): { prompt: string; repairsApplied: string[]; valid: boolean; iterationCount: number } {
+): Promise<{ prompt: string; repairsApplied: string[]; valid: boolean; iterationCount: number }> {
   let currentVBS = { ...vbs };
   let currentPrompt = compileVBSToPrompt(currentVBS);
   let currentValidation = initialValidation;
@@ -242,6 +287,9 @@ export function repairAndRecompile(
   while (!currentValidation.valid && iterationCount < maxIterations) {
     iterationCount++;
     const errorIssues = currentValidation.issues.filter(i => i.severity === 'error');
+
+    // SKILL INTEGRATION: Log skill-guided repair strategy
+    console.log(`[VBS Phase D] Iteration ${iterationCount}: Applying skill-guided repairs...`);
 
     for (const issue of errorIssues) {
       if (issue.type === 'missing_lora_trigger') {
@@ -292,9 +340,10 @@ export function repairAndRecompile(
       }
     }
 
-    // Recompile and revalidate
+    // Recompile and revalidate (using skill validation)
     currentPrompt = compileVBSToPrompt(currentVBS);
-    currentValidation = runVBSValidation(currentVBS, currentPrompt);
+    currentValidation = await runVBSValidation(currentVBS, currentPrompt);
+    console.log(`[VBS Phase D] Revalidation: valid=${currentValidation.valid}, errors=${currentValidation.issues.filter(i => i.severity === 'error').length}`);
   }
 
   return {
@@ -370,12 +419,12 @@ function estimateTokenCount(prompt: string): number {
  * Run full VBS validation and repair pipeline.
  * Returns final validated prompt with repair history.
  */
-export function validateAndRepairVBS(vbs: VisualBeatSpec): VBSValidationResult {
+export async function validateAndRepairVBS(vbs: VisualBeatSpec): Promise<VBSValidationResult> {
   // Phase C: Compile
   const prompt = compileVBSToPrompt(vbs);
 
-  // Phase D: Validate
-  const validation = runVBSValidation(vbs, prompt);
+  // Phase D: Validate (now async with skill integration)
+  const validation = await runVBSValidation(vbs, prompt);
 
   if (validation.valid) {
     // No repairs needed
@@ -390,13 +439,16 @@ export function validateAndRepairVBS(vbs: VisualBeatSpec): VBSValidationResult {
     };
   }
 
-  // Phase D: Repair and recompile
-  const repairResult = repairAndRecompile(vbs, validation);
+  // Phase D: Repair and recompile (now async with skill-guided strategy)
+  const repairResult = await repairAndRecompile(vbs, validation);
+
+  // Final revalidation with skill checks
+  const finalValidation = await runVBSValidation(vbs, repairResult.prompt);
 
   return {
     beatId: vbs.beatId,
     valid: repairResult.valid,
-    issues: runVBSValidation(vbs, repairResult.prompt).issues,
+    issues: finalValidation.issues,
     repairsApplied: repairResult.repairsApplied,
     iterationCount: repairResult.iterationCount,
     maxIterationsReached: repairResult.iterationCount >= 2,

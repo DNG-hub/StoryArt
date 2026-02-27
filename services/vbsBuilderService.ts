@@ -5,9 +5,10 @@
  * All deterministic data is populated in Phase A; only action/expression/composition
  * slots are left empty for Phase B (LLM fill-in).
  *
- * No API calls, no LLM involvement — pure TypeScript determinism.
+ * Integrates runtime skill loading for scene/beat-aware FLUX vocabulary suggestions.
+ * Skills are applied based on beat context to ensure synchronicity.
  *
- * v0.21 Compiler-Style Prompt Generation
+ * v0.21 Compiler-Style Prompt Generation + Runtime Skill Integration
  */
 
 import type {
@@ -22,19 +23,21 @@ import type {
   CharacterAppearance,
 } from '../types';
 import type { FullyProcessedBeat } from './beatStateService';
+import { skillApplicatorService } from './skillApplicatorService';
 
 /**
  * Build the Visual Beat Spec for a single beat.
  * Populates all deterministic fields from database context and persistent state.
+ * Applies runtime skill suggestions for FLUX vocabulary based on scene context.
  */
-export function buildVisualBeatSpec(
+export async function buildVisualBeatSpec(
   beat: FullyProcessedBeat,
   episodeContext: EnhancedEpisodeContext,
   persistentState: ScenePersistentState,
   sceneNumber: number,
   previousBeatVBS?: VisualBeatSpec,
   previousBeat?: FullyProcessedBeat
-): VisualBeatSpec {
+): Promise<VisualBeatSpec> {
   // Determine template type from scene template
   const templateType = beat.sceneTemplate?.templateType || 'generic';
 
@@ -61,13 +64,51 @@ export function buildVisualBeatSpec(
   const depthOfField = shotTypeStr.includes('close-up') ? 'shallow depth of field'
     : shotTypeStr.includes('wide') ? 'deep focus'
     : undefined;
-  const shot = {
+  let shot = {
     shotType: beat.fluxShotType || 'medium shot',
     cameraAngle: beat.fluxCameraAngle,
     depthOfField,
     // composition is filled by LLM in Phase B
     composition: undefined as string | undefined,
   };
+
+  // SKILL INTEGRATION: Apply FLUX vocabulary suggestions based on scene context
+  try {
+    console.log(`[VBS Phase A] Applying skill suggestions for beat ${beat.beatId}...`);
+
+    // Get scene role from template for context-aware suggestions
+    const sceneRole = beat.sceneTemplate?.templateType === 'indoor_dialogue' ? 'dialogue'
+      : beat.sceneTemplate?.templateType === 'combat' ? 'action'
+      : beat.sceneTemplate?.templateType === 'establishing' ? 'establishing'
+      : beat.sceneTemplate?.templateType === 'suit_up' ? 'emotional'
+      : undefined;
+
+    // Get skill-aware suggestions
+    const fluxSuggestions = await skillApplicatorService.suggestFluxTerms(beat, sceneRole);
+
+    // Apply suggestions if available
+    if (fluxSuggestions.shotType && !beat.fluxShotType) {
+      shot.shotType = fluxSuggestions.shotType;
+      console.log(`[VBS Phase A] Applied skill suggestion: shotType → ${fluxSuggestions.shotType}`);
+    }
+    if (fluxSuggestions.cameraAngle && !beat.fluxCameraAngle) {
+      shot.cameraAngle = fluxSuggestions.cameraAngle;
+      console.log(`[VBS Phase A] Applied skill suggestion: cameraAngle → ${fluxSuggestions.cameraAngle}`);
+    }
+
+    // Validate beat against FLUX rules
+    const fluxValidation = await skillApplicatorService.applyFluxRules(beat);
+    if (!fluxValidation.valid) {
+      console.warn(`[VBS Phase A] ⚠️  FLUX validation warnings for ${beat.beatId}:`);
+      fluxValidation.warnings.forEach(w => {
+        console.warn(`  [${w.severity}] ${w.type}: ${w.message}`);
+      });
+    } else {
+      console.log(`[VBS Phase A] ✅ FLUX validation passed for ${beat.beatId}`);
+    }
+  } catch (error) {
+    console.warn(`[VBS Phase A] ⚠️  Skill application failed, continuing with defaults:`, error);
+  }
 
   // Build vehicle section if present
   const vehicle = persistentState.vehicle ? {
