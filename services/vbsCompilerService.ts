@@ -18,13 +18,28 @@ import type {
 /**
  * Compile a completed VisualBeatSpec into a final FLUX prompt.
  * All fields are deterministically assembled; no subsequent modification.
+ * STRICT ORDER (critical for T5 encoder token attention):
+ * 1. [shot_type], [depth_of_field], [composition]
+ * 2. [character LoRA], [description], [action], [expression], [position] (× N characters)
+ * 3. [location_visual]
+ * 4. [anchors]
+ * 5. [lighting]
+ * 6. [atmosphere]
+ * 7. [fx]
+ * 8. [props]
+ * 9. [vehicle]
+ * 10. [color_grade]
+ * 11. <segment_tags> (NO SPACES between tags)
  */
 export function compileVBSToPrompt(vbs: VisualBeatSpec): string {
   const parts: string[] = [];
 
-  // --- Shot section (first tokens = highest T5 attention) ---
+  // --- 1. Shot section (first tokens = highest T5 attention) ---
   if (vbs.shot.shotType) {
     parts.push(vbs.shot.shotType);
+  }
+  if (vbs.shot.depthOfField) {
+    parts.push(vbs.shot.depthOfField);
   }
   if (vbs.shot.cameraAngle) {
     parts.push(vbs.shot.cameraAngle);
@@ -33,17 +48,17 @@ export function compileVBSToPrompt(vbs: VisualBeatSpec): string {
     parts.push(vbs.shot.composition);
   }
 
-  // --- Subjects (characters) section ---
+  // --- 2. Subjects (characters) section ---
   for (const subject of vbs.subjects) {
-    // [LoRA trigger] (description) action, expression, position
+    // [LoRA trigger] description action, expression, position
     const subjectParts: string[] = [];
 
     // LoRA trigger (never optional)
     subjectParts.push(subject.loraTrigger);
 
-    // Character description
+    // Character description (NO PARENTHESES - T5 encoder doesn't use parens for emphasis)
     if (subject.description) {
-      subjectParts.push(`(${subject.description})`);
+      subjectParts.push(subject.description);
     }
 
     // Action (filled by LLM)
@@ -64,28 +79,37 @@ export function compileVBSToPrompt(vbs: VisualBeatSpec): string {
     parts.push(subjectParts.join(', '));
   }
 
-  // --- Environment section ---
+  // --- 3. Location visual ---
+  if (vbs.environment.locationVisual) {
+    parts.push(vbs.environment.locationVisual);
+  }
+
+  // --- 4. Anchors (structural artifacts) ---
   if (vbs.environment.anchors.length > 0) {
     parts.push(vbs.environment.anchors.join(', '));
   }
 
+  // --- 5. Lighting ---
   if (vbs.environment.lighting) {
     parts.push(vbs.environment.lighting);
   }
 
+  // --- 6. Atmosphere ---
   if (vbs.environment.atmosphere) {
     parts.push(vbs.environment.atmosphere);
   }
 
+  // --- 7. FX (environmental effects) ---
   if (vbs.environment.fx) {
     parts.push(vbs.environment.fx);
   }
 
+  // --- 8. Props ---
   if (vbs.environment.props && vbs.environment.props.length > 0) {
     parts.push(vbs.environment.props.join(', '));
   }
 
-  // --- Vehicle section ---
+  // --- 9. Vehicle section ---
   if (vbs.vehicle) {
     const vehicleParts = [vbs.vehicle.description];
     if (vbs.vehicle.spatialNote) {
@@ -94,7 +118,15 @@ export function compileVBSToPrompt(vbs: VisualBeatSpec): string {
     parts.push(vehicleParts.join(', '));
   }
 
-  // --- Segment tags (processed separately by SwarmUI, appended at end) ---
+  // --- 10. Color grade ---
+  if (vbs.environment.colorGrade) {
+    parts.push(vbs.environment.colorGrade);
+  }
+
+  // Join all parts with comma-space
+  let prompt = parts.filter(Boolean).join(', ');
+
+  // --- 11. Segment tags (NO SPACES between multiple tags) ---
   const allSegments: string[] = [];
   for (const subject of vbs.subjects) {
     if (subject.segments.clothing) {
@@ -105,11 +137,10 @@ export function compileVBSToPrompt(vbs: VisualBeatSpec): string {
     }
   }
   if (allSegments.length > 0) {
-    parts.push(allSegments.join(', '));
+    // Join segments with NO spaces (critical for SwarmUI parsing)
+    const segmentString = allSegments.join('');
+    prompt = prompt ? `${prompt}${segmentString}` : segmentString;
   }
-
-  // Join all parts with comma-space
-  let prompt = parts.filter(Boolean).join(', ');
 
   // Clean up formatting
   prompt = prompt.replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').trim();

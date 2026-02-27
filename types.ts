@@ -640,6 +640,8 @@ export interface VBSEnvironment {
   locationShorthand: string;
   /** Structural artifacts: walls, furniture, terrain (STRUCTURAL type) */
   anchors: string[];
+  /** Location visual context (key features or visual description summary) */
+  locationVisual?: string;
   /** Lighting artifacts and conditions (LIGHTING type + fluxLighting) */
   lighting: string;
   /** Atmospheric conditions: fog, dust, color grade (ATMOSPHERIC type) */
@@ -648,6 +650,8 @@ export interface VBSEnvironment {
   props?: string[];
   /** Environmental effects: dust, color grade, environmental FX */
   fx?: string;
+  /** Color grade / visual treatment (e.g., "desaturated tactical color grade") */
+  colorGrade?: string;
 }
 
 /**

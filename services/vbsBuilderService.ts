@@ -57,9 +57,14 @@ export function buildVisualBeatSpec(
   const environment = buildEnvironment(beat, episodeContext, sceneNumber);
 
   // Get shot details from beat
+  const shotTypeStr = (beat.fluxShotType || 'medium shot').toLowerCase();
+  const depthOfField = shotTypeStr.includes('close-up') ? 'shallow depth of field'
+    : shotTypeStr.includes('wide') ? 'deep focus'
+    : undefined;
   const shot = {
     shotType: beat.fluxShotType || 'medium shot',
     cameraAngle: beat.fluxCameraAngle,
+    depthOfField,
     // composition is filled by LLM in Phase B
     composition: undefined as string | undefined,
   };
@@ -172,7 +177,11 @@ function buildSubjects(
     const helmetState = detectHelmetState(persistentState.gearState);
 
     // Apply helmet state to description
-    const baseDescription = locationContext.swarmui_prompt_override || '';
+    // Fallback chain: swarmui_prompt_override > physical_description > clothing_description
+    const baseDescription = locationContext.swarmui_prompt_override ||
+      locationContext.physical_description ||
+      locationContext.clothing_description ||
+      '';
     const description = applyHelmetStateToDescription(
       baseDescription,
       helmetState,
@@ -405,6 +414,16 @@ function extractSegments(description: string): string {
 }
 
 /**
+ * Color grade mapping based on location atmosphere category.
+ */
+const COLOR_GRADE_MAP: Record<string, string> = {
+  'BUNKER_REFUGE': 'desaturated tactical color grade',
+  'URBAN_DECAY': 'desaturated post-collapse color grade',
+  'CLINICAL': 'cold clinical color grade',
+  'ABANDONED': 'muted desaturated color grade',
+};
+
+/**
  * Build environment section of VBS.
  * Maps artifacts by type (STRUCTURAL/LIGHTING/ATMOSPHERIC/PROP).
  */
@@ -438,13 +457,35 @@ function buildEnvironment(
     lighting = lighting ? `${lighting}, ${fluxLightingText}` : fluxLightingText;
   }
 
+  // Build locationVisual: use STRUCTURAL anchors if available, fall back to key_features
+  const locationVisual = byType.structural.length > 0
+    ? undefined  // Structural anchors already handle location context
+    : (() => {
+      try {
+        const keyFeatures = typeof location.key_features === 'string'
+          ? JSON.parse(location.key_features)
+          : location.key_features;
+        if (Array.isArray(keyFeatures)) {
+          return keyFeatures.slice(0, 2).join(', ') || undefined;
+        }
+      } catch {
+        // Fall back to visual_description if key_features parsing fails
+      }
+      return location.visual_description ? location.visual_description.substring(0, 100) : undefined;
+    })();
+
+  // Determine color grade from atmosphere category
+  const colorGrade = COLOR_GRADE_MAP[location.atmosphere_category || ''] || 'desaturated tactical color grade';
+
   return {
     locationShorthand: location.name || 'location',
     anchors: byType.structural,
+    locationVisual,
     lighting: lighting || 'neutral lighting',
     atmosphere: byType.atmospheric.join(', ') || '',
     props: byType.prop.length > 0 ? byType.prop : undefined,
     // fx: additional environmental effects (if available in future)
+    colorGrade,
   };
 }
 
